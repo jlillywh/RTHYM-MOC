@@ -1,0 +1,25 @@
+# Compiled Python extension (platform-specific; built from source)
+*.so
+*.pyd
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Temporary solver output files
+temp.bin
+temp.inp
+temp.rpt
+results.obj
+
+# Windows metadata
+*:Zone.Identifier
+
+# IDE / OS
+.vscode/
+.DS_Store

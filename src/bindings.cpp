@@ -1,0 +1,285 @@
+// bindings.cpp
+// PyBind11 Python bindings for the rthym MOC solver.
+//
+// Python API example:
+//
+//   import rthym_moc
+//
+//   solver = rthym_moc.MOCSolver()
+//   solver.add_node(rthym_moc.NodeInput(id="R1", type="Tank",
+//                                        elevation=0.0, head=100.0))
+//   solver.add_node(rthym_moc.NodeInput(id="J1", type="Junction",
+//                                        elevation=50.0, demand=100.0))
+//   solver.add_pipe(rthym_moc.PipeInput(id="P1", from_node="R1", to_node="J1",
+//                                        length=2000.0, diameter=12.0,
+//                                        roughness=130.0, flow_gpm=200.0))
+//   results = solver.run(total_time=10.0, dt=0.01)
+//
+//   import numpy as np
+//   time     = np.array(results["time"])
+//   head_J1  = np.array(results["node_head"]["J1"])
+//   flow_P1  = np.array(results["pipe_flow_gpm"]["P1"])
+
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+#include <pybind11/numpy.h>
+
+#include "moc_solver.hpp"
+
+namespace py = pybind11;
+using namespace rthym;
+
+// Helper: convert std::vector<double> → 1-D numpy array (zero-copy via capsule)
+static py::array_t<double> to_numpy(std::vector<double>&& v) {
+    auto* ptr = new std::vector<double>(std::move(v));
+    auto capsule = py::capsule(ptr, [](void* p) {
+        delete reinterpret_cast<std::vector<double>*>(p);
+    });
+    return py::array_t<double>(
+        {static_cast<py::ssize_t>(ptr->size())},
+        {sizeof(double)},
+        ptr->data(),
+        capsule
+    );
+}
+
+static py::array_t<int> to_numpy_int(std::vector<int>&& v) {
+    auto* ptr = new std::vector<int>(std::move(v));
+    auto capsule = py::capsule(ptr, [](void* p) {
+        delete reinterpret_cast<std::vector<int>*>(p);
+    });
+    return py::array_t<int>(
+        {static_cast<py::ssize_t>(ptr->size())},
+        {sizeof(int)},
+        ptr->data(),
+        capsule
+    );
+}
+
+// Convert SimResults → Python dict of numpy arrays
+static py::dict results_to_dict(SimResults&& r) {
+    py::dict out;
+
+    // time vector
+    out["time"] = to_numpy(std::move(r.time));
+
+    // node_head dict
+    py::dict nh;
+    for (auto& [k, v] : r.node_head) nh[k.c_str()] = to_numpy(std::move(v));
+    out["node_head"] = nh;
+
+    // node_pressure dict
+    py::dict np_;
+    for (auto& [k, v] : r.node_pressure) np_[k.c_str()] = to_numpy(std::move(v));
+    out["node_pressure"] = np_;
+
+    // node_cavitation dict
+    py::dict nc;
+    for (auto& [k, v] : r.node_cavitation) nc[k.c_str()] = to_numpy_int(std::move(v));
+    out["node_cavitation"] = nc;
+
+    // pipe_flow_gpm dict
+    py::dict pf;
+    for (auto& [k, v] : r.pipe_flow_gpm) pf[k.c_str()] = to_numpy(std::move(v));
+    out["pipe_flow_gpm"] = pf;
+
+    return out;
+}
+
+PYBIND11_MODULE(_rthym_moc, m) {
+    m.doc() = R"pbdoc(
+        rthym_moc – High-performance 1-D Method of Characteristics transient
+        hydraulic solver.  C++ core with Python bindings via PyBind11.
+
+        Units on all API boundaries:
+          Lengths / heads  : ft
+          Pressures        : psi
+          Flows            : GPM
+          Wave speed       : ft/s
+          Time             : s
+    )pbdoc";
+
+    // ── NodeInput ──────────────────────────────────────────────────────────
+    py::class_<NodeInput>(m, "NodeInput",
+        R"pbdoc(
+        Describes one node (junction, reservoir, valve, pump, etc.).
+
+        Parameters
+        ----------
+        id : str
+        type : str
+            One of: "Junction", "Tank", "PressureBoundary", "FuelTank",
+                    "Valve", "Turbine", "Pump", "SurgeTank",
+                    "InflowNode", "OutflowNode"
+        elevation : float, ft
+        head : float, ft   (Tank HGL or PressureBoundary total head)
+        level : float, %   (Tank fill level 0–100)
+        max_level : float, ft   (Tank depth at 100% full)
+        demand : float, GPM
+        current_speed : float, %   (Pump)
+        current_setting : float, % open   (Valve / Turbine)
+        design_head : float, ft   (Pump BEP head)
+        design_flow : float, GPM  (Pump BEP flow)
+        diameter : float, inches  (Valve / Turbine orifice)
+        design_velocity : float, ft/s  (Turbine; computed from design_flow if 0)
+        tank_area : float, ft²  (SurgeTank cross-section)
+        )pbdoc")
+        .def(py::init<>())
+        .def_readwrite("id",               &NodeInput::id)
+        // type is exposed as string property (converts to/from NodeType enum)
+        .def_property("type",
+            [](const NodeInput& self) { return nodeTypeToStr(self.type); },
+            [](NodeInput& self, const std::string& s) { self.type = parseNodeType(s); })
+        .def_readwrite("elevation",        &NodeInput::elevation)
+        .def_readwrite("head",             &NodeInput::head)
+        .def_readwrite("level",            &NodeInput::level)
+        .def_readwrite("max_level",        &NodeInput::max_level)
+        .def_readwrite("demand",           &NodeInput::demand)
+        .def_readwrite("current_speed",    &NodeInput::current_speed)
+        .def_readwrite("current_setting",  &NodeInput::current_setting)
+        .def_readwrite("design_head",      &NodeInput::design_head)
+        .def_readwrite("design_flow",      &NodeInput::design_flow)
+        .def_readwrite("diameter",         &NodeInput::diameter)
+        .def_readwrite("design_velocity",  &NodeInput::design_velocity)
+        .def_readwrite("tank_area",        &NodeInput::tank_area);
+
+    // ── PipeInput ──────────────────────────────────────────────────────────
+    py::class_<PipeInput>(m, "PipeInput",
+        R"pbdoc(
+        Describes one pipe segment.
+
+        Parameters
+        ----------
+        id : str
+        from_node : str   upstream node id
+        to_node : str     downstream node id
+        length : float, ft
+        diameter : float, inches
+        roughness : float   Hazen-Williams C (default 120)
+        flow_gpm : float, GPM   initial steady-state flow (+ = from→to)
+        wall_thickness : float, inches   (for elastic wave speed; default 0.25)
+        youngs_modulus : float, psi      (0 = rigid pipe → default 4000 ft/s)
+        poissons_ratio : float           (default 0.3)
+        )pbdoc")
+        .def(py::init<>())
+        .def_readwrite("id",             &PipeInput::id)
+        .def_readwrite("from_node",      &PipeInput::from_node)
+        .def_readwrite("to_node",        &PipeInput::to_node)
+        .def_readwrite("length",         &PipeInput::length)
+        .def_readwrite("diameter",       &PipeInput::diameter)
+        .def_readwrite("roughness",      &PipeInput::roughness)
+        .def_readwrite("flow_gpm",       &PipeInput::flow_gpm)
+        .def_readwrite("wall_thickness", &PipeInput::wall_thickness)
+        .def_readwrite("youngs_modulus", &PipeInput::youngs_modulus)
+        .def_readwrite("poissons_ratio", &PipeInput::poissons_ratio);
+
+    // ── MOCSolver ──────────────────────────────────────────────────────────
+    py::class_<MOCSolver>(m, "MOCSolver",
+        R"pbdoc(
+        1-D Method of Characteristics (MOC) transient hydraulic solver.
+
+        Workflow
+        --------
+        1. Build the network topology by calling add_node() and add_pipe().
+        2. Call run() to execute the full transient simulation.
+        3. Inspect the returned dict of numpy arrays.
+
+        For scripted transients (e.g. valve closure), call run() with a short
+        total_time, then update settings via set_valve_setting() / set_pump_speed(),
+        then call run() again.  The solver state persists between calls.
+
+        Note: run() calls initGrid() internally each time, which resets the MOC
+        grid from the steady-state initial conditions provided in the node/pipe
+        inputs.  To continue from a prior transient state, use the step-based API
+        (not yet exposed – extend stepMOC() binding as needed).
+        )pbdoc")
+        .def(py::init<>())
+        .def("add_node", &MOCSolver::add_node,
+            py::arg("node"),
+            "Append a node to the network topology.")
+        .def("add_pipe", &MOCSolver::add_pipe,
+            py::arg("pipe"),
+            "Append a pipe to the network topology.")
+        .def("clear", &MOCSolver::clear,
+            "Remove all nodes and pipes from the solver.")
+        .def("set_valve_setting", &MOCSolver::set_valve_setting,
+            py::arg("id"), py::arg("pct_open"),
+            "Update a valve's opening (0=closed, 100=fully open) mid-simulation.")
+        .def("set_pump_speed", &MOCSolver::set_pump_speed,
+            py::arg("id"), py::arg("pct_speed"),
+            "Update a pump's speed (0=off, 100=rated speed) mid-simulation.")
+        .def("set_node_demand", &MOCSolver::set_node_demand,
+            py::arg("id"), py::arg("demand_gpm"),
+            "Update a junction demand mid-simulation.")
+        .def("set_valve_schedule",
+            [](MOCSolver& self,
+               const std::string& id,
+               const std::vector<std::pair<double,double>>& schedule) {
+                self.set_valve_schedule(id, schedule);
+            },
+            py::arg("id"), py::arg("schedule"),
+            R"pbdoc(
+            Register a time-varying opening schedule for a Valve node.
+
+            Parameters
+            ----------
+            id : str
+                Valve node id (must already be added via add_node).
+            schedule : list[tuple[float, float]]
+                List of (time_s, pct_open) pairs in ascending time order.
+                pct_open is 0 (closed) … 100 (fully open).
+                Values are linearly interpolated during run().
+                Outside the schedule range the nearest endpoint value is held.
+
+            Examples
+            --------
+            # Linear closure from 100 % to 0 % over 3 seconds
+            solver.set_valve_schedule("V1",
+                [(t, max(0.0, 100.0 - 100.0/3.0 * t))
+                 for t in [i * 0.01 for i in range(301)]])
+            )pbdoc")
+        .def("run",
+            [](MOCSolver& self,
+               double total_time,
+               double dt,
+               double p_vapor_psi,
+               double usf_tau) -> py::dict {
+                return results_to_dict(
+                    self.run(total_time, dt, p_vapor_psi, usf_tau));
+            },
+            py::arg("total_time"),
+            py::arg("dt")          = 0.01,
+            py::arg("p_vapor_psi") = -14.0,
+            py::arg("usf_tau")     = 0.5,
+            R"pbdoc(
+            Run the transient simulation and return results.
+
+            Parameters
+            ----------
+            total_time : float
+                Simulation duration in seconds.
+            dt : float
+                Time step in seconds (default 0.01 s = 10 ms).
+                The Courant condition is enforced automatically by adjusting
+                each pipe's wave speed to the nearest integer-segment solution.
+            p_vapor_psi : float
+                Vapour pressure threshold for cavitation detection (default −14 psi).
+            usf_tau : float
+                Boundary-layer relaxation time constant τ for the IIR unsteady
+                friction filter (default 0.5 s).  Larger values = more damping.
+
+            Returns
+            -------
+            dict with keys:
+              "time"             : numpy.ndarray (num_steps,)  seconds
+              "node_head"        : dict[node_id] → numpy.ndarray (num_steps,)  ft
+              "node_pressure"    : dict[node_id] → numpy.ndarray (num_steps,)  psi
+              "node_cavitation"  : dict[node_id] → numpy.ndarray (num_steps,)  0/1
+              "pipe_flow_gpm"    : dict[pipe_id] → numpy.ndarray (num_steps,)  GPM
+            )pbdoc");
+
+    // ── Module-level convenience constants ────────────────────────────────
+    m.attr("G_FT_S2")    = G_FT_S2;
+    m.attr("GPM_TO_CFS") = GPM_TO_CFS;
+    m.attr("PSI_TO_FT")  = PSI_TO_FT;
+}
