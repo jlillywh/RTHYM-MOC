@@ -21,6 +21,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+inp  = ["wntr>=0.4"]
 dev  = ["pytest", "numpy", "matplotlib"]
 docs = ["sphinx", "numpydoc"]
 

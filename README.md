@@ -16,6 +16,7 @@ A high-performance 1-D Method of Characteristics (MOC) transient hydraulic solve
 - [Valve model](#valve-model)
 - [Gradual closure schedules](#gradual-closure-schedules)
 - [Scripted multi-event transients](#scripted-multi-event-transients)
+- [Loading from EPANET (.inp)](#loading-from-epanet-inp)
 - [Numerical method](#numerical-method)
 - [Validation](#validation)
 - [Repository layout](#repository-layout)
@@ -331,6 +332,86 @@ Note that the second `run()` call re-initialises from the `NodeInput` steady-sta
 
 ---
 
+## Loading from EPANET (.inp)
+
+Existing EPANET network files can be imported directly with `rthym_moc.load_inp()`.  The function parses the network topology and — when [wntr](https://wntr.readthedocs.io) is installed — runs a single-period hydraulic simulation to populate steady-state pipe flows automatically.
+
+### Install the optional dependency
+
+```bash
+pip install wntr          # standalone
+# or
+pip install 'rthym-moc[inp]'   # together with rthym-moc
+```
+
+### Usage
+
+```python
+import rthym_moc
+
+# Load topology and steady-state flows from an EPANET file
+solver = rthym_moc.load_inp("network.inp")
+
+# Apply a transient event (valve closure, pump trip, etc.) then run
+solver.set_valve_schedule("_VALVE_V1", schedule)
+results = solver.run(total_time=10.0, dt=0.01)
+```
+
+If wntr is not installed, or for a known operating condition, supply initial flows explicitly:
+
+```python
+solver = rthym_moc.load_inp(
+    "network.inp",
+    use_wntr=False,
+    initial_flows={"P1": 500.0, "P2": 250.0},   # GPM, + = from_node → to_node
+)
+```
+
+### `load_inp()` parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | `str` | — | Path to the EPANET `.inp` file |
+| `use_wntr` | `bool` | `True` | Run wntr hydraulics for initial flows |
+| `initial_flows` | `dict[str, float]` | `None` | Explicit `{pipe_id: GPM}` overrides (applied after wntr, if any) |
+
+### Supported EPANET sections
+
+| Section | Mapped to |
+|---|---|
+| `[JUNCTIONS]` | `Junction` nodes |
+| `[RESERVOIRS]` | `PressureBoundary` nodes |
+| `[TANKS]` | `Tank` nodes |
+| `[PIPES]` | `PipeInput` (H-W, D-W, and C-M roughness converted to H-W C) |
+| `[PUMPS]` | `Pump` node + two stub pipes; design point read from `[CURVES]` |
+| `[VALVES]` | `Valve` node + two stub pipes (TCV, PRV, PSV, PBV) |
+| `[OPTIONS]` | `Units`, `Headloss` formula |
+
+All US customary unit variants (GPM, CFS, MGD, IMGD, AFD) and SI metric variants (LPS, LPM, MLD, CMH, CMD) are supported.
+
+### Pump and valve node IDs
+
+Because EPANET treats pumps and valves as *links* (not nodes), `load_inp()` injects an intermediate node and two 50 ft stub pipes for each one.  The generated IDs follow a predictable pattern:
+
+| EPANET link `V1` | Generated node | Generated pipes |
+|---|---|---|
+| Pump | `_PUMP_V1` | `_P_V1_up`, `_P_V1_dn` |
+| Valve | `_VALVE_V1` | `_P_V1_up`, `_P_V1_dn` |
+
+Use these IDs when calling `set_valve_schedule()`, `set_pump_speed()`, or accessing results.
+
+### Limitations
+
+- **PRV / PSV / PBV** pressure setpoints cannot be converted to a % open without system-wide hydraulic information; these valves are initialised fully open with a `UserWarning`.
+- **FCV / GPV** valve types are not supported and are treated as fully-open valves.
+- **Minor losses** (`[PIPES]` column 7) are currently ignored.
+- **Demand patterns** (`[PATTERNS]`, `[CONTROLS]`, `[RULES]`) are not applied; only base demands are used.
+- **Check valves** (Status = CV) are treated as regular pipes; reverse-flow prevention is not enforced.
+
+See `examples/load_from_inp.py` for a complete worked example.
+
+---
+
 ## Numerical method
 
 The solver implements the **fixed-grid, elastic Method of Characteristics** (Wylie & Streeter 1993; Chaudhry 2014).
@@ -418,7 +499,8 @@ RTHYM-MOC/
 │   ├── basic_example.py            # Minimal Joukowsky quickstart
 │   ├── benchmark_vs_tsnet.py       # Side-by-side comparison with TSNet
 │   ├── test_wave_reflections.py    # Wave period & damping verification
-│   └── test_gradual_closure.py     # Joukowsky criterion, K-model valve
+│   ├── test_gradual_closure.py     # Joukowsky criterion, K-model valve
+│   └── load_from_inp.py            # EPANET .inp import example
 ├── tests/
 │   └── test_waterhammer.cpp        # Standalone C++ unit test (BUILD_TESTS=ON)
 ├── CMakeLists.txt
@@ -450,6 +532,7 @@ RTHYM-MOC/
 |---------|---------|
 | matplotlib | Plotting in `basic_example.py` |
 | TSNet 0.3.1 | Cross-validation in benchmark and test scripts |
+| wntr ≥ 0.4 | Steady-state initial flows for `load_inp()` (`pip install 'rthym-moc[inp]'`) |
 
 ---
 
@@ -465,4 +548,4 @@ RTHYM-MOC/
 
 **RTHYM-MOC** (this repository) is released under the [MIT License](https://opensource.org/licenses/MIT) and is free to use, modify, and distribute for any purpose, including commercial and academic work.  See `pyproject.toml` for the full license text.
 
-**R-THYM** (the web application at [lillywhitewater.com/products/r-thym/](https://lillywhitewater.com/products/r-thym/)) is a separate, proprietary product and is not covered by this license.  The R-THYM application, its user interface, and its hosted infrastructure remain the intellectual property of Lillywhite Water and are not open source.
+**R-THYM** (the web application at [lillywhitewater.com/products/r-thym/](https://lillywhitewater.com/products/r-thym/)) is a separate, proprietary product and is not covered by this license.  The R-THYM application, its user interface, and its hosted infrastructure remain the intellectual property of Lillywhite Water Solutions LLC and are not open source.
