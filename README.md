@@ -31,7 +31,7 @@ RTHYM-MOC solves the 1-D water-hammer equations using the Method of Characterist
 - **Network-capable**: arbitrary topologies of pipes, junctions, reservoirs, valves, pumps, surge tanks, and turbines.
 - **Time-varying events**: valve schedules, pump trip/start, demand changes — specified either as discrete step changes between `run()` calls or as continuous piecewise-linear schedules registered before `run()`.
 - **Cavitation detection**: integrates a column-separation flag (pressure < vapour pressure) at each node.
-- **Speed**: the C++ core solves a 900-step, 75-segment single-pipe case in under 1 ms; roughly **370× faster** than the equivalent TSNet (pure Python) simulation.
+- **Speed**: the C++ core solves a 900-step, 75-segment single-pipe case in under 1 ms; roughly **370× faster** than the equivalent [TSNet](https://github.com/glorialulu/TSNet) (pure Python) simulation on the same hardware.
 - **Validated**: Joukowsky first-step error < 0.02 % against the analytical formula $\Delta H = aV_0/g$; wave oscillation period error < 0.2 % against $T_0 = 4L/a$.
 
 ---
