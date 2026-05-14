@@ -243,14 +243,16 @@ PYBIND11_MODULE(_rthym_moc, m) {
                double total_time,
                double dt,
                double p_vapor_psi,
-               double usf_tau) -> py::dict {
+               double usf_tau,
+               double k_bru) -> py::dict {
                 return results_to_dict(
-                    self.run(total_time, dt, p_vapor_psi, usf_tau));
+                    self.run(total_time, dt, p_vapor_psi, usf_tau, k_bru));
             },
             py::arg("total_time"),
             py::arg("dt")          = 0.01,
             py::arg("p_vapor_psi") = -14.0,
             py::arg("usf_tau")     = 0.5,
+            py::arg("k_bru")       = 0.0,
             R"pbdoc(
             Run the transient simulation and return results.
 
@@ -266,7 +268,15 @@ PYBIND11_MODULE(_rthym_moc, m) {
                 Vapour pressure threshold for cavitation detection (default −14 psi).
             usf_tau : float
                 Boundary-layer relaxation time constant τ for the IIR unsteady
-                friction filter (default 0.5 s).  Larger values = more damping.
+                friction filter (default 0.5 s).
+            k_bru : float
+                Brunone (1991) dimensionless unsteady-friction coefficient.
+                Default 0 (steady-friction only).  Typical calibrated values are
+                0.02–0.15 for turbulent pipe flow; Vardy & Brown (1996) give
+                k_bru = C*/sqrt(π) where C* = 7.41/Re^0.352.
+                Enabling USF (k_bru > 0) adds mild damping to pressure
+                oscillations without affecting the first Joukowsky peak
+                significantly when k_bru is in the physical range.
 
             Returns
             -------

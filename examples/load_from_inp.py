@@ -18,8 +18,8 @@ Part 2 — TCV valve closure (demonstrates VALVE section loading)
   A linear closure schedule (T_c=0.5 s) drives the valve to full shut.
   Expected Joukowsky peak ~324–326 ft at _VALVE_V1.
 
-Note: both simulations are run with usf_tau=dt (unsteady-friction filter disabled)
-so the Joukowsky peak matches the classical steady-friction MOC formula.
+Note: both simulations use default run() settings (k_bru=0, steady-friction only).
+Unsteady friction (Brunone) can be enabled via k_bru=<0.02..0.15>.
 
 Usage
 -----
@@ -108,9 +108,7 @@ with tempfile.NamedTemporaryFile(mode="w", suffix=".inp", delete=False) as f:
 try:
     solver1 = rthym_moc.load_inp(path1, use_wntr=True,
                                   initial_flows={"P1": Q0_GPM})
-    # usf_tau=DT disables the Brunone IIR unsteady-friction filter so the
-    # Joukowsky peak matches the classical steady-friction MOC formula.
-    results1 = solver1.run(total_time=9.0, dt=DT, usf_tau=DT)
+    results1 = solver1.run(total_time=9.0, dt=DT)
     t1   = np.array(results1["time"])
     H_J1 = np.array(results1["node_head"]["J1"])
     Q_P1 = np.array(results1["pipe_flow_gpm"]["P1"])
@@ -190,8 +188,7 @@ try:
     pct     = np.clip(100.0 * (1.0 - t_sched / T_c), 0.0, 100.0)
     solver2.set_valve_schedule("_VALVE_V1", list(zip(t_sched.tolist(), pct.tolist())))
 
-    # usf_tau=DT disables Brunone USF filter for a clean Joukowsky comparison.
-    results2 = solver2.run(total_time=5.0, dt=DT, usf_tau=DT)
+    results2 = solver2.run(total_time=5.0, dt=DT)
     t2   = np.array(results2["time"])
     H_V1 = np.array(results2["node_head"]["_VALVE_V1"])
     Q2P1 = np.array(results2["pipe_flow_gpm"]["P1"])

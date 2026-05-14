@@ -134,7 +134,8 @@ public:
     SimResults run(double total_time_s,
                    double dt            = 0.01,
                    double p_vapor_psi   = -14.0,
-                   double usf_tau       = 0.5);
+                   double usf_tau       = 0.5,
+                   double k_bru         = 0.0);
 
 private:
     // User inputs (persistent across run() calls)
@@ -160,6 +161,11 @@ private:
     double dt_      = 0.01;
     double p_vapor_ = -14.0 * PSI_TO_FT; // ft (converted from psi at init)
     double usf_tau_ = 0.5;               // s  boundary-layer relaxation time constant
+    // Brunone (1991) dimensionless USF coefficient.  0 = steady friction only.
+    // Typical calibrated value: 0.02–0.15 (Vardy-Brown 1996 gives ~0.04–0.10
+    // for turbulent pipe flow).  Default 0 keeps the solver conservative until
+    // the user supplies a calibrated value.
+    double k_Bru_   = 0.0;
 
     void   initGrid();
     void   stepMOC();
