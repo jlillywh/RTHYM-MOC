@@ -18,6 +18,7 @@ Supported sections
  [CURVES]      → Pump H-Q curves
  [STATUS]      → Per-link status overrides (OPEN / CLOSED / CV)
  [OPTIONS]     → Units, Headloss formula
+ [RTHYM]       → Surge-control component overrides (Standpipe, HydropneumaticTank)
 
 Ignored sections
 ----------------
@@ -42,8 +43,7 @@ rthym_moc requires them to be *nodes*.  Each pump/valve link is replaced by:
     Node1 ──[_P_<id>_up: stub pipe]──> _PUMP_<id> or _VALVE_<id>
           ──[_P_<id>_dn: stub pipe]──> Node2
 
-Stub pipes are ``_STUB_LEN_FT`` ft long (default 50 ft) to guarantee at
-least one MOC segment at typical wave speeds and time steps.
+Stub pipes are ``_STUB_LEN_FT`` ft long (40 ft → 1 segment at dt=0.01 s)
 """
 from __future__ import annotations
 
@@ -60,9 +60,16 @@ _M3S_TO_GPM = 15_850.3   # m³/s → US GPM
 # Stub pipe length (ft).  Must satisfy L = n * a*dt for integer n, so that
 # the MOC grid preserves the wave speed exactly in the stub.
 # At a=4000 ft/s, dt=0.01 s: dx = 40 ft.
-#   50 ft → round(50/40)=1 seg → a_stub = 50/0.01 = 5000 ft/s  ✗ (too high!)
-#   80 ft → round(80/40)=2 seg → a_stub = (80/2)/0.01 = 4000 ft/s  ✓
-_STUB_LEN_FT = 80.0
+#   40 ft → round(40/40)=1 seg → a_stub = 40/0.01 = 4000 ft/s  ✓
+#   80 ft → round(80/40)=2 seg → a_stub = (80/2)/0.01 = 4000 ft/s  also ✓
+#
+# We prefer 40 ft (1 segment) because a single-segment stub has NO interior
+# nodes: the C+/C- boundary characteristics use the actual pipe-endpoint HGL
+# values directly.  With 2 segments, the intermediate node is initialised at
+# the mid-point of the upstream-to-downstream HGL gradient across the valve
+# (up to ~37 ft for a 75 ft head-drop valve), which injects a spurious
+# pressure pulse into the transient at t=0.
+_STUB_LEN_FT = 40.0
 
 # ── EPANET unit-system tables ─────────────────────────────────────────────────
 _US_UNITS = {"GPM", "CFS", "MGD", "IMGD", "AFD"}
@@ -112,7 +119,19 @@ _UNSUPPORTED_VALVE_TYPES = {"FCV", "GPV"}
 # ── INP parser ────────────────────────────────────────────────────────────────
 
 def _parse_inp(path: str) -> dict[str, list[list[str]]]:
-    """Return {SECTION_NAME: [[token, ...], ...]} for all sections."""
+    """Return {SECTION_NAME: [[token, ...], ...]} for all sections.
+
+    Also parses the custom ``[RTHYM]`` section used by the R-THYM app to
+    annotate nodes with their actual component type and parameters::
+
+        [RTHYM]
+        ; NodeID          Type                  param=value …
+        SP1               Standpipe             tank_area=10.0
+        HPT1              HydropneumaticTank    gas_volume=20.0 tank_volume=50.0
+
+    The ``[RTHYM]`` section is silently ignored by EPANET simulators, so the
+    file remains fully valid EPANET .inp format.
+    """
     sections: dict[str, list[list[str]]] = {}
     current: Optional[str] = None
     with open(path, encoding="utf-8", errors="replace") as fh:
@@ -136,6 +155,65 @@ def _get_option(sec: dict, key: str, default: str) -> str:
         if row and row[0].upper() == key.upper() and len(row) >= 2:
             return row[1].upper()
     return default
+
+
+# ── [RTHYM] section parser ────────────────────────────────────────────────────
+
+# NodeType strings that map to surge-control components
+_RTHYM_SURGE_TYPES = {"Standpipe", "HydropneumaticTank"}
+
+def _parse_rthym_overrides(
+    sec: dict,
+    lf: float,
+) -> dict[str, dict]:
+    """Parse the optional ``[RTHYM]`` section.
+
+    Each row has the form::
+
+        NodeID   NodeType   key=value …
+
+    Supported types and their recognised ``key=value`` parameters
+    (all numeric values already in US customary units as given in the file):
+
+    **Standpipe** (R-THYM ``SurgeControl``):
+      - ``tank_area`` — ft² cross-sectional area of the standpipe
+
+    **HydropneumaticTank** (R-THYM ``SurgeTank``):
+      - ``gas_volume``    — ft³ initial trapped gas
+      - ``tank_volume``   — ft³ total vessel volume
+      - ``polytropic_n``  — polytropic exponent (default 1.2)
+      - ``loss_coeff_in`` — discharge coeff for inflow (default 0.7)
+      - ``loss_coeff_out``— discharge coeff for outflow (default 0.7)
+      - ``diameter``      — inches, orifice connection diameter
+
+    Returns
+    -------
+    dict
+        ``{node_id: {"node_type": str, **params}}``
+    """
+    overrides: dict[str, dict] = {}
+    for row in sec.get("RTHYM", []):
+        if len(row) < 2:
+            continue
+        nid   = row[0]
+        ntype = row[1]
+        if ntype not in _RTHYM_SURGE_TYPES:
+            warnings.warn(
+                f"[RTHYM] section: node '{nid}' has unrecognised type '{ntype}'; "
+                "row ignored.",
+                UserWarning, stacklevel=4,
+            )
+            continue
+        params: dict = {"node_type": ntype}
+        for tok in row[2:]:
+            if "=" in tok:
+                k, _, v = tok.partition("=")
+                try:
+                    params[k.strip()] = float(v.strip())
+                except ValueError:
+                    pass
+        overrides[nid] = params
+    return overrides
 
 
 # ── Roughness conversions ─────────────────────────────────────────────────────
@@ -280,6 +358,8 @@ def load_inp(
     *,
     use_wntr: bool = True,
     initial_flows: Optional[dict[str, float]] = None,
+    initial_heads: Optional[dict[str, float]] = None,
+    stub_length_ft: Optional[float] = None,
 ) -> MOCSolver:
     """Read an EPANET .inp file and return a configured :class:`MOCSolver`.
 
@@ -303,6 +383,31 @@ def load_inp(
         - For regular pipes: use the EPANET pipe ID (same as the rthym_moc pipe ID).
         - For pump/valve links: use the *original EPANET link ID* (e.g. ``"V1"``,
           not ``"_P_V1_up"``).  The supplied flow is applied to both stub pipes.
+    initial_heads : dict[str, float] or None, optional
+        Explicit ``{node_id: head_ft}`` overrides for the initial piezometric
+        head (HGL in ft) at junction and inline valve/pump nodes.  Applied
+        *after* any wntr result.  Use this when wntr is not available and you
+        need to supply steady-state heads manually so the MOC grid is
+        initialised correctly for networks where intermediate nodes are not
+        connected to a reservoir on both sides.
+
+        Key convention: use the EPANET node ID for junctions and the
+        generated ``_VALVE_<id>`` / ``_PUMP_<id>`` ID for inline elements.
+    stub_length_ft : float or None, optional
+        Length (ft) of the fictitious stub pipes inserted on each side of
+        every valve and pump node.  Must be a positive multiple of
+        ``a * dt`` (wave speed × time step) so the MOC Courant condition is
+        satisfied exactly.  Defaults to the module-level ``_STUB_LEN_FT``
+        (40 ft at a=4000 ft/s, dt=0.01 s).
+
+        **Choosing a value**: partial reflections from the stub/pipe diameter
+        change attenuate the valve pressure rise whenever the stub is shorter
+        than ``a * T_closure / 2``.  For fast closures (e.g. T_closure=0.35 s,
+        a=4000 ft/s) set ``stub_length_ft ≥ 700`` ft to prevent reflected
+        waves from returning during closure::
+
+            stub_length_ft = ceil(a * T_closure / 2 / dx) * dx
+            # e.g. ceil(4000 * 0.35 / 2 / 40) * 40 = 720 ft → use 800 ft
 
     Returns
     -------
@@ -334,6 +439,8 @@ def load_inp(
     if not os.path.isfile(path):
         raise FileNotFoundError(f"EPANET .inp file not found: {path!r}")
 
+    _stub_len = float(stub_length_ft) if stub_length_ft is not None else _STUB_LEN_FT
+
     sec   = _parse_inp(path)
     units = _get_option(sec, "UNITS",    "GPM")
     hloss = _get_option(sec, "HEADLOSS", "H-W")
@@ -357,6 +464,7 @@ def load_inp(
         )
 
     curves = _parse_curves(sec)
+    rthym_overrides = _parse_rthym_overrides(sec, lf)
 
     # Per-link STATUS overrides from [STATUS] section
     status_map: dict[str, str] = {
@@ -476,11 +584,11 @@ def load_inp(
 
         up = PipeInput()
         up.id = f"_P_{lid}_up";  up.from_node = frm;  up.to_node = nid
-        up.length = _STUB_LEN_FT;  up.diameter = 12.0;  up.roughness = 130.0
+        up.length = _stub_len;  up.diameter = 12.0;  up.roughness = 130.0
 
         dn = PipeInput()
         dn.id = f"_P_{lid}_dn";  dn.from_node = nid;  dn.to_node = to_
-        dn.length = _STUB_LEN_FT;  dn.diameter = 12.0;  dn.roughness = 130.0
+        dn.length = _stub_len;  dn.diameter = 12.0;  dn.roughness = 130.0
 
         pump_stubs.extend([up, dn])
 
@@ -532,11 +640,11 @@ def load_inp(
 
         up = PipeInput()
         up.id = f"_P_{lid}_up";  up.from_node = frm;  up.to_node = nid
-        up.length = _STUB_LEN_FT;  up.diameter = diam;  up.roughness = 130.0
+        up.length = _stub_len;  up.diameter = diam;  up.roughness = 130.0
 
         dn = PipeInput()
         dn.id = f"_P_{lid}_dn";  dn.from_node = nid;  dn.to_node = to_
-        dn.length = _STUB_LEN_FT;  dn.diameter = diam;  dn.roughness = 130.0
+        dn.length = _stub_len;  dn.diameter = diam;  dn.roughness = 130.0
 
         valve_stubs.extend([up, dn])
 
@@ -550,30 +658,34 @@ def load_inp(
     # User-supplied overrides applied last (highest priority)
     if initial_flows:
         init_flows.update(initial_flows)
+    if initial_heads:
+        init_heads.update(initial_heads)
 
     # ── Propagate initial piezometric heads to junction nodes ─────────────────
-    # Junction nodes default to head=100 ft; update from wntr so that the
-    # MOC grid (initGrid) can correctly initialise the HGL in pipes whose
-    # both endpoints are non-reservoir nodes (e.g. valve/pump stub pipes).
+    # Junction nodes default to head=100 ft; update from wntr (or the caller's
+    # initial_heads dict) so the MOC grid (initGrid) can correctly initialise
+    # the HGL in pipes whose both endpoints are non-reservoir nodes (e.g.
+    # valve/pump stub pipes).
     for jid, jn in nodes.items():
         if jn.type == "Junction" and jid in init_heads:
             jn.head = init_heads[jid]
 
-    # For generated valve/pump inline nodes, inherit the upstream junction's
-    # wntr head so that initGrid() initialises stub pipes correctly.
+    # For generated valve/pump inline nodes, prefer an explicit entry in
+    # init_heads keyed by the generated ID; fall back to the upstream
+    # junction's head.
     for i, (lid, vn) in enumerate(zip(valve_link_ids, valve_nodes)):
         row = next(
             r for r in sec.get("VALVES", []) if len(r) >= 2 and r[0] == lid
         )
         frm_nid = row[1]
-        vn.head = init_heads.get(frm_nid, vn.head)
+        vn.head = init_heads.get(vn.id, init_heads.get(frm_nid, vn.head))
 
     for i, (lid, pn) in enumerate(zip(pump_link_ids, pump_nodes)):
         row = next(
             r for r in sec.get("PUMPS", []) if len(r) >= 2 and r[0] == lid
         )
         frm_nid = row[1]
-        pn.head = init_heads.get(frm_nid, pn.head)
+        pn.head = init_heads.get(pn.id, init_heads.get(frm_nid, pn.head))
 
     for p in pipes:
         p.flow_gpm = init_flows.get(p.id, p.flow_gpm)
@@ -588,6 +700,36 @@ def load_inp(
         q = init_flows.get(lid, 0.0)
         valve_stubs[2 * i].flow_gpm     = q
         valve_stubs[2 * i + 1].flow_gpm = q
+
+    # ── Apply [RTHYM] section overrides (Standpipe / HydropneumaticTank) ──────
+    # Both node types are exported to EPANET as plain Junctions for steady-state
+    # compatibility.  The [RTHYM] section records their actual type and the
+    # physical parameters the MOC solver needs.
+    for nid, params in rthym_overrides.items():
+        if nid not in nodes:
+            warnings.warn(
+                f"[RTHYM] section references node '{nid}' which is not found in "
+                "[JUNCTIONS] or other node sections; skipped.",
+                UserWarning, stacklevel=2,
+            )
+            continue
+        n = nodes[nid]
+        ntype = params["node_type"]
+        n.type = ntype  # "Standpipe" or "HydropneumaticTank"
+
+        if ntype == "Standpipe":
+            if "tank_area" in params:
+                n.tank_area = params["tank_area"]
+            # head was already populated from wntr (= initial water-surface elev)
+
+        elif ntype == "HydropneumaticTank":
+            if "gas_volume"    in params: n.gas_volume    = params["gas_volume"]
+            if "tank_volume"   in params: n.tank_volume   = params["tank_volume"]
+            if "polytropic_n"  in params: n.polytropic_n  = params["polytropic_n"]
+            if "loss_coeff_in" in params: n.loss_coeff_in = params["loss_coeff_in"]
+            if "loss_coeff_out"in params: n.loss_coeff_out= params["loss_coeff_out"]
+            if "diameter"      in params: n.diameter      = params["diameter"]
+            # head from wntr = steady-state pipeline head at the connection node
 
     # ── Assemble solver ────────────────────────────────────────────────────────
     solver = MOCSolver()

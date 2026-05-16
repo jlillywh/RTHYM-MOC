@@ -16,16 +16,18 @@ constexpr double M_PI_      = 3.14159265358979323846;
 
 // ── Node type enumeration ────────────────────────────────────────────────────
 enum class NodeType {
-    Junction,         // Interior demand node (Kirchhoff balance)
-    Tank,             // Fixed-level reservoir
-    PressureBoundary, // Fixed-head pressure source
-    FuelTank,         // Fixed H=0 boundary
-    Valve,            // Inline throttling device  (K quadratic)
-    Turbine,          // Inline turbine            (K quadratic, design-curve K)
-    Pump,             // Inline centrifugal pump   (3-coeff affinity curve)
-    SurgeTank,        // Standpipe with free surface (level updated each step)
-    InflowNode,       // Demand node that injects flow (demand sign is negative)
-    OutflowNode,      // Standard demand node
+    Junction,            // Interior demand node (Kirchhoff balance)
+    Tank,                // Fixed-level reservoir
+    PressureBoundary,    // Fixed-head pressure source
+    FuelTank,            // Fixed H=0 boundary
+    Valve,               // Inline throttling device  (K quadratic)
+    Turbine,             // Inline turbine            (K quadratic, design-curve K)
+    Pump,                // Inline centrifugal pump   (3-coeff affinity curve)
+    SurgeTank,           // Open standpipe / surge tank (kept for backward compat)
+    Standpipe,           // Open surge tank — free surface (R-THYM SurgeControl)
+    HydropneumaticTank,  // Closed pressurized vessel — polytropic gas + orifice (R-THYM SurgeTank)
+    InflowNode,          // Demand node that injects flow (demand sign is negative)
+    OutflowNode,         // Standard demand node
 };
 
 // Convert string → NodeType (unknown strings become Junction)
@@ -57,8 +59,16 @@ struct NodeInput {
     double  diameter            = 8.0;   // inches (valve orifice / turbine runner)
     double  design_velocity     = 0.0;   // ft/s  (Turbine; computed from design_flow if 0)
 
-    // Surge tank
+    // Open surge tank (SurgeTank / Standpipe)
     double  tank_area           = 10.0;  // ft² cross-section of standpipe
+
+    // Hydropneumatic (closed pressurized) surge tank
+    // Orifice area is derived from the existing `diameter` field (inches).
+    double  gas_volume          = 10.0;  // ft³  initial trapped gas volume
+    double  tank_volume         = 30.0;  // ft³  total vessel volume (gas + water)
+    double  polytropic_n        = 1.2;   // polytropic exponent (1.0=isothermal, 1.4=adiabatic)
+    double  loss_coeff_in       = 0.7;   // C_in  orifice discharge coeff for inflow (water entering)
+    double  loss_coeff_out      = 0.7;   // C_out orifice discharge coeff for outflow (water leaving)
 };
 
 struct PipeInput {
@@ -107,8 +117,10 @@ struct PipeState {
 
 struct NodeState {
     NodeInput input;
-    double surge_level_ft   = 0.0;  // SurgeTank current water surface (ft)
+    double surge_level_ft   = 0.0;  // SurgeTank/Standpipe current water surface (ft)
     double actual_demand    = 0.0;  // GPM  (updated by solver, Junction/OutflowNode)
+    double gas_volume_ft3   = 0.0;  // HydropneumaticTank: current trapped gas volume (ft³)
+    double gas_constant     = 0.0;  // HydropneumaticTank: C = H_g_abs * V_g^n (set at init)
 };
 
 // ── Main MOC solver class ────────────────────────────────────────────────────

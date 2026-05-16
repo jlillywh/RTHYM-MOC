@@ -27,30 +27,34 @@ namespace rthym {
 // ── String ↔ NodeType helpers ─────────────────────────────────────────────────
 
 NodeType parseNodeType(const std::string& s) {
-    if (s == "Tank")              return NodeType::Tank;
-    if (s == "PressureBoundary")  return NodeType::PressureBoundary;
-    if (s == "FuelTank")          return NodeType::FuelTank;
-    if (s == "Valve")             return NodeType::Valve;
-    if (s == "Turbine")           return NodeType::Turbine;
-    if (s == "Pump")              return NodeType::Pump;
-    if (s == "SurgeTank")         return NodeType::SurgeTank;
-    if (s == "InflowNode")        return NodeType::InflowNode;
-    if (s == "OutflowNode")       return NodeType::OutflowNode;
+    if (s == "Tank")                return NodeType::Tank;
+    if (s == "PressureBoundary")    return NodeType::PressureBoundary;
+    if (s == "FuelTank")            return NodeType::FuelTank;
+    if (s == "Valve")               return NodeType::Valve;
+    if (s == "Turbine")             return NodeType::Turbine;
+    if (s == "Pump")                return NodeType::Pump;
+    if (s == "SurgeTank")           return NodeType::SurgeTank;
+    if (s == "Standpipe")           return NodeType::Standpipe;
+    if (s == "HydropneumaticTank")  return NodeType::HydropneumaticTank;
+    if (s == "InflowNode")          return NodeType::InflowNode;
+    if (s == "OutflowNode")         return NodeType::OutflowNode;
     return NodeType::Junction;
 }
 
 std::string nodeTypeToStr(NodeType t) {
     switch (t) {
-        case NodeType::Tank:             return "Tank";
-        case NodeType::PressureBoundary: return "PressureBoundary";
-        case NodeType::FuelTank:         return "FuelTank";
-        case NodeType::Valve:            return "Valve";
-        case NodeType::Turbine:          return "Turbine";
-        case NodeType::Pump:             return "Pump";
-        case NodeType::SurgeTank:        return "SurgeTank";
-        case NodeType::InflowNode:       return "InflowNode";
-        case NodeType::OutflowNode:      return "OutflowNode";
-        default:                         return "Junction";
+        case NodeType::Tank:                return "Tank";
+        case NodeType::PressureBoundary:    return "PressureBoundary";
+        case NodeType::FuelTank:            return "FuelTank";
+        case NodeType::Valve:               return "Valve";
+        case NodeType::Turbine:             return "Turbine";
+        case NodeType::Pump:                return "Pump";
+        case NodeType::SurgeTank:           return "SurgeTank";
+        case NodeType::Standpipe:           return "Standpipe";
+        case NodeType::HydropneumaticTank:  return "HydropneumaticTank";
+        case NodeType::InflowNode:          return "InflowNode";
+        case NodeType::OutflowNode:         return "OutflowNode";
+        default:                            return "Junction";
     }
 }
 
@@ -115,7 +119,12 @@ double MOCSolver::getInitialHead(const NodeState& ns) const {
         case NodeType::FuelTank:
             return 0.0;
         case NodeType::SurgeTank:
+        case NodeType::Standpipe:
             return ns.surge_level_ft;
+        case NodeType::HydropneumaticTank:
+            // During initGrid the pipeline head at the connection == n.head
+            // (steady state: no orifice pressure drop).
+            return n.head;
         default:
             // For Junction / InflowNode / OutflowNode the user supplies the
             // initial piezometric head via NodeInput::head (ft HGL, not psi).
@@ -140,8 +149,20 @@ void MOCSolver::initGrid() {
     for (int i = 0; i < static_cast<int>(node_inputs_.size()); ++i) {
         NodeState ns;
         ns.input = node_inputs_[i];
-        if (ns.input.type == NodeType::SurgeTank)
-            ns.surge_level_ft = ns.input.head; // initial water-surface elevation
+        if (ns.input.type == NodeType::SurgeTank ||
+            ns.input.type == NodeType::Standpipe)
+            ns.surge_level_ft = ns.input.head; // initial water-surface elevation (ft HGL)
+        if (ns.input.type == NodeType::HydropneumaticTank) {
+            // Compute and store the polytropic gas constant:
+            //   C = H_g_abs * V_g^n
+            // At steady state there is no orifice flow, so H_P = H_tank:
+            //   H_g_abs = (H_P_0 - elevation) + H_atm
+            constexpr double H_ATM_FT = 33.9;  // ft  (1 atm = 14.696 psi)
+            ns.gas_volume_ft3 = ns.input.gas_volume;
+            const double H_g_abs0 = (ns.input.head - ns.input.elevation) + H_ATM_FT;
+            ns.gas_constant = H_g_abs0 *
+                std::pow(std::max(ns.gas_volume_ft3, 1e-6), ns.input.polytropic_n);
+        }
         nodes_.push_back(std::move(ns));
         node_idx_map_[node_inputs_[i].id] = i;
     }
@@ -215,7 +236,8 @@ void MOCSolver::initGrid() {
         // is treated as an inferred endpoint.
         auto is_fixed_head = [](NodeType t) {
             return t == NodeType::Tank || t == NodeType::PressureBoundary ||
-                   t == NodeType::FuelTank || t == NodeType::SurgeTank;
+                   t == NodeType::FuelTank || t == NodeType::SurgeTank ||
+                   t == NodeType::Standpipe || t == NodeType::HydropneumaticTank;
         };
         bool from_fixed = false, to_fixed = false;
         {
@@ -240,6 +262,31 @@ void MOCSolver::initGrid() {
             // user-supplied heads from NodeInput::head with friction split).
             H_start = H_from;
             H_end   = H_to;
+
+            // Special case: if one endpoint is a Valve or Pump, the stored
+            // node head equals the upstream-face pressure (same as the
+            // upstream junction head), NOT the downstream-face pressure.
+            // Initialise the stub flat at the NON-device endpoint head so
+            // that no spurious Joukowsky wave is generated at t = 0.
+            //   Downstream stub (device is FROM-node): flat at H_to.
+            //   Upstream   stub (device is TO-node  ): flat at H_from.
+            {
+                auto fit2 = node_idx_map_.find(p.from_node);
+                auto tit2 = node_idx_map_.find(p.to_node);
+                auto is_device = [](NodeType t) {
+                    return t == NodeType::Valve || t == NodeType::Pump;
+                };
+                bool from_is_device = (fit2 != node_idx_map_.end()) &&
+                                       is_device(nodes_[fit2->second].input.type);
+                bool to_is_device   = (tit2 != node_idx_map_.end()) &&
+                                       is_device(nodes_[tit2->second].input.type);
+
+                if (from_is_device && !to_fixed) {
+                    H_start = H_to;   // downstream stub → flat at downstream head
+                } else if (to_is_device && !from_fixed) {
+                    H_end = H_from;   // upstream stub   → flat at upstream head
+                }
+            }
         }
 
         // ── Linear HGL + uniform velocity initial condition ───────────────
@@ -379,9 +426,11 @@ void MOCSolver::stepMOC() {
             break;
         }
 
-        // ── Surge tank: free-surface standpipe ────────────────────────────
-        // H = current water-surface elevation; level updated by net flow
-        case NodeType::SurgeTank: {
+        // ── Open surge tank / standpipe (free surface) ───────────────────
+        // H = current water-surface elevation (= HGL for open-to-atm tank).
+        // dH/dt = Q_net / A_s   (continuity, Wylie & Streeter §7.3)
+        case NodeType::SurgeTank:   // backward-compat alias
+        case NodeType::Standpipe: {
             const double H_t = ns.surge_level_ft;
             double net_Q = 0.0; // CFS flowing into the tank (positive = rising)
             for (int pi : in_pipes) {
@@ -399,6 +448,80 @@ void MOCSolver::stepMOC() {
             }
             // dL/dt = Q_net / A_tank
             ns.surge_level_ft += (net_Q / n.tank_area) * dt_;
+            break;
+        }
+
+        // ── Hydropneumatic surge tank (closed, pressurized vessel) ────────
+        // Physics (Wylie & Streeter §7.5):
+        //   Polytropic gas law:  C = H_g_abs · V_g^n   (constant, set at init)
+        //   Orifice headloss:    H_P − H_tank = K·Q·|Q|
+        //     K_in  = 1/(2g·(C_in ·A_ori)²)   (water entering, gas compresses)
+        //     K_out = 1/(2g·(C_out·A_ori)²)   (water leaving,  gas expands)
+        //   Quadratic in Q_net:  sum_AB·K·Q² + Q − C_eq = 0
+        //     where  C_eq = sum_AB_C − sum_AB·H_tank
+        case NodeType::HydropneumaticTank: {
+            constexpr double H_ATM_FT = 33.9;  // ft  (1 atm = 14.696 psi)
+
+            // Orifice area — uses NodeInput::diameter (inches)
+            const double d_ft  = n.diameter / 12.0;
+            const double A_ori = M_PI_ * (d_ft / 2.0) * (d_ft / 2.0);
+
+            // Aggregate MOC characteristics from all connecting pipes
+            double sum_AB   = 0.0;
+            double sum_AB_C = 0.0;
+            for (int pi : in_pipes) {
+                const double AB = bndry[pi].area / bndry[pi].B;
+                sum_AB_C += AB * bndry[pi].C_P;
+                sum_AB   += AB;
+            }
+            for (int pi : out_pipes) {
+                const double AB = bndry[pi].area / bndry[pi].B;
+                sum_AB_C += AB * bndry[pi].C_M;
+                sum_AB   += AB;
+            }
+            if (sum_AB < 1e-12) break;  // isolated node — skip
+
+            // Current tank piezometric head from polytropic gas law (explicit):
+            //   H_g_abs = C / V_g^n
+            //   H_tank  = H_g_abs − H_atm + elevation   (gauge piezometric, ft)
+            const double H_g_abs = ns.gas_constant /
+                std::pow(std::max(ns.gas_volume_ft3, 1e-9), n.polytropic_n);
+            const double H_tank  = H_g_abs - H_ATM_FT + n.elevation;
+
+            // Orifice loss coefficients  K = 1 / (2g·(Cd·A)²)
+            const double K_in  = 1.0 / (2.0 * g *
+                std::pow(std::max(n.loss_coeff_in,  1e-9) * A_ori, 2.0));
+            const double K_out = 1.0 / (2.0 * g *
+                std::pow(std::max(n.loss_coeff_out, 1e-9) * A_ori, 2.0));
+
+            // C_eq = sum_AB_C − sum_AB·H_tank  (positive = pipeline > tank → inflow)
+            const double C_eq = sum_AB_C - sum_AB * H_tank;
+            const double K    = (C_eq >= 0.0) ? K_in : K_out;  // asymmetric
+            const double Keq  = K * sum_AB;
+
+            // Solve:  Keq·Q² + Q − C_eq = 0
+            double Q_net;
+            if (Keq < 1e-12) {
+                Q_net = C_eq;  // zero orifice resistance → H_P = H_tank
+            } else if (C_eq >= 0.0) {
+                Q_net = (-1.0 + std::sqrt(1.0 + 4.0 * Keq * C_eq)) / (2.0 * Keq);
+            } else {
+                Q_net = ( 1.0 - std::sqrt(1.0 - 4.0 * Keq * C_eq)) / (2.0 * Keq);
+            }
+
+            // Pipeline head at the connection node
+            double H_P = (sum_AB_C - Q_net) / sum_AB;
+            if (H_P < H_vap) {
+                H_P   = H_vap;
+                Q_net = sum_AB_C - sum_AB * H_vap;
+            }
+
+            for (int pi : in_pipes)  set_downstream(pi, H_P);
+            for (int pi : out_pipes) set_upstream  (pi, H_P);
+
+            // Update gas volume:  Q_net > 0 ⟹ water enters ⟹ V_g decreases
+            ns.gas_volume_ft3 = std::max(1e-9,
+                std::min(ns.gas_volume_ft3 - Q_net * dt_, n.tank_volume));
             break;
         }
 

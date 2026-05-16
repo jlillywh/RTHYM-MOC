@@ -14,7 +14,8 @@ A high-performance 1-D Method of Characteristics (MOC) transient hydraulic solve
   - [Results dictionary](#results-dictionary)
 - [Unit conventions](#unit-conventions)
 - [Valve model](#valve-model)
-- [Gradual closure schedules](#gradual-closure-schedules)
+- [Valve closure types](#valve-closure-types)
+- [Surge control components](#surge-control-components)
 - [Scripted multi-event transients](#scripted-multi-event-transients)
 - [Loading from EPANET (.inp)](#loading-from-epanet-inp)
 - [Numerical method](#numerical-method)
@@ -26,9 +27,11 @@ A high-performance 1-D Method of Characteristics (MOC) transient hydraulic solve
 
 ## Overview
 
-RTHYM-MOC solves the 1-D water-hammer equations using the Method of Characteristics with a fixed Courant number of 1.  Key characteristics:
+RTHYM-MOC solves the 1-D water-hammer equations using the Method of Characteristics with a fixed Courant number of 1.  
 
-- **Network-capable**: arbitrary topologies of pipes, junctions, reservoirs, valves, pumps, surge tanks, and turbines.
+### Key characteristics:
+
+- **Network-capable**: arbitrary topologies of pipes, junctions, reservoirs, valves, pumps, standpipe surge tanks, hydropneumatic tanks, and turbines.
 - **Time-varying events**: valve schedules, pump trip/start, demand changes — specified either as discrete step changes between `run()` calls or as continuous piecewise-linear schedules registered before `run()`.
 - **Cavitation detection**: integrates a column-separation flag (pressure < vapour pressure) at each node.
 - **Speed**: the C++ core solves a 900-step, 75-segment single-pipe case in under 1 ms; roughly **370× faster** than the equivalent [TSNet](https://github.com/glorialulu/TSNet) (pure Python) simulation on the same hardware.
@@ -149,7 +152,12 @@ node.current_speed    = 100.0         # % rated speed (Pump)
 node.design_head      = 50.0          # ft at BEP (Pump)
 node.design_flow      = 100.0         # GPM at BEP (Pump)
 node.design_velocity  = 0.0           # ft/s (Turbine; derived from design_flow if 0)
-node.tank_area        = 10.0          # ft² cross-section (SurgeTank standpipe)
+node.tank_area        = 10.0          # ft² cross-sectional area (Standpipe / SurgeTank)
+node.gas_volume       = 10.0          # ft³ initial trapped gas volume (HydropneumaticTank)
+node.tank_volume      = 30.0          # ft³ total vessel volume — gas + water (HydropneumaticTank)
+node.polytropic_n     = 1.2           # polytropic exponent (1.0 = isothermal, 1.4 = adiabatic)
+node.loss_coeff_in    = 0.7           # C_d orifice coefficient for inflow (HydropneumaticTank)
+node.loss_coeff_out   = 0.7           # C_d orifice coefficient for outflow (HydropneumaticTank)
 ```
 
 **Node types**
@@ -165,7 +173,9 @@ node.tank_area        = 10.0          # ft² cross-section (SurgeTank standpipe)
 | `"Valve"` | Quadratic loss, $K = (100/s)^2 - 1$ | `current_setting`, `diameter` |
 | `"Turbine"` | Quadratic loss (design-curve K) | `current_setting`, `design_velocity`, `diameter` |
 | `"Pump"` | Three-coefficient affinity curve | `current_speed`, `design_head`, `design_flow` |
-| `"SurgeTank"` | Free-surface standpipe (level tracked each step) | `head`, `tank_area` |
+| `"Standpipe"` | Open free-surface surge tank (level tracked each step) | `head`, `tank_area` |
+| `"SurgeTank"` | Backward-compatible alias for `"Standpipe"` | `head`, `tank_area` |
+| `"HydropneumaticTank"` | Closed pressurised vessel; gas follows polytropic law | `head`, `diameter`, `gas_volume`, `tank_volume`, `polytropic_n`, `loss_coeff_in`, `loss_coeff_out` |
 
 A dead-end boundary — equivalent to an instantaneously closed valve — is modelled as a `"Junction"` with `demand = 0` and no outflow pipe attached.  The MOC boundary condition then enforces $Q = 0$ exactly, giving $H = C^+$.
 
@@ -285,27 +295,131 @@ is the interval during which most of the flow stoppage actually occurs.  A linea
 
 ---
 
-## Gradual closure schedules
+## Valve closure types
 
-For any `Valve` node, register a piecewise-linear opening schedule before calling `run()`:
+Four closure profiles are supported.  All are passed to the solver via `set_valve_schedule()` as a `list[tuple[float, float]]` of `(time_s, pct_open)` pairs.  The solver linearly interpolates between breakpoints at each time step; any time beyond the last point holds the final value.
+
+| Type | Description | Required parameters |
+|---|---|---|
+| Linear | Constant-rate closure over a stroke time | `stroke_time` |
+| Equal-Percentage | Geometric-series decay; each step removes a fixed fraction of remaining opening | `stroke_time`, `step_interval` |
+| Two-Stage | Fast stage to a transition point, then slow stage to zero | `transition_pct`, `stage1_time`, `stage2_time` |
+| Custom | Arbitrary piecewise-linear profile from a user-supplied `(t_offset, pct_open)` table | user-supplied table |
+
+### Linear
+
+Valve closes at a constant rate from the initial opening to fully closed over the stroke time.  Models motor-operated gate valves and ball valves driven at constant actuator speed.
 
 ```python
-# Linear closure from 100 % to 0 % over 3 seconds
-T_c = 3.0
-dt  = 0.01
 import numpy as np
 
-t_vals  = np.arange(0.0, T_c + dt, dt)
-pct_open = np.clip(100.0 * (1.0 - t_vals / T_c), 0.0, 100.0)
-schedule = list(zip(t_vals.tolist(), pct_open.tolist()))
-
-solver.set_valve_schedule("V1", schedule)
-results = solver.run(total_time=5.0, dt=dt)
+s0, T_c, dt = 100.0, 3.0, 0.01
+t_vals   = np.arange(0.0, T_c + dt, dt)
+pct_open = np.clip(s0 * (1.0 - t_vals / T_c), 0.0, s0)
+solver.set_valve_schedule("V1", list(zip(t_vals.tolist(), pct_open.tolist())))
 ```
 
-The schedule is a `list[tuple[float, float]]` of `(time_s, pct_open)` pairs in ascending time order.  The solver linearly interpolates between control points at each time step.  Any time beyond the last control point holds the final value.
+### Equal-Percentage
 
-Schedules can represent any profile — abrupt, linear, S-curve, or empirically measured field data.
+Each closure step removes a fixed *fraction* of the remaining opening (geometric series).  Models equal-percentage trim control valves running at constant actuator speed.
+
+```python
+s0, stroke_time, step_interval = 100.0, 2.0, 0.05
+N     = round(stroke_time / step_interval)
+ratio = (0.05 / s0) ** (1.0 / (N - 1))      # geometric decay toward near-zero
+steps     = [s0 * ratio**i for i in range(N)] + [0.0]
+t_offsets = [i * step_interval for i in range(N + 1)]
+solver.set_valve_schedule("V1", list(zip(t_offsets, steps)))
+```
+
+### Two-Stage
+
+A programmed actuator changes its closure rate at a pre-set *transition opening*.  Stage 1 closes quickly from the initial opening to the transition point; Stage 2 closes slowly from the transition point to fully closed.
+
+**Key design rule**: Stage 2 time should satisfy $T_{\text{stage2}} \geq 2L/a$ so that the Joukowsky wave returns before closure completes, reducing the peak pressure rise.
+
+```python
+s0, trans_pct = 100.0, 15.0
+stage1_time, stage2_time = 3.0, 30.0        # stage2 >= 2L/a recommended
+schedule = [
+    (0.0,                           s0),
+    (stage1_time,                   trans_pct),
+    (stage1_time + stage2_time,     0.0),
+]
+solver.set_valve_schedule("V1", schedule)
+```
+
+### Custom
+
+User-supplied arbitrary piecewise-linear closure profile.  Intended for importing actuator data sheets or field-measured closure curves.  Time values are absolute simulation times.
+
+```python
+schedule = [
+    (0.00, 100.0),
+    (0.20,  50.0),
+    (0.80,  10.0),
+    (1.50,   0.0),
+]
+solver.set_valve_schedule("V1", schedule)
+results = solver.run(total_time=5.0, dt=0.01)
+```
+
+---
+
+## Surge control components
+
+Two passive devices are available for transient pressure protection.
+
+### Standpipe (open surge tank)
+
+An open-topped standpipe connected to the pipeline.  When a pressure wave arrives, water rises or falls inside the standpipe rather than propagating as a waterhammer spike, limiting peak pressures.
+
+```python
+st = rthym_moc.NodeInput()
+st.id        = "ST1"
+st.type      = "Standpipe"   # "SurgeTank" is an accepted backward-compatible alias
+st.elevation = 0.0
+st.head      = 100.0         # ft — initial water-surface elevation (ft HGL)
+st.tank_area = 5.0           # ft² — cross-sectional area of the standpipe
+solver.add_node(st)
+```
+
+The water level is updated each time step using the standpipe continuity equation:
+
+$$z^{n+1} = z^n + \frac{Q_\text{in} \, \Delta t}{A_s}$$
+
+where $Q_\text{in}$ is the net inflow from the attached pipe and $A_s$ is `tank_area`.
+
+**Design guidance**: larger `tank_area` produces a smaller maximum water-level swing ($z_\text{max} = V_0 \sqrt{A_p L / (g A_s)}$).  Place the standpipe at or near the pump discharge to protect against pump-trip low-pressure transients.
+
+### HydropneumaticTank (closed pressurised vessel)
+
+A sealed vessel containing a cushion of compressed air above the water column.  As the pipeline pressure fluctuates, water enters or leaves through an orifice and the gas volume changes according to the polytropic law:
+
+$$P_g V_g^n = C \quad (n = 1.0 \text{ isothermal} \cdots 1.4 \text{ adiabatic; default } 1.2)$$
+
+The gas constant $C$ is computed automatically at startup from `head` and `gas_volume`:
+
+$$C = (H_0 - z_\text{elev} + 33.9) \cdot V_{g,0}^n$$
+
+where 33.9 ft corresponds to 1 atm of absolute pressure head.
+
+```python
+hpt = rthym_moc.NodeInput()
+hpt.id             = "HPT1"
+hpt.type           = "HydropneumaticTank"
+hpt.elevation      = 0.0
+hpt.head           = 120.0    # ft — steady-state pipeline head at connection
+hpt.diameter       = 4.0      # inches — connection orifice diameter
+hpt.gas_volume     = 10.0     # ft³ — initial trapped gas volume
+hpt.tank_volume    = 30.0     # ft³ — total vessel volume (gas + water)
+hpt.polytropic_n   = 1.2      # 1.0 = isothermal, 1.4 = adiabatic (default 1.2)
+hpt.loss_coeff_in  = 0.7      # C_d for inflow (water entering, gas compresses)
+hpt.loss_coeff_out = 0.7      # C_d for outflow (water leaving, gas expands)
+solver.add_node(hpt)
+```
+
+**Design guidance**: pre-charge the vessel so that `gas_volume / tank_volume` ≈ 0.33–0.50 at the steady-state operating pressure.  Separate `loss_coeff_in` and `loss_coeff_out` values allow modelling of a throttle or riser dip tube that damps re-filling surges more aggressively than the initial discharge.
 
 ---
 
@@ -437,7 +551,8 @@ where $B = a/g$ (ft·s²/ft = s²) is the pipe impedance and $R = f \Delta x / (
 - *Dead-end (Junction, demand = 0, no outflow pipe)*: $H = C^+$ (zero-flow reflection).
 - *Valve*: $K = (100/s)^2 - 1$ loss; combined with $C^\pm$ to solve $H$ and $V$.
 - *Pump*: affinity-curve head-flow relationship combined with $C^\pm$.
-- *SurgeTank*: $H$ updated from the standpipe continuity equation each step.
+- *Standpipe / SurgeTank*: $H$ updated from the standpipe continuity equation each step.
+- *HydropneumaticTank*: $H$ updated from the polytropic gas law combined with the orifice flow equation each step.
 
 **Unsteady friction.**  An optional IIR low-pass filter on pipe velocity (time constant `usf_tau`) approximates the Brunone–Vítkovský unsteady friction correction.  Set `usf_tau = dt` to disable (quasi-steady friction only).
 
@@ -500,6 +615,7 @@ RTHYM-MOC/
 │   ├── benchmark_vs_tsnet.py       # Side-by-side comparison with TSNet
 │   ├── test_wave_reflections.py    # Wave period & damping verification
 │   ├── test_gradual_closure.py     # Joukowsky criterion, K-model valve
+│   ├── test_surge_tank.py          # Standpipe mass-oscillation & pressure mitigation
 │   └── load_from_inp.py            # EPANET .inp import example
 ├── tests/
 │   └── test_waterhammer.cpp        # Standalone C++ unit test (BUILD_TESTS=ON)

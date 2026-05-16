@@ -102,17 +102,24 @@ PYBIND11_MODULE(_rthym_moc, m) {
     // ── NodeInput ──────────────────────────────────────────────────────────
     py::class_<NodeInput>(m, "NodeInput",
         R"pbdoc(
-        Describes one node (junction, reservoir, valve, pump, etc.).
+        Describes one node (junction, reservoir, valve, pump, surge tank, etc.).
 
         Parameters
         ----------
         id : str
         type : str
             One of: "Junction", "Tank", "PressureBoundary", "FuelTank",
-                    "Valve", "Turbine", "Pump", "SurgeTank",
+                    "Valve", "Turbine", "Pump",
+                    "SurgeTank" (open standpipe, backward-compat alias),
+                    "Standpipe" (open surge tank — R-THYM SurgeControl),
+                    "HydropneumaticTank" (closed pressurized vessel — R-THYM SurgeTank),
                     "InflowNode", "OutflowNode"
         elevation : float, ft
-        head : float, ft   (Tank HGL or PressureBoundary total head)
+        head : float, ft
+            For Tank/PressureBoundary: HGL.
+            For Standpipe/SurgeTank: initial water-surface elevation (ft HGL).
+            For HydropneumaticTank: steady-state pipeline head at the
+              connection point (used to compute the initial gas constant).
         level : float, %   (Tank fill level 0–100)
         max_level : float, ft   (Tank depth at 100% full)
         demand : float, GPM
@@ -120,9 +127,24 @@ PYBIND11_MODULE(_rthym_moc, m) {
         current_setting : float, % open   (Valve / Turbine)
         design_head : float, ft   (Pump BEP head)
         design_flow : float, GPM  (Pump BEP flow)
-        diameter : float, inches  (Valve / Turbine orifice)
+        diameter : float, inches
+            Valve/Turbine: orifice diameter.
+            HydropneumaticTank: connection orifice diameter.
         design_velocity : float, ft/s  (Turbine; computed from design_flow if 0)
-        tank_area : float, ft²  (SurgeTank cross-section)
+        tank_area : float, ft²  (Standpipe/SurgeTank cross-sectional area)
+        gas_volume : float, ft³
+            HydropneumaticTank: initial trapped gas volume. Default 10.
+        tank_volume : float, ft³
+            HydropneumaticTank: total vessel volume (gas + water). Default 30.
+        polytropic_n : float
+            HydropneumaticTank: polytropic exponent (1.0=isothermal, 1.4=adiabatic).
+            Default 1.2 (typical for air-charged vessels).
+        loss_coeff_in : float
+            HydropneumaticTank: orifice discharge coefficient C_d for inflow
+            (water entering the tank, gas compresses). Default 0.7.
+        loss_coeff_out : float
+            HydropneumaticTank: orifice discharge coefficient C_d for outflow
+            (water leaving the tank, gas expands). Default 0.7.
         )pbdoc")
         .def(py::init<>())
         .def_readwrite("id",               &NodeInput::id)
@@ -141,7 +163,13 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def_readwrite("design_flow",      &NodeInput::design_flow)
         .def_readwrite("diameter",         &NodeInput::diameter)
         .def_readwrite("design_velocity",  &NodeInput::design_velocity)
-        .def_readwrite("tank_area",        &NodeInput::tank_area);
+        .def_readwrite("tank_area",        &NodeInput::tank_area)
+        // Hydropneumatic tank fields
+        .def_readwrite("gas_volume",       &NodeInput::gas_volume)
+        .def_readwrite("tank_volume",      &NodeInput::tank_volume)
+        .def_readwrite("polytropic_n",     &NodeInput::polytropic_n)
+        .def_readwrite("loss_coeff_in",    &NodeInput::loss_coeff_in)
+        .def_readwrite("loss_coeff_out",   &NodeInput::loss_coeff_out);
 
     // ── PipeInput ──────────────────────────────────────────────────────────
     py::class_<PipeInput>(m, "PipeInput",
