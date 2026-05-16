@@ -17,6 +17,10 @@ temp.inp
 temp.rpt
 results.obj
 
+# R-THYM web app source (proprietary — not part of this repo)
+transientWorker.js
+hydraulic.js
+
 # Windows metadata
 *:Zone.Identifier
 
