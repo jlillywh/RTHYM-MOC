@@ -1,4 +1,7 @@
 // test_waterhammer.cpp
+// Copyright (c) 2026 Jason Lillywhite <jason@lillywhitewater.com>
+// SPDX-License-Identifier: MIT
+// Author: Jason Lillywhite <jason@lillywhitewater.com>
 // Standalone C++ validation test.  Compile with:
 //   g++ -std=c++17 -O2 -I../src test_waterhammer.cpp ../src/moc_solver.cpp -o moc_test && ./moc_test
 //

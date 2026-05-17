@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Jason Lillywhite <jason@lillywhitewater.com>
+# SPDX-License-Identifier: MIT
+# Author: Jason Lillywhite <jason@lillywhitewater.com>
 """rthym_moc.epanet
 ~~~~~~~~~~~~~~~~
 Parse an EPANET .inp network file and return a configured MOCSolver.

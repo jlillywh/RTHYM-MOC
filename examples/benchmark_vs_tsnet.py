@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Jason Lillywhite <jason@lillywhitewater.com>
+# SPDX-License-Identifier: MIT
+# Author: Jason Lillywhite <jason@lillywhitewater.com>
 """
 Benchmark: rthym_moc (C++ core) vs TSNet (pure Python)
 =======================================================

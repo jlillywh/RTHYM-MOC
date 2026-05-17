@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Jason Lillywhite <jason@lillywhitewater.com>
+# SPDX-License-Identifier: MIT
+# Author: Jason Lillywhite <jason@lillywhitewater.com>
 """examples/verify_rthym_webapp.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Verify R-THYM web-application results for a long pipeline with a TCV valve.

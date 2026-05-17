@@ -1,4 +1,7 @@
 // moc_solver.cpp
+// Copyright (c) 2026 Jason Lillywhite <jason@lillywhitewater.com>
+// SPDX-License-Identifier: MIT
+// Author: Jason Lillywhite <jason@lillywhitewater.com>
 // Pure C++ implementation of a 1-D Method of Characteristics (MOC) transient
 // hydraulic solver, ported from the R-THYM transientWorker.js engine.
 //

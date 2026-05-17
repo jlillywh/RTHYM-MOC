@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Jason Lillywhite <jason@lillywhitewater.com>
+# SPDX-License-Identifier: MIT
+# Author: Jason Lillywhite <jason@lillywhitewater.com>
 """
 Test: Surge Tank — Mass Oscillation (Analytical) and Pressure Mitigation
 =========================================================================

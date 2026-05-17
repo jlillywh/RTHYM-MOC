@@ -1,4 +1,7 @@
 // bindings.cpp
+// Copyright (c) 2026 Jason Lillywhite <jason@lillywhitewater.com>
+// SPDX-License-Identifier: MIT
+// Author: Jason Lillywhite <jason@lillywhitewater.com>
 // PyBind11 Python bindings for the rthym MOC solver.
 //
 // Python API example:
