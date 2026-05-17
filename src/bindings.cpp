@@ -283,7 +283,7 @@ PYBIND11_MODULE(_rthym_moc, m) {
             py::arg("dt")          = 0.01,
             py::arg("p_vapor_psi") = -14.0,
             py::arg("usf_tau")     = 0.5,
-            py::arg("k_bru")       = 0.0,
+            py::arg("k_bru")       = -1.0,
             R"pbdoc(
             Run the transient simulation and return results.
 
@@ -302,12 +302,16 @@ PYBIND11_MODULE(_rthym_moc, m) {
                 friction filter (default 0.5 s).
             k_bru : float
                 Brunone (1991) dimensionless unsteady-friction coefficient.
-                Default 0 (steady-friction only).  Typical calibrated values are
-                0.02–0.15 for turbulent pipe flow; Vardy & Brown (1996) give
-                k_bru = C*/sqrt(π) where C* = 7.41/Re^0.352.
-                Enabling USF (k_bru > 0) adds mild damping to pressure
-                oscillations without affecting the first Joukowsky peak
-                significantly when k_bru is in the physical range.
+
+                **-1 (default)** — Dynamic Vardy-Brown (1996): k_Bru is computed
+                automatically each timestep from the instantaneous pipe Reynolds
+                number using ``k_Bru = C*/sqrt(π)``, ``C* = 7.41/Re^0.352``.
+                This provides physically realistic damping without calibration.
+
+                **0** — Steady friction only (no USF).
+
+                **> 0** — User-supplied static value (calibrated). Typical
+                turbulent pipe flow range: 0.02–0.15.
 
             Returns
             -------

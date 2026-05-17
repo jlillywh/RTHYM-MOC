@@ -347,16 +347,29 @@ void MOCSolver::stepMOC() {
         const double dx = ps.a_wave * dt_;
         const double B  = ps.a_wave / g;               // ft·s/ft² = s/ft
         const double R  = ps.f * dx / (2.0 * g * ps.D); // steady-friction resistance
-        // Brunone (1991) unsteady-friction scale:  k_u = k_Bru * B  [units: s]
-        // k_Bru is the dimensionless Brunone coefficient; Vardy-Brown (1996) gives
-        //   k_Bru = C*/sqrt(π),  C* = 7.41/Re^0.352   (turbulent, smooth pipe)
-        // Typical range: 0.02–0.15.  The USF term is zero when k_Bru = 0.
+        // Brunone (1991) unsteady-friction scale:  k_u = k_Bru_eff * B  [units: s]
+        // Vardy-Brown (1996):  k_Bru = C*/sqrt(π),  C* = 7.41/Re^0.352  (turbulent)
+        // Typical range: 0.02–0.15.
+        //
+        // k_Bru_ < 0  → compute dynamically from instantaneous Reynolds number (default)
+        // k_Bru_ = 0  → steady friction only
+        // k_Bru_ > 0  → user-supplied static value
         //
         // BUG HISTORY: was  k_u = dt_ * B  (timestep-dependent, 10–50× too large).
         //   That coefficient has units s² not s and amplified the first Joukowsky
         //   peak ~22 % rather than providing mild physical damping.  Fixed here by
         //   decoupling k_u from the timestep and using the correct Brunone formula.
-        const double k_u = k_Bru_ * B;                // unsteady-friction scale  [s]
+        double k_Bru_eff;
+        if (k_Bru_ < 0.0) {
+            // Dynamic Vardy-Brown: sample velocity at pipe midpoint
+            const int    mid   = ps.num_nodes / 2;
+            const double Re    = std::abs(ps.V[mid]) * ps.D / NU_FT2_S;
+            const double C_star = Re > 100.0 ? 7.41 / std::pow(Re, 0.352) : 0.0;
+            k_Bru_eff = C_star / std::sqrt(M_PI_);
+        } else {
+            k_Bru_eff = k_Bru_;          // static (0 = no USF, >0 = calibrated)
+        }
+        const double k_u = k_Bru_eff * B;             // unsteady-friction scale  [s]
 
         // ── IIR low-pass filter ───────────────────────────────────────────
         // V̄_j ← V̄_j + (V_j − V̄_j) · α

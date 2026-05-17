@@ -14,10 +14,11 @@
 namespace rthym {
 
 // ── Physical constants (US customary units) ──────────────────────────────────
-constexpr double G_FT_S2    = 32.2;     // ft/s²
-constexpr double GPM_TO_CFS = 0.002228; // GPM → ft³/s
-constexpr double PSI_TO_FT  = 2.31;     // psi → ft of water
+constexpr double G_FT_S2    = 32.2;        // ft/s²
+constexpr double GPM_TO_CFS = 0.002228;    // GPM → ft³/s
+constexpr double PSI_TO_FT  = 2.31;        // psi → ft of water
 constexpr double M_PI_      = 3.14159265358979323846;
+constexpr double NU_FT2_S   = 1.07e-5;    // kinematic viscosity of water at ~60°F, ft²/s
 
 // ── Node type enumeration ────────────────────────────────────────────────────
 enum class NodeType {
@@ -152,7 +153,7 @@ public:
                    double dt            = 0.01,
                    double p_vapor_psi   = -14.0,
                    double usf_tau       = 0.5,
-                   double k_bru         = 0.0);
+                   double k_bru         = -1.0); // -1 = auto Vardy-Brown; 0 = no USF; >0 = static
 
 private:
     // User inputs (persistent across run() calls)
@@ -178,11 +179,12 @@ private:
     double dt_      = 0.01;
     double p_vapor_ = -14.0 * PSI_TO_FT; // ft (converted from psi at init)
     double usf_tau_ = 0.5;               // s  boundary-layer relaxation time constant
-    // Brunone (1991) dimensionless USF coefficient.  0 = steady friction only.
-    // Typical calibrated value: 0.02–0.15 (Vardy-Brown 1996 gives ~0.04–0.10
-    // for turbulent pipe flow).  Default 0 keeps the solver conservative until
-    // the user supplies a calibrated value.
-    double k_Bru_   = 0.0;
+    // Brunone (1991) dimensionless USF coefficient.
+    //   < 0  (default -1): compute dynamically each timestep via Vardy-Brown (1996)
+    //                       k_Bru = C*/√π,  C* = 7.41/Re^0.352  (turbulent, smooth)
+    //   = 0  :  steady friction only (no USF damping)
+    //   > 0  :  user-supplied static value (typical calibrated range: 0.02–0.15)
+    double k_Bru_   = -1.0;
 
     void   initGrid();
     void   stepMOC();
