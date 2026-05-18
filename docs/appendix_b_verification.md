@@ -5,18 +5,15 @@ RTHYM-MOC against the R-THYM web app, TSNet, and the analytical Joukowsky
 solution:
 
 1. **Long Pipe Valve** (§B.1–B.5): RTHYM-MOC vs R-THYM web app on a
-   5-pipe equal-percentage valve closure network.  All 18 automated test cases
-   in `tests/test_long_pipe_valve.py` pass.
+   5-pipe equal-percentage valve closure network.  All 18 automated tests pass.
 
 2. **TSNet Joukowsky Benchmark** (§B.6): three-way comparison of RTHYM-MOC,
    TSNet, and the analytical Joukowsky formula for an instant valve
-   closure on a single-pipe network.  All 5 automated test cases in
-   `tests/test_tsnet_benchmark.py` pass.
+   closure on a single-pipe network.  All 5 automated tests pass.
 
 3. **R-THYM Joukowsky** (§B.7): RTHYM-MOC vs R-THYM web app on an
    instant valve closure with column separation and downstream stub-pipe
-   resonance.  All 7 automated test cases in
-   `tests/test_joukowsky_rthym.py` pass.
+   resonance.  All 7 automated tests pass.
 
 ---
 
@@ -46,10 +43,9 @@ t ≈ 22.63 s to t ≈ 32.77 s (R-THYM web app frame).
 
 The EPANET network file below defines the steady-state network used to
 initialise both engines.  Transient reference data (peak pressures, wave
-speeds, time-series traces) were exported from the R-THYM web app and are
-embedded in the test module `tests/test_long_pipe_valve.py`.
+speeds, time-series traces) were exported from the R-THYM web app.
 
-**`tests/Long Pipe Valve.inp`**
+**Long Pipe Valve network (EPANET INP format)**
 
 ```
 [TITLE]
@@ -271,7 +267,7 @@ typical hardware.
 
 ### B.6.6 Test Summary
 
-All 5 test cases in `tests/test_tsnet_benchmark.py` pass.
+All 5 test cases pass.
 
 | Test | Result |
 |---|---|
@@ -414,7 +410,7 @@ Comparison window: t = 5.96–7.44 s (first upstream wave round-trip,
 
 ### B.7.7 Test Summary
 
-All 7 test cases in `tests/test_joukowsky_rthym.py` pass.
+All 7 test cases pass.
 
 | Test | Metric | Result |
 |---|---|---|
