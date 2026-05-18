@@ -252,3 +252,160 @@ within 0.05 %, and agree with each other within 0.175 ft RMS over the first
 wave cycle.  This confirms that the C++ engine implements the Method of
 Characteristics correctly at the most fundamental level.
 
+---
+
+## B.7 R-THYM Joukowsky Cross-Engine Verification
+
+### B.7.1 Purpose
+
+This section compares `rthym-moc` directly against the R-THYM web-application
+JavaScript engine on an **instant valve closure** scenario that exercises
+column-separation (vapor-pressure clamping) and downstream stub-pipe
+resonance.  Unlike §B.6, which disabled unsteady friction for a clean
+analytical comparison, this test runs both engines with their default settings
+(Vardy-Brown unsteady-skin-friction enabled) and uses the R-THYM export as the
+reference.
+
+### B.7.2 Network
+
+```
+PressureBoundary_A (H = 150 ft)
+  ──[Pipe_1: 3000 ft, 12 in, HW C=120]──► Valve_A (12 in TCV, elev = 125 ft)
+  ──[Pipe_2: 100 ft stub, 12 in]──► PressureBoundary_B (H = 147.9 ft)
+```
+
+| Parameter | Value |
+|---|---|
+| Upstream reservoir head | 150 ft |
+| Downstream reservoir head | 147.9 ft |
+| Pipe_1 length | 3000 ft |
+| Pipe_2 length (stub) | 100 ft |
+| Pipe diameter | 12 in |
+| Hazen-Williams C | 120 |
+| Pipe material | Steel (E = 29 Mpsi, e = 0.298 in) |
+| Wave speed *a* | 4052.26 ft/s |
+| Initial flow Q₀ | 451.92 GPM |
+| Initial velocity V₀ | 1.282 ft/s |
+| Time step *dt* | 0.01 s |
+| Simulation duration | 20.0 s |
+
+**Transient event:** Valve_A closes from 100 % to 0 % in one time step
+(t = 5.96 s) — effectively an instant closure.
+
+The short downstream stub pipe (Pipe_2) creates rapid pressure reflections
+(period ≈ 2 × 100/4052 ≈ 0.049 s) that interact with the vapor cavity
+that forms on the downstream face of the valve upon closure.
+
+### B.7.3 Analytical First-Step Check (Joukowsky Equation)
+
+$$\Delta H = \frac{a \cdot V_0}{g} = \frac{4052.26 \times 1.282}{32.2} \approx 161.3 \text{ ft}$$
+
+Pre-closure head at valve: $H_{valve} = 147.99$ ft  (gauge pressure at
+elev = 125 ft: $P = (147.99 - 125) \times 0.4335 \approx 9.94$ psi).
+
+First-step head after instant closure:
+$H_{valve} + \Delta H = 147.99 + 161.3 = 309.3$ ft → gauge pressure at
+elev = 125 ft:
+
+$$P_{surge} = \frac{309.3 - 125}{2.308} \approx 79.8 \text{ psi}$$
+
+This matches the R-THYM CSV value of **79.82 psi** at t = 5.96 s.
+
+### B.7.4 Column Separation
+
+When the valve closes, the downstream face of Valve_A (outlet of Pipe_1)
+experiences a negative Joukowsky wave equal in magnitude to the positive
+surge.  The resulting head drop:
+
+$$H_{valve} - \Delta H = 147.99 - 161.3 = -13.3 \text{ ft}$$
+
+falls below the vapor-pressure limit (≈ 0 ft absolute ≈ −14 psi gauge),
+so both engines clamp the pressure at the vapor threshold and track a
+discrete vapor cavity.  When the cavity collapses it produces a secondary
+pressure spike that grows via stub-pipe resonance to a peak of ≈ 185–190 psi
+at t ≈ 8.3 s.
+
+### B.7.5 Timing Convention
+
+`rthym-moc` advances pipe state and then records; R-THYM records and then
+advances.  For an instant closure this creates a systematic one-step
+(0.01 s) offset: the post-closure state appears at t = 5.97 s in `rthym-moc`
+versus t = 5.96 s in R-THYM.  All post-closure comparisons apply a +dt
+shift to the simulation side so that physically equivalent states are
+compared.
+
+### B.7.6 Results
+
+#### Wave speed
+
+| | Value |
+|---|---|
+| JS reference | 4052.26 ft/s |
+| C++ (analytical Korteweg) | 4052.26 ft/s |
+| Error | 0.00 ft/s |
+| Tolerance | ±5 ft/s |
+| **Result** | **PASS** |
+
+#### Pre-closure steady state
+
+| Quantity | JS ref | C++ sim | Error | Tolerance | Result |
+|---|---:|---:|---:|---|---|
+| Pipe_1 mean flow | 451.920 GPM | 451.965 GPM | +0.045 GPM | ±2 GPM | **PASS** |
+| Valve_A mean head | 147.989 ft | 147.968 ft | −0.021 ft | ±0.5 ft | **PASS** |
+
+#### Post-closure pressures at Valve_A
+
+| Quantity | JS ref | C++ sim | Error | Tolerance | Result |
+|---|---:|---:|---:|---|---|
+| First-step Joukowsky surge (t = 5.96 s) | 79.82 psi | 80.78 psi | +0.96 psi | ±2 psi | **PASS** |
+| Minimum pressure (vapor clamp) | −14.00 psi | −14.00 psi | 0.00 psi | ±1 psi | **PASS** |
+| Maximum pressure (cavity-collapse peak) | 185.57 psi | 189.91 psi | +4.34 psi | ±15 psi | **PASS** |
+
+#### Time-series pressure trace
+
+Comparison window: t = 5.96–7.44 s (first upstream wave round-trip,
+2 × 3000/4052 ≈ 1.48 s).
+
+| Metric | Value | Tolerance | Result |
+|---|---:|---|---|
+| Valve_A pressure RMS | 3.47 psi | ≤4.0 psi | **PASS** |
+
+> **Note on the growing RMS.** The pressure at Valve_A rises from ~80 psi
+> to ~175 psi during this window due to stub-pipe resonance and cavity
+> collapse.  The two engines agree closely on the first-step surge (0.96 psi
+> difference) but accumulate a ~3–4 psi systematic offset over the 1.48 s
+> window because their column-separation routines handle the vapor cavity in
+> the 100 ft downstream stub pipe slightly differently.  This is physically
+> expected for engines with different numerical schemes.
+
+### B.7.7 Test Summary
+
+All 7 test cases in `tests/test_joukowsky_rthym.py` pass.
+
+| Test | Metric | Result |
+|---|---|---|
+| `test_wave_speed` | Korteweg *a* vs JS reference | **PASS** |
+| `test_steady_state_flow` | Pre-closure Pipe_1 flow | **PASS** |
+| `test_steady_state_head_valve` | Pre-closure Valve_A head | **PASS** |
+| `test_first_step_joukowsky_pressure` | Surge at t = 5.96 s | **PASS** |
+| `test_minimum_pressure` | Vapor-pressure clamp | **PASS** |
+| `test_maximum_pressure` | Cavity-collapse peak | **PASS** |
+| `test_time_series_pressure_rms` | Post-closure trace RMS | **PASS** |
+
+### B.7.8 Summary
+
+`rthym-moc` reproduces the R-THYM JavaScript engine for instant valve closure
+with column separation to within:
+
+- **Wave speed:** 0.00 ft/s
+- **Steady-state flow:** 0.045 GPM (< 0.01 %)
+- **Steady-state head:** 0.021 ft
+- **First-step Joukowsky surge:** 0.96 psi (1.2 % of surge value)
+- **Vapor-pressure minimum:** 0.00 psi (exact match at clamp value)
+- **Cavity-collapse peak:** 4.34 psi (2.3 % of peak)
+- **Post-closure pressure trace RMS:** 3.47 psi over first wave cycle
+
+These results confirm that `rthym-moc` correctly models instant valve closure,
+column separation, and downstream stub-pipe resonance in agreement with the
+R-THYM JavaScript reference engine.
+
