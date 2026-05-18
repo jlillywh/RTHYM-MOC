@@ -1,0 +1,98 @@
+{
+  "dt": 0.01,
+  "steadyState": {
+    "nodes": {
+      "PressureBoundary_A": {
+        "head": 150
+      },
+      "Valve_A": {
+        "head": 147.98872314051386
+      },
+      "PressureBoundary_B": {
+        "head": 147.9
+      }
+    },
+    "pipes": {
+      "Pipe_1": {
+        "Q_gpm": 451.9202335191795,
+        "V_fps": 1.2819972431883626
+      },
+      "Pipe_2": {
+        "Q_gpm": 451.9202335169136,
+        "V_fps": 1.2819972431819349
+      }
+    }
+  },
+  "waveSpeeds": {
+    "Pipe_1": 4052.2601021468417,
+    "Pipe_2": 4052.2601021468417
+  },
+  "peaks": {
+    "PressureBoundary_A": {
+      "min": 64.93506493506493,
+      "max": 64.93506493506493,
+      "tMin": 0.01,
+      "tMax": 0.01
+    },
+    "Valve_A": {
+      "min": -14.000000000000002,
+      "max": 185.5660178854625,
+      "tMin": 10.159999999999828,
+      "tMax": 8.299999999999867
+    },
+    "PressureBoundary_B": {
+      "min": 64.02597402597402,
+      "max": 64.02597402597402,
+      "tMin": 0.01,
+      "tMax": 0.01
+    }
+  },
+  "valveSchedules": {
+    "Valve_A": [
+      {
+        "t": 0,
+        "pct": 100
+      },
+      {
+        "t": 5.96,
+        "pct": 0
+      }
+    ]
+  },
+  "triggerFired": true,
+  "metadata": {
+    "q_sources": {
+      "Valve_A": "Pipe_1",
+      "PressureBoundary_A": "Pipe_1",
+      "PressureBoundary_B": "Pipe_2"
+    },
+    "closure_start_s": 0,
+    "closure_end_s": 5.96,
+    "pre_closure_ss_window": [
+      0,
+      0
+    ]
+  },
+  "warningLog": [],
+  "controlLinks": [],
+  "closureProfiles": {
+    "Valve_A": {
+      "type": "linear",
+      "strokeTime": 0.01,
+      "stepInterval": 0.05,
+      "transitionPct": 15,
+      "stage1Time": 3,
+      "stage2Time": 30,
+      "table": [
+        {
+          "t": 0,
+          "pct": 100
+        },
+        {
+          "t": 10,
+          "pct": 0
+        }
+      ]
+    }
+  }
+}

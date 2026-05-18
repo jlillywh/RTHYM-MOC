@@ -1,0 +1,23 @@
+[TITLE]
+Exported from Hydro-Ops Digital Twin
+
+[JUNCTIONS]
+;ID	Elevation	Demand
+Valve_A_in	125	0
+Valve_A_out	125	0
+
+[RESERVOIRS]
+;ID	Head
+PressureBoundary_A	150
+PressureBoundary_B	147.9
+
+[PIPES]
+;ID	Node1	Node2	Length	Diameter	Roughness	MinorLoss	Status
+Pipe_1	PressureBoundary_A	Valve_A_in	3000	12	120	0	Open
+Pipe_2	Valve_A_out	PressureBoundary_B	100	12	120	0	Open
+
+[VALVES]
+;ID	Node1	Node2	Diameter	Type	Setting	MinorLoss
+Valve_A	Valve_A_in	Valve_A_out	12	TCV	0.000	0
+
+[END]
