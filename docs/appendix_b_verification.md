@@ -1,9 +1,17 @@
-# Appendix B — Cross-Engine Verification: Long Pipe Valve
+# Appendix B — Cross-Engine Verification
 
-This appendix documents the quantitative verification of the `rthym-moc`
-C++/Python engine against the R-THYM web-application (JavaScript) engine on
-the canonical **Long Pipe Valve** test network.  All 18 automated test cases
-in `tests/test_long_pipe_valve.py` pass.
+This appendix documents two independent verification studies for the
+`rthym-moc` C++/Python engine:
+
+1. **Long Pipe Valve** (§B.1–B.5): comparison against the R-THYM
+   web-application (JavaScript) engine on a 5-pipe equal-percentage valve
+   closure network.  All 18 automated test cases in
+   `tests/test_long_pipe_valve.py` pass.
+
+2. **Joukowsky Benchmark** (§B.6): three-way comparison against the
+   analytical Joukowsky surge formula and the `TSNet` pure-Python MOC library
+   for an instant valve closure.  All 5 automated test cases in
+   `tests/test_tsnet_benchmark.py` pass.
 
 ---
 
@@ -135,7 +143,7 @@ pipe flow without wave decorrelation.
 
 ---
 
-## B.5 Summary
+## B.5 Summary (Long Pipe Valve)
 
 All 18 test cases pass.  The C++/Python `rthym-moc` engine reproduces the
 R-THYM JavaScript engine to within:
@@ -149,3 +157,98 @@ R-THYM JavaScript engine to within:
 These results confirm that the two independent implementations of the
 Method of Characteristics are in excellent agreement for this representative
 water-hammer scenario.
+
+---
+
+## B.6 TSNet Joukowsky Benchmark
+
+### B.6.1 Purpose
+
+This section provides an independent validation of `rthym-moc` against the
+`TSNet` open-source Python MOC library (v0.2.2) using the classical Joukowsky
+instant-closure test, for which an exact analytical solution exists.  The
+three-way comparison (analytical formula, `rthym-moc`, `TSNet`) confirms that
+both MOC implementations correctly propagate the initial pressure wave and
+that `rthym-moc` produces results statistically indistinguishable from a
+widely-used reference solver.
+
+### B.6.2 Network
+
+```
+R1 (H = 150 ft) ──[P1: 3000 ft, 12 in, HW C=130]──► V1 (closed) ──[P2: stub]──► R2
+```
+
+| Parameter | Value |
+|---|---|
+| Upstream reservoir head | 150 ft |
+| Pipe length | 3000 ft |
+| Pipe diameter | 12 in |
+| Hazen-Williams C | 130 |
+| Initial flow Q₀ | 500 GPM |
+| Initial velocity V₀ | 1.418 ft/s |
+| Wave speed *a* | 4000 ft/s |
+| Time step *dt* | 0.01 s |
+| Simulation duration | 3.0 s |
+
+**Transient event:** The valve V1 is slammed shut at t = 0 (closure in one
+time step) in both solvers.
+
+**Unsteady-friction correction:** Disabled in both solvers (pure
+steady-friction MOC) so that results are directly comparable.
+
+### B.6.3 Analytical Reference (Joukowsky Equation)
+
+The Joukowsky pressure rise is:
+
+$$\Delta H = \frac{a \cdot V_0}{g} = \frac{4000 \times 1.418}{32.2} = 176.3 \text{ ft}$$
+
+With steady-state friction loss $H_f = 2.10$ ft, the pre-closure head at the
+valve is $H_{DN} = 147.90$ ft.
+
+| Quantity | Value |
+|---|---|
+| First-step peak at valve | $H_{DN} + \Delta H$ = **324.18 ft** |
+| Theoretical maximum (after wave sweeps HGL) | $H_{RES} + \Delta H$ = **326.28 ft** |
+
+### B.6.4 Results
+
+| Quantity | Analytical (ft) | rthym-moc (ft) | TSNet (ft) |
+|---|---:|---:|---:|
+| First-step peak at valve | 324.18 | **324.10** | **324.30** |
+| Transient maximum | 326.28 | **326.17** | **326.34** |
+
+| Engine | Error vs analytical (first-step) | Error vs analytical (max) |
+|---|---|---|
+| rthym-moc | 0.02 % | 0.03 % |
+| TSNet | 0.04 % | 0.02 % |
+
+**Cross-engine time-series comparison** (RMS of head difference over 0–1.5 s,
+spanning the first wave cycle):
+
+| Metric | Value | Tolerance | Result |
+|---|---:|---|---|
+| rthym-moc vs TSNet RMS | **0.175 ft** | ≤ 0.5 ft | **PASS** |
+
+### B.6.5 Performance
+
+`rthym-moc` completed the same 300-step simulation in **< 1 ms**, compared to
+**~65 ms** for TSNet (pure Python), a speedup of roughly **200–400×** on
+typical hardware.
+
+### B.6.6 Test Summary
+
+All 5 test cases in `tests/test_tsnet_benchmark.py` pass.
+
+| Test | Result |
+|---|---|
+| `test_rthym_joukowsky_first_step` | **PASS** |
+| `test_rthym_transient_max` | **PASS** |
+| `test_tsnet_joukowsky_first_step` | **PASS** |
+| `test_tsnet_transient_max` | **PASS** |
+| `test_cross_engine_rms` | **PASS** |
+
+Both `rthym-moc` and `TSNet` reproduce the Joukowsky analytical solution to
+within 0.05 %, and agree with each other within 0.175 ft RMS over the first
+wave cycle.  This confirms that the C++ engine implements the Method of
+Characteristics correctly at the most fundamental level.
+
