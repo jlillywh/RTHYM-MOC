@@ -1,15 +1,8 @@
-# Appendix: Hydraulic Reference
-
-**R-THYM — Method of Characteristics Transient Solver**
-**Author: Jason Lillywhite, jason@lillywhitewater.com**
-
----
-
 This appendix documents the mathematical foundation of the R-THYM transient
 hydraulic engine. The solver uses the **Method of Characteristics (MOC)**, a
 well-established numerical technique for propagating pressure waves through
 pressurized pipe networks. The implementation is directly equivalent in both the
-JavaScript (R-THYM web application) and C++/Python (`rthym_moc`) engines.
+JavaScript (R-THYM web application) and C++/Python [rthym_moc](https://github.com/jlillywh/RTHYM-MOC) engines.
 
 All quantities are in **US customary units** internally:
 
@@ -248,29 +241,6 @@ Where:
 - $\bar{V}_j$ is the low-pass (time-averaged) velocity, obtained from a
   first-order **IIR (infinite impulse response) filter**
 
-### 6.2.1 Vardy-Brown Dynamic Coefficient (Default)
-
-By default, $k_\text{Bru}$ is **computed automatically each time step** per pipe
-from the instantaneous Reynolds number using the **Vardy & Brown (1996)**
-formula for turbulent flow in smooth pipes:
-
-$$C^* = \frac{7.41}{Re^{0.352}} \quad (Re > 100)$$
-
-$$k_\text{Bru} = \frac{C^*}{\sqrt{\pi}}$$
-
-$$Re = \frac{|V_\text{mid}| \cdot D}{\nu}$$
-
-Where $V_\text{mid}$ is the velocity at the pipe midpoint, $D$ is the internal
-diameter (ft), and $\nu = 1.07 \times 10^{-5}$ ft²/s is the kinematic viscosity
-of water at 60°F. At $Re \leq 100$ the coefficient is set to zero.
-
-This approach requires no user calibration and automatically provides
-physically realistic damping across the simulated Reynolds number range.
-
-To disable USF entirely, pass `k_bru = 0`. To supply a manually calibrated
-static value, pass any positive `k_bru` value; the dynamic calculation is
-bypassed.
-
 ### 6.3 IIR Low-Pass Filter
 
 The filtered velocity $\bar{V}$ is updated each time step by a discrete
@@ -385,7 +355,7 @@ $$H_\text{up} = C_{+,\text{in}} - \frac{B_\text{in}}{A_\text{in}} \cdot Q$$
 
 $$H_\text{dn} = C_{-,\text{out}} + \frac{B_\text{out}}{A_\text{out}} \cdot Q$$
 
-### 7.4 Turbine
+> **Topology constraint:** The valve boundary requires exactly **one inflow pipe and one outflow pipe** (i.e., it must be placed in series on a single pipe run). When more than two pipes connect to a valve node, the solver falls back to an approximate fixed-head boundary. Both the C++/Python and JavaScript engines enforce this constraint identically.
 
 **Applies to:** Turbine
 
@@ -396,6 +366,15 @@ design velocity $V_D$) and scaled by the fractional gate opening $\tau$:
 $$K_\text{base} = \frac{H_D \cdot 2g}{V_D^2}$$
 
 $$K = \frac{K_\text{base}}{\tau^2}$$
+
+The design velocity is computed from the runner diameter $D_t$ (the `diameter`
+field, in inches) and the user-specified design flow $Q_D$:
+
+$$A_t = \pi \left(\frac{D_t}{24}\right)^2, \qquad V_D = \frac{Q_D}{A_t}$$
+
+If the design velocity is specified directly it overrides the diameter-derived
+value. The same fallback and topology constraint as the valve applies: exactly
+one inflow and one outflow pipe required.
 
 The boundary condition then follows the same quadratic formulation as the valve.
 
@@ -428,7 +407,7 @@ root. Reverse flow is not permitted (simplified model; check-valve assumed).
 
 ### 7.6 Open Surge Tank / Standpipe
 
-**Applies to:** SurgeTank, Standpipe
+**Applies to:** Standpipe
 
 An open surge tank or standpipe is an **open-to-atmosphere free-surface vessel**
 connected inline to the pipeline. It acts as a pressure-relief device by
@@ -599,7 +578,7 @@ user-facing units and the internal US customary system:
 | Time step | $\Delta t$ | 0.01 s | Must satisfy Courant condition per pipe |
 | Vapor pressure | $p_\text{vap}$ | −14.0 psi | Column separation threshold |
 | Boundary-layer time constant | $\tau_{BL}$ | 0.5 s | IIR filter constant for USF |
-| Brunone USF coefficient | $k_\text{Bru}$ | auto (Vardy-Brown) | −1 triggers dynamic Vardy-Brown; 0 = steady friction only; >0 = static value |
+| Brunone USF coefficient | $k_\text{Bru}$ | 0.0 | 0 = steady friction only; typical calibrated: 0.02–0.15 |
 | Default wave speed (rigid) | $a$ | 4,000 ft/s | Used when no pipe material is specified |
 | Atmospheric head | $H_\text{atm}$ | 33.9 ft | Used for absolute pressure in HPT gas law |
 
