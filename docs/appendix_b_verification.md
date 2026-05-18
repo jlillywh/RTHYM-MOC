@@ -44,14 +44,44 @@ t ≈ 22.63 s to t ≈ 32.77 s (R-THYM web app frame).
 
 ## B.2 Reference Data
 
-| File | Contents |
-|---|---|
-| `tests/Long Pipe Valve.inp` | EPANET network definition: pipe geometry, roughness, elevations, and initial valve setting |
+The EPANET network file below defines the steady-state network used to
+initialise both engines.  Transient reference data (peak pressures, wave
+speeds, time-series traces) were exported from the R-THYM web app and are
+embedded in the test module `tests/test_long_pipe_valve.py`.
 
-The INP file defines the steady-state network used to initialise both engines.
-Transient reference data (peak pressures, wave speeds, time-series traces) were
-exported from the R-THYM web app and are embedded in the test module
-`tests/test_long_pipe_valve.py`.
+**`tests/Long Pipe Valve.inp`**
+
+```
+[TITLE]
+Exported from Hydro-Ops Digital Twin
+
+[JUNCTIONS]
+;ID              Elevation  Demand
+Junction_A       66         0
+Junction_B       76         0
+Junction_C       0          0
+Valve_B_in       0          0
+Valve_B_out      0          0
+
+[RESERVOIRS]
+;ID                    Head
+PressureBoundary_A     100
+PressureBoundary_B     25
+
+[PIPES]
+;ID      Node1                Node2           Length  Diameter  Roughness  MinorLoss  Status
+Pipe_1   PressureBoundary_A   Junction_A      1000    36        150        0          Open
+Pipe_2   Junction_A           Junction_B      1000    36        150        0          Open
+Pipe_3   Junction_B           Valve_B_in      1000    36        150        0          Open
+Pipe_4   Valve_B_out          Junction_C       500    36        150        0          Open
+Pipe_5   Junction_C           PressureBoundary_B  500  36      150        0          Open
+
+[VALVES]
+;ID       Node1        Node2         Diameter  Type  Setting  MinorLoss
+Valve_B   Valve_B_in   Valve_B_out   8         TCV   90.250   0
+
+[END]
+```
 
 ---
 
