@@ -1,20 +1,19 @@
 # Appendix B — Cross-Engine Verification
 
-This appendix documents three independent verification studies comparing the
-`rthym-moc` C++/Python engine against the R-THYM web-application (JavaScript)
-engine, the `TSNet` open-source Python MOC library, and the analytical
-Joukowsky solution:
+This appendix documents three independent verification studies comparing
+RTHYM-MOC against the R-THYM web app, TSNet, and the analytical Joukowsky
+solution:
 
-1. **Long Pipe Valve** (§B.1–B.5): `rthym-moc` vs R-THYM (JavaScript) on a
+1. **Long Pipe Valve** (§B.1–B.5): RTHYM-MOC vs R-THYM web app on a
    5-pipe equal-percentage valve closure network.  All 18 automated test cases
    in `tests/test_long_pipe_valve.py` pass.
 
-2. **TSNet Joukowsky Benchmark** (§B.6): three-way comparison of `rthym-moc`,
-   `TSNet` (Python), and the analytical Joukowsky formula for an instant valve
+2. **TSNet Joukowsky Benchmark** (§B.6): three-way comparison of RTHYM-MOC,
+   TSNet, and the analytical Joukowsky formula for an instant valve
    closure on a single-pipe network.  All 5 automated test cases in
    `tests/test_tsnet_benchmark.py` pass.
 
-3. **R-THYM Joukowsky** (§B.7): `rthym-moc` vs R-THYM (JavaScript) on an
+3. **R-THYM Joukowsky** (§B.7): RTHYM-MOC vs R-THYM web app on an
    instant valve closure with column separation and downstream stub-pipe
    resonance.  All 7 automated test cases in
    `tests/test_joukowsky_rthym.py` pass.
@@ -39,7 +38,7 @@ Young's modulus E = 400,000 psi, wall thickness e = 0.694 in.
 Q₀ = 544.84 GPM throughout the network.
 
 **Transient:** Valve_B is closed using an equal-percentage schedule from
-t ≈ 22.63 s to t ≈ 32.77 s (JavaScript reference frame).
+t ≈ 22.63 s to t ≈ 32.77 s (R-THYM web app frame).
 
 ---
 
@@ -47,18 +46,18 @@ t ≈ 22.63 s to t ≈ 32.77 s (JavaScript reference frame).
 
 | File | Contents |
 |---|---|
-| `tests/R-THYM_MOC_Verification.json` | Steady-state heads, wave speeds, peak pressures, valve schedule |
-| `tests/R-THYM_MOC_Traces.csv` | Time-series pressure (psi) and pipe flow (GPM) at t = 0.01–95.94 s |
+| `tests/Long Pipe Valve.inp` | EPANET network definition: pipe geometry, roughness, elevations, and initial valve setting |
 
-The CSV exports pipe-section flows keyed by pipe ID (`Pipe_3_Q`, `Pipe_2_Q`,
-`Pipe_4_Q`) with column-to-pipe mapping documented in
-`metadata.q_sources` of the JSON.
+The INP file defines the steady-state network used to initialise both engines.
+Transient reference data (peak pressures, wave speeds, time-series traces) were
+exported from the R-THYM web app and are embedded in the test module
+`tests/test_long_pipe_valve.py`.
 
 ---
 
 ## B.3 Simulation Setup
 
-The C++ engine is run with a 60-second **warmup period** prepended to the
+RTHYM-MOC is run with a 60-second **warmup period** prepended to the
 reference valve schedule.  This allows any numerical initialization
 transients to damp before the closure begins.
 
@@ -69,10 +68,10 @@ Key parameters:
 | `_WARMUP_S` | 60 s |
 | `_SIM_TIME` | 232 s |
 | `_DT` | 0.01 s |
-| Valve schedule (C++ frame) | hold at 5 % until t = 82.62 s, then close to 0 % by t = 92.77 s |
+| Valve schedule (RTHYM-MOC frame) | hold at 5 % until t = 82.62 s, then close to 0 % by t = 92.77 s |
 
 The shifted schedule includes an explicit hold-point at
-`(_CLOSURE_START_SIM − dt, 5 %)` to prevent the C++ solver (which linearly
+`(_CLOSURE_START_SIM − dt, 5 %)` to prevent RTHYM-MOC (which linearly
 interpolates between adjacent schedule entries) from drifting below the
 initial 5 % opening during the pre-closure warmup period.
 
@@ -82,22 +81,22 @@ initial 5 % opening during the pre-closure warmup period.
 
 ### B.4.1 Wave Speed
 
-The Korteweg formula gives a = 746.67 ft/s, matching the JS reference exactly.
+The Korteweg formula gives a = 746.67 ft/s, matching the R-THYM web app exactly.
 
 | | Value |
 |---|---|
-| JS reference | 746.67 ft/s |
-| C++ (analytical) | 746.67 ft/s |
+| R-THYM web app | 746.67 ft/s |
+| RTHYM-MOC | 746.67 ft/s |
 | Error | 0.00 ft/s |
 | Tolerance | ± 5 ft/s |
 | **Result** | **PASS** |
 
 ### B.4.2 Pre-Closure Steady-State Heads
 
-Averaged over the JS reference window t = 5–18 s (C++ frame t = 65–78 s),
+Averaged over the R-THYM web app window t = 5–18 s (RTHYM-MOC frame t = 65–78 s),
 well before the valve begins closing at t = 22.63 s.
 
-| Node | JS ref (ft) | C++ sim (ft) | Error (ft) | Tol | Result |
+| Node | R-THYM (ft) | RTHYM-MOC (ft) | Error (ft) | Tol | Result |
 |---|---:|---:|---:|---|---|
 | PressureBoundary_A | 100.000 | 100.000 | +0.000 | ±0.5 ft | **PASS** |
 | Junction_A         | 100.028 |  99.998 | −0.030 | ±0.5 ft | **PASS** |
@@ -106,14 +105,14 @@ well before the valve begins closing at t = 22.63 s.
 | PressureBoundary_B |  25.000 |  25.000 | +0.000 | ±0.5 ft | **PASS** |
 
 The small residual (~0.03 ft) reflects the difference between the EPANET
-initial condition used as the JS steady state and the MOC-settled value in the
-C++ engine.
+initial condition used as the R-THYM web app steady state and the MOC-settled value in
+RTHYM-MOC.
 
 ### B.4.3 Peak Pressures
 
 Peak min/max pressures over the full simulation (232 s).
 
-| Node | JS max (psi) | C++ max (psi) | Error | JS min (psi) | C++ min (psi) | Error | Tol | Result |
+| Node | R-THYM max (psi) | RTHYM-MOC max (psi) | Error | R-THYM min (psi) | RTHYM-MOC min (psi) | Error | Tol | Result |
 |---|---:|---:|---:|---:|---:|---:|---|---|
 | PressureBoundary_A | 43.290 | 43.290 | +0.000 | 43.290 | 43.290 | +0.000 | ±1.5 psi | **PASS** |
 | Junction_A         | 17.869 | 18.008 | +0.139 | 12.013 | 11.900 | −0.113 | ±1.5 psi | **PASS** |
@@ -127,12 +126,12 @@ tolerance.
 
 ### B.4.4 Time-Series Comparison
 
-Pressure traces are compared over the post-closure window (JS t = 35–65 s,
-C++ t = 95–125 s).  Flow is compared in the pre-closure steady-state window
-(JS t = 5–18 s, C++ t = 65–78 s) where both engines record the same physical
-pipe flow without wave decorrelation.
+Pressure traces are compared over the post-closure window (R-THYM web app t = 35–65 s,
+RTHYM-MOC t = 95–125 s).  Flow is compared in the pre-closure steady-state window
+(R-THYM web app t = 5–18 s, RTHYM-MOC t = 65–78 s) where both engines record the same
+physical pipe flow without wave decorrelation.
 
-| Quantity | Window (JS frame) | RMS Error | Tolerance | Result |
+| Quantity | Window (R-THYM frame) | RMS Error | Tolerance | Result |
 |---|---|---:|---|---|
 | Valve_B pressure   | 35–65 s (post-closure) | 0.531 psi | ±2.0 psi | **PASS** |
 | Junction_B pressure| 35–65 s (post-closure) | 0.415 psi | ±2.0 psi | **PASS** |
@@ -151,8 +150,7 @@ pipe flow without wave decorrelation.
 
 ## B.5 Summary (Long Pipe Valve)
 
-All 18 test cases pass.  The C++/Python `rthym-moc` engine reproduces the
-R-THYM JavaScript engine to within:
+All 18 test cases pass.  RTHYM-MOC reproduces the R-THYM web app to within:
 
 - **Wave speed:** 0.00 ft/s
 - **Steady-state heads:** ≤ 0.030 ft
@@ -346,22 +344,22 @@ compared.
 
 | | Value |
 |---|---|
-| JS reference | 4052.26 ft/s |
-| C++ (analytical Korteweg) | 4052.26 ft/s |
+| R-THYM web app | 4052.26 ft/s |
+| RTHYM-MOC | 4052.26 ft/s |
 | Error | 0.00 ft/s |
 | Tolerance | ±5 ft/s |
 | **Result** | **PASS** |
 
 #### Pre-closure steady state
 
-| Quantity | JS ref | C++ sim | Error | Tolerance | Result |
+| Quantity | R-THYM | RTHYM-MOC | Error | Tolerance | Result |
 |---|---:|---:|---:|---|---|
 | Pipe_1 mean flow | 451.920 GPM | 451.965 GPM | +0.045 GPM | ±2 GPM | **PASS** |
 | Valve_A mean head | 147.989 ft | 147.968 ft | −0.021 ft | ±0.5 ft | **PASS** |
 
 #### Post-closure pressures at Valve_A
 
-| Quantity | JS ref | C++ sim | Error | Tolerance | Result |
+| Quantity | R-THYM | RTHYM-MOC | Error | Tolerance | Result |
 |---|---:|---:|---:|---|---|
 | First-step Joukowsky surge (t = 5.96 s) | 79.82 psi | 80.78 psi | +0.96 psi | ±2 psi | **PASS** |
 | Minimum pressure (vapor clamp) | −14.00 psi | −14.00 psi | 0.00 psi | ±1 psi | **PASS** |
@@ -390,7 +388,7 @@ All 7 test cases in `tests/test_joukowsky_rthym.py` pass.
 
 | Test | Metric | Result |
 |---|---|---|
-| `test_wave_speed` | Korteweg *a* vs JS reference | **PASS** |
+| `test_wave_speed` | Korteweg *a* vs R-THYM web app | **PASS** |
 | `test_steady_state_flow` | Pre-closure Pipe_1 flow | **PASS** |
 | `test_steady_state_head_valve` | Pre-closure Valve_A head | **PASS** |
 | `test_first_step_joukowsky_pressure` | Surge at t = 5.96 s | **PASS** |
