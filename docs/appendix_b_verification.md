@@ -1,17 +1,23 @@
 # Appendix B — Cross-Engine Verification
 
-This appendix documents two independent verification studies for the
-`rthym-moc` C++/Python engine:
+This appendix documents three independent verification studies comparing the
+`rthym-moc` C++/Python engine against the R-THYM web-application (JavaScript)
+engine, the `TSNet` open-source Python MOC library, and the analytical
+Joukowsky solution:
 
-1. **Long Pipe Valve** (§B.1–B.5): comparison against the R-THYM
-   web-application (JavaScript) engine on a 5-pipe equal-percentage valve
-   closure network.  All 18 automated test cases in
-   `tests/test_long_pipe_valve.py` pass.
+1. **Long Pipe Valve** (§B.1–B.5): `rthym-moc` vs R-THYM (JavaScript) on a
+   5-pipe equal-percentage valve closure network.  All 18 automated test cases
+   in `tests/test_long_pipe_valve.py` pass.
 
-2. **Joukowsky Benchmark** (§B.6): three-way comparison against the
-   analytical Joukowsky surge formula and the `TSNet` pure-Python MOC library
-   for an instant valve closure.  All 5 automated test cases in
+2. **TSNet Joukowsky Benchmark** (§B.6): three-way comparison of `rthym-moc`,
+   `TSNet` (Python), and the analytical Joukowsky formula for an instant valve
+   closure on a single-pipe network.  All 5 automated test cases in
    `tests/test_tsnet_benchmark.py` pass.
+
+3. **R-THYM Joukowsky** (§B.7): `rthym-moc` vs R-THYM (JavaScript) on an
+   instant valve closure with column separation and downstream stub-pipe
+   resonance.  All 7 automated test cases in
+   `tests/test_joukowsky_rthym.py` pass.
 
 ---
 
