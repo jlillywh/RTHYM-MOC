@@ -276,7 +276,7 @@ characteristic from the adjacent pipe.
 
 ### 7.1 Fixed-Head Boundary (Reservoir / Pressure Boundary)
 
-**Applies to:** Tank, PressureBoundary, FuelTank
+**Applies to:** Tank, PressureBoundary
 
 The piezometric head $H_P$ is held constant at the user-specified value
 throughout the simulation. The velocity at the pipe end is determined from the

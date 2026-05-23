@@ -25,12 +25,10 @@ enum class NodeType {
     Junction,            // Interior demand node (Kirchhoff balance)
     Tank,                // Fixed-level reservoir
     PressureBoundary,    // Fixed-head pressure source
-    FuelTank,            // Fixed H=0 boundary
     AirValve,            // Air-admission / vacuum-break valve (clamps to atmosphere when open)
     Valve,               // Inline throttling device  (K quadratic)
     Turbine,             // Inline turbine            (K quadratic, design-curve K)
     Pump,                // Inline centrifugal pump   (3-coeff affinity curve)
-    SurgeTank,           // Open standpipe / surge tank (kept for backward compat)
     Standpipe,           // Open surge tank — free surface (R-THYM SurgeControl)
     HydropneumaticTank,  // Closed pressurized vessel — polytropic gas + orifice (R-THYM SurgeTank)
     InflowNode,          // Demand node that injects flow (demand sign is negative)
@@ -68,7 +66,7 @@ struct NodeInput {
     double  air_release_head    = 0.0;   // ft above elevation where AirValve vent is referenced (default = atmosphere)
     double  air_release_diameter = 0.25; // inches (AirValve small-orifice release port)
 
-    // Open surge tank (SurgeTank / Standpipe)
+    // Open surge tank (Standpipe)
     double  tank_area           = 10.0;  // ft² cross-section of standpipe
 
     // Hydropneumatic (closed pressurized) surge tank
@@ -128,7 +126,7 @@ struct PipeState {
 
 struct NodeState {
     NodeInput input;
-    double surge_level_ft   = 0.0;  // SurgeTank/Standpipe current water surface (ft)
+    double surge_level_ft   = 0.0;  // Standpipe current water surface (ft)
     double actual_demand    = 0.0;  // GPM  (updated by solver, Junction/OutflowNode)
     double gas_volume_ft3   = 0.0;  // HydropneumaticTank / AirValve current gas volume (ft³)
     double gas_constant     = 0.0;  // HydropneumaticTank: C = H_g_abs * V_g^n; AirValve: M = H_g_abs * V_g

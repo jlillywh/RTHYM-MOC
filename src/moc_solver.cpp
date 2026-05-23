@@ -24,6 +24,7 @@
 #include <cmath>
 #include <numeric>
 #include <stdexcept>
+#include <sstream>
 
 namespace rthym {
 
@@ -32,12 +33,10 @@ namespace rthym {
 NodeType parseNodeType(const std::string& s) {
     if (s == "Tank")                return NodeType::Tank;
     if (s == "PressureBoundary")    return NodeType::PressureBoundary;
-    if (s == "FuelTank")            return NodeType::FuelTank;
     if (s == "AirValve")            return NodeType::AirValve;
     if (s == "Valve")               return NodeType::Valve;
     if (s == "Turbine")             return NodeType::Turbine;
     if (s == "Pump")                return NodeType::Pump;
-    if (s == "SurgeTank")           return NodeType::SurgeTank;
     if (s == "Standpipe")           return NodeType::Standpipe;
     if (s == "HydropneumaticTank")  return NodeType::HydropneumaticTank;
     if (s == "InflowNode")          return NodeType::InflowNode;
@@ -49,12 +48,10 @@ std::string nodeTypeToStr(NodeType t) {
     switch (t) {
         case NodeType::Tank:                return "Tank";
         case NodeType::PressureBoundary:    return "PressureBoundary";
-        case NodeType::FuelTank:            return "FuelTank";
         case NodeType::AirValve:            return "AirValve";
         case NodeType::Valve:               return "Valve";
         case NodeType::Turbine:             return "Turbine";
         case NodeType::Pump:                return "Pump";
-        case NodeType::SurgeTank:           return "SurgeTank";
         case NodeType::Standpipe:           return "Standpipe";
         case NodeType::HydropneumaticTank:  return "HydropneumaticTank";
         case NodeType::InflowNode:          return "InflowNode";
@@ -62,6 +59,67 @@ std::string nodeTypeToStr(NodeType t) {
         default:                            return "Junction";
     }
 }
+
+namespace {
+
+NodeInput* findNodeInput(std::vector<NodeInput>& node_inputs, const std::string& id) {
+    for (auto& node_input : node_inputs) {
+        if (node_input.id == id)
+            return &node_input;
+    }
+    return nullptr;
+}
+
+const NodeInput& requireNodeInput(std::vector<NodeInput>& node_inputs,
+                                  const std::string& id,
+                                  const char* operation) {
+    auto* node_input = findNodeInput(node_inputs, id);
+    if (node_input == nullptr) {
+        throw std::invalid_argument(std::string(operation) + " requires an existing node id, got '" + id + "'");
+    }
+    return *node_input;
+}
+
+NodeInput& requireNodeInputMutable(std::vector<NodeInput>& node_inputs,
+                                   const std::string& id,
+                                   const char* operation) {
+    return const_cast<NodeInput&>(requireNodeInput(node_inputs, id, operation));
+}
+
+bool nodeTypeMatchesAny(NodeType type, std::initializer_list<NodeType> allowed_types) {
+    return std::find(allowed_types.begin(), allowed_types.end(), type) != allowed_types.end();
+}
+
+void requireNodeType(const NodeInput& node_input,
+                     const std::string& id,
+                     const char* operation,
+                     std::initializer_list<NodeType> allowed_types,
+                     const char* expected_types) {
+    if (!nodeTypeMatchesAny(node_input.type, allowed_types)) {
+        throw std::invalid_argument(
+            std::string(operation) + " requires a " + expected_types + " node, got '" + id + "' of type '" +
+            nodeTypeToStr(node_input.type) + "'");
+    }
+}
+
+void validateSchedule(const std::vector<std::pair<double,double>>& schedule,
+                      const char* operation) {
+    if (schedule.empty()) {
+        throw std::invalid_argument(std::string(operation) + " requires at least one schedule point");
+    }
+
+    for (std::size_t index = 1; index < schedule.size(); ++index) {
+        if (!(schedule[index - 1].first < schedule[index].first)) {
+            std::ostringstream message;
+            message << operation << " requires strictly increasing schedule times, but entries "
+                    << (index - 1) << " and " << index << " are "
+                    << schedule[index - 1].first << " and " << schedule[index].first;
+            throw std::invalid_argument(message.str());
+        }
+    }
+}
+
+} // namespace
 
 // ── Public input API ──────────────────────────────────────────────────────────
 
@@ -78,18 +136,32 @@ void MOCSolver::clear() {
 }
 
 void MOCSolver::set_valve_setting(const std::string& id, double pct) {
+    auto& node_input = requireNodeInputMutable(node_inputs_, id, "set_valve_setting()");
+    requireNodeType(node_input, id, "set_valve_setting()", {NodeType::Valve, NodeType::Turbine}, "Valve or Turbine");
+    node_input.current_setting = pct;
     auto it = node_idx_map_.find(id);
     if (it != node_idx_map_.end())
         nodes_[it->second].input.current_setting = pct;
 }
 
 void MOCSolver::set_pump_speed(const std::string& id, double pct) {
+    auto& node_input = requireNodeInputMutable(node_inputs_, id, "set_pump_speed()");
+    requireNodeType(node_input, id, "set_pump_speed()", {NodeType::Pump}, "Pump");
+    node_input.current_speed = pct;
     auto it = node_idx_map_.find(id);
     if (it != node_idx_map_.end())
         nodes_[it->second].input.current_speed = pct;
 }
 
 void MOCSolver::set_node_demand(const std::string& id, double demand_gpm) {
+    auto& node_input = requireNodeInputMutable(node_inputs_, id, "set_node_demand()");
+    requireNodeType(
+        node_input,
+        id,
+        "set_node_demand()",
+        {NodeType::Junction, NodeType::InflowNode, NodeType::OutflowNode},
+        "Junction, InflowNode, or OutflowNode");
+    node_input.demand = demand_gpm;
     auto it = node_idx_map_.find(id);
     if (it != node_idx_map_.end())
         nodes_[it->second].input.demand = demand_gpm;
@@ -97,21 +169,38 @@ void MOCSolver::set_node_demand(const std::string& id, double demand_gpm) {
 
 void MOCSolver::set_valve_schedule(const std::string& id,
                                    const std::vector<std::pair<double,double>>& schedule) {
+    const auto& node_input = requireNodeInput(node_inputs_, id, "set_valve_schedule()");
+    requireNodeType(node_input, id, "set_valve_schedule()", {NodeType::Valve, NodeType::Turbine}, "Valve or Turbine");
+    validateSchedule(schedule, "set_valve_schedule()");
     valve_schedules_[id] = schedule;
 }
 
 void MOCSolver::set_pump_schedule(const std::string& id,
                                   const std::vector<std::pair<double,double>>& schedule) {
+    const auto& node_input = requireNodeInput(node_inputs_, id, "set_pump_schedule()");
+    requireNodeType(node_input, id, "set_pump_schedule()", {NodeType::Pump}, "Pump");
+    validateSchedule(schedule, "set_pump_schedule()");
     pump_schedules_[id] = schedule;
 }
 
 void MOCSolver::set_demand_schedule(const std::string& id,
                                     const std::vector<std::pair<double,double>>& schedule) {
+    const auto& node_input = requireNodeInput(node_inputs_, id, "set_demand_schedule()");
+    requireNodeType(
+        node_input,
+        id,
+        "set_demand_schedule()",
+        {NodeType::Junction, NodeType::InflowNode, NodeType::OutflowNode},
+        "Junction, InflowNode, or OutflowNode");
+    validateSchedule(schedule, "set_demand_schedule()");
     demand_schedules_[id] = schedule;
 }
 
 void MOCSolver::set_head_schedule(const std::string& id,
                                   const std::vector<std::pair<double,double>>& schedule) {
+    const auto& node_input = requireNodeInput(node_inputs_, id, "set_head_schedule()");
+    requireNodeType(node_input, id, "set_head_schedule()", {NodeType::Tank, NodeType::PressureBoundary}, "Tank or PressureBoundary");
+    validateSchedule(schedule, "set_head_schedule()");
     head_schedules_[id] = schedule;
 }
 
@@ -143,12 +232,9 @@ double MOCSolver::getInitialHead(const NodeState& ns) const {
             return n.head;
         case NodeType::PressureBoundary:
             return n.head;
-        case NodeType::FuelTank:
-            return 0.0;
         case NodeType::AirValve:
             // Closed at steady state; use the imported/assigned pipeline head.
             return n.head;
-        case NodeType::SurgeTank:
         case NodeType::Standpipe:
             return ns.surge_level_ft;
         case NodeType::HydropneumaticTank:
@@ -179,8 +265,7 @@ void MOCSolver::initGrid() {
     for (int i = 0; i < static_cast<int>(node_inputs_.size()); ++i) {
         NodeState ns;
         ns.input = node_inputs_[i];
-        if (ns.input.type == NodeType::SurgeTank ||
-            ns.input.type == NodeType::Standpipe)
+        if (ns.input.type == NodeType::Standpipe)
             ns.surge_level_ft = ns.input.head; // initial water-surface elevation (ft HGL)
         if (ns.input.type == NodeType::HydropneumaticTank) {
             // Compute and store the polytropic gas constant:
@@ -272,12 +357,11 @@ void MOCSolver::initGrid() {
         // head vs. which are junction / inline-device nodes whose head must be
         // inferred from friction head loss.
         //
-        // "Fixed-head" sources: Tank, PressureBoundary, FuelTank, SurgeTank.
+        // "Fixed-head" sources: Tank, PressureBoundary, Standpipe.
         // Everything else (Junction, Valve, Pump, Turbine, In/OutflowNode)
         // is treated as an inferred endpoint.
         auto is_fixed_head = [](NodeType t) {
             return t == NodeType::Tank || t == NodeType::PressureBoundary ||
-                   t == NodeType::FuelTank || t == NodeType::SurgeTank ||
                    t == NodeType::Standpipe || t == NodeType::HydropneumaticTank;
         };
         bool from_fixed = false, to_fixed = false;
@@ -472,8 +556,7 @@ void MOCSolver::stepMOC() {
 
         // ── Fixed-head boundaries ──────────────────────────────────────────
         case NodeType::Tank:
-        case NodeType::PressureBoundary:
-        case NodeType::FuelTank: {
+        case NodeType::PressureBoundary: {
             const double H_f = getInitialHead(ns);
             for (int pi : in_pipes)  set_downstream(pi, H_f);
             for (int pi : out_pipes) set_upstream(pi, H_f);
@@ -483,7 +566,6 @@ void MOCSolver::stepMOC() {
         // ── Open surge tank / standpipe (free surface) ───────────────────
         // H = current water-surface elevation (= HGL for open-to-atm tank).
         // dH/dt = Q_net / A_s   (continuity, Wylie & Streeter §7.3)
-        case NodeType::SurgeTank:   // backward-compat alias
         case NodeType::Standpipe: {
             const double H_t = ns.surge_level_ft;
             double net_Q = 0.0; // CFS flowing into the tank (positive = rising)

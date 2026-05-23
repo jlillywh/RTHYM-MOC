@@ -45,6 +45,7 @@ from ._rthym_moc import (
     PSI_TO_FT,
 )
 from .epanet import load_inp
+from ._version import __version__
 
 __all__ = [
     "MOCSolver",
@@ -54,6 +55,5 @@ __all__ = [
     "GPM_TO_CFS",
     "PSI_TO_FT",
     "load_inp",
+    "__version__",
 ]
-
-__version__ = "0.1.0"

@@ -4,7 +4,7 @@
 """
 Test: Surge Tank — Mass Oscillation (Analytical) and Pressure Mitigation
 =========================================================================
-Validates the SurgeTank node type against the classical lumped-parameter
+Validates the Standpipe node type against the classical lumped-parameter
 mass-oscillation solution for a reservoir → pipe → surge-tank system.
 
 Analytical reference (frictionless, small-amplitude):
@@ -46,7 +46,7 @@ boundary, confirming the protective function of the device.
 Network topologies
   Test 1 – mass oscillation:
       R1 (PressureBoundary, H = 100 ft) ──[P1: 1000 ft, 12 in, HW C = 10000]──
-      ST1 (SurgeTank, A_s = 5 ft², initial level = H_res)
+      ST1 (Standpipe, A_s = 5 ft², initial level = H_res)
 
       Initial pipe flow Q₀ = 500 GPM supplies the initial kinetic energy
       that drives the surge oscillation.
@@ -55,7 +55,7 @@ Network topologies
       Network A: R1 ──[P1]── J1 (dead-end Junction, demand = 0)
           → rigid zero-flow reflection → Joukowsky head spike
 
-      Network B: R1 ──[P1]── ST1 (SurgeTank, same parameters)
+    Network B: R1 ──[P1]── ST1 (Standpipe, same parameters)
           → surge tank absorbs incoming flow → head rise limited to z_max
 
 Usage:
@@ -141,7 +141,7 @@ def _first_n_peaks(arr, min_height, min_sep_samples, n=2):
 # Test 1: Mass Oscillation — Analytical Comparison
 # ═══════════════════════════════════════════════════════════════════════════════
 #
-# Network:  R1 ──[P1: near-frictionless]── ST1 (SurgeTank)
+# Network:  R1 ──[P1: near-frictionless]── ST1 (Standpipe)
 #
 # The pipe carries Q₀ toward the surge tank whose initial level equals the
 # reservoir head.  This non-equilibrium initial condition is the classical
@@ -161,7 +161,7 @@ r1_t1.head = H_RES_FT
 
 st1 = m.NodeInput()
 st1.id        = "ST1"
-st1.type      = "SurgeTank"
+st1.type      = "Standpipe"
 st1.head      = H_RES_FT     # initial water-surface = reservoir head
 st1.tank_area = A_S_FT2      # standpipe cross-section [ft²]
 
@@ -262,7 +262,7 @@ print()
 #       The MOC enforces Q = 0 exactly (H = C⁺), producing an immediate
 #       Joukowsky head spike of ΔH = a·V₀/g at the first time step.
 #
-#   Network B — Surge tank (SurgeTank, same geometry as Test 1):
+#   Network B — Surge tank (Standpipe, same geometry as Test 1):
 #       The surge tank admits the incoming flow, so the head at the pipe
 #       terminus rises slowly at the mass-oscillation rate rather than
 #       jumping instantaneously.
@@ -317,7 +317,7 @@ r1_st.head = H_RES_FT
 
 st2 = m.NodeInput()
 st2.id        = "ST1"
-st2.type      = "SurgeTank"
+st2.type      = "Standpipe"
 st2.head      = H_RES_FT
 st2.tank_area = A_S_FT2
 

@@ -111,17 +111,16 @@ PYBIND11_MODULE(_rthym_moc, m) {
         ----------
         id : str
         type : str
-            One of: "Junction", "Tank", "PressureBoundary", "FuelTank",
+            One of: "Junction", "Tank", "PressureBoundary",
                 "AirValve",
                     "Valve", "Turbine", "Pump",
-                    "SurgeTank" (open standpipe, backward-compat alias),
                     "Standpipe" (open surge tank — R-THYM SurgeControl),
                     "HydropneumaticTank" (closed pressurized vessel — R-THYM SurgeTank),
                     "InflowNode", "OutflowNode"
         elevation : float, ft
         head : float, ft
             For Tank/PressureBoundary: HGL.
-            For Standpipe/SurgeTank: initial water-surface elevation (ft HGL).
+                        For Standpipe: initial water-surface elevation (ft HGL).
             For HydropneumaticTank: steady-state pipeline head at the
               connection point (used to compute the initial gas constant).
         level : float, %
@@ -146,7 +145,7 @@ PYBIND11_MODULE(_rthym_moc, m) {
         air_release_diameter : float, inches
             AirValve: small-orifice air-release diameter used during repressurisation.
         design_velocity : float, ft/s  (Turbine; computed from design_flow if 0)
-        tank_area : float, ft²  (Standpipe/SurgeTank cross-sectional area)
+        tank_area : float, ft²  (Standpipe cross-sectional area)
         gas_volume : float, ft³
             HydropneumaticTank: initial trapped gas volume. Default 10.
             AirValve: initial trapped air-pocket volume inside the valve body.
@@ -170,7 +169,13 @@ PYBIND11_MODULE(_rthym_moc, m) {
         // type is exposed as string property (converts to/from NodeType enum)
         .def_property("type",
             [](const NodeInput& self) { return nodeTypeToStr(self.type); },
-            [](NodeInput& self, const std::string& s) { self.type = parseNodeType(s); })
+            [](NodeInput& self, const std::string& s) {
+                const auto parsed = parseNodeType(s);
+                if (parsed == NodeType::Junction && s != "Junction") {
+                    throw py::value_error("Unknown node type: " + s);
+                }
+                self.type = parsed;
+            })
         .def_readwrite("elevation",        &NodeInput::elevation)
         .def_readwrite("head",             &NodeInput::head)
         .def_readwrite("level",            &NodeInput::level)

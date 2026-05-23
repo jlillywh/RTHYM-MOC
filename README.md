@@ -20,6 +20,7 @@ A high-performance 1-D Method of Characteristics (MOC) transient hydraulic solve
 - [Loading from EPANET (.inp)](#loading-from-epanet-inp)
 - [Numerical method](#numerical-method)
 - [Validation](#validation)
+- [Benchmark Guide](#benchmark-guide)
 - [Repository layout](#repository-layout)
 - [Dependencies](#dependencies)
 
@@ -154,7 +155,7 @@ node.design_flow      = 100.0         # GPM at BEP (Pump)
 node.design_velocity  = 0.0           # ft/s (Turbine; derived from design_flow if 0)
 node.air_release_head = 0.0           # ft vent reference above elevation (AirValve)
 node.air_release_diameter = 0.25      # inches (AirValve small-orifice release port)
-node.tank_area        = 10.0          # ft² cross-sectional area (Standpipe / SurgeTank)
+node.tank_area        = 10.0          # ft² cross-sectional area (Standpipe)
 node.gas_volume       = 10.0          # ft³ initial trapped gas / air-pocket volume
 node.tank_volume      = 30.0          # ft³ total vessel or chamber volume
 node.polytropic_n     = 1.2           # polytropic exponent (1.0 = isothermal, 1.4 = adiabatic)
@@ -176,12 +177,10 @@ node.loss_coeff_out   = 0.7           # C_d orifice coefficient for outflow / ai
 For `"Tank"`, prefer setting `head` directly. The `level` field is retained for
 compatibility with older code paths and is derived from `head` and `max_level`
 when EPANET networks are imported.
-| `"FuelTank"` | Fixed-head boundary at H = 0 | — |
 | `"Valve"` | Quadratic loss, $K = (100/s)^2 - 1$ | `current_setting`, `diameter` |
 | `"Turbine"` | Quadratic loss (design-curve K) | `current_setting`, `design_velocity`, `diameter` |
 | `"Pump"` | Three-coefficient affinity curve | `current_speed`, `design_head`, `design_flow` |
 | `"Standpipe"` | Open free-surface surge tank (level tracked each step) | `head`, `tank_area` |
-| `"SurgeTank"` | Backward-compatible alias for `"Standpipe"` | `head`, `tank_area` |
 | `"HydropneumaticTank"` | Closed pressurised vessel; gas follows polytropic law | `head`, `diameter`, `gas_volume`, `tank_volume`, `polytropic_n`, `loss_coeff_in`, `loss_coeff_out` |
 
 A dead-end boundary — equivalent to an instantaneously closed valve — is modelled as a `"Junction"` with `demand = 0` and no outflow pipe attached.  The MOC boundary condition then enforces $Q = 0$ exactly, giving $H = C^+$.
@@ -445,7 +444,7 @@ An open-topped standpipe connected to the pipeline.  When a pressure wave arrive
 ```python
 st = rthym_moc.NodeInput()
 st.id        = "ST1"
-st.type      = "Standpipe"   # "SurgeTank" is an accepted backward-compatible alias
+st.type      = "Standpipe"
 st.elevation = 0.0
 st.head      = 100.0         # ft — initial water-surface elevation (ft HGL)
 st.tank_area = 5.0           # ft² — cross-sectional area of the standpipe
@@ -620,7 +619,7 @@ where $B = a/g$ (ft·s²/ft = s²) is the pipe impedance and $R = f \Delta x / (
 - *Dead-end (Junction, demand = 0, no outflow pipe)*: $H = C^+$ (zero-flow reflection).
 - *Valve*: $K = (100/s)^2 - 1$ loss; combined with $C^\pm$ to solve $H$ and $V$.
 - *Pump*: affinity-curve head-flow relationship combined with $C^\pm$.
-- *Standpipe / SurgeTank*: $H$ updated from the standpipe continuity equation each step.
+- *Standpipe*: $H$ updated from the standpipe continuity equation each step.
 - *HydropneumaticTank*: $H$ updated from the polytropic gas law combined with the orifice flow equation each step.
 
 **Unsteady friction.**  An optional IIR low-pass filter on pipe velocity (time constant `usf_tau`) approximates the Brunone–Vítkovský unsteady friction correction.  Set `usf_tau = dt` to disable (quasi-steady friction only).
@@ -629,42 +628,150 @@ where $B = a/g$ (ft·s²/ft = s²) is the pipe impedance and $R = f \Delta x / (
 
 ## Validation
 
-Three independent validation benchmarks are included under `examples/`:
+The repository now keeps its validation and benchmark suite primarily under
+`tests/`, with supporting narrative documentation under `docs/`.
 
-### 1. Joukowsky single-pipe benchmark (`benchmark_vs_tsnet.py`)
+The benchmark structure follows these rules:
 
-Instantaneous valve closure at the end of a 3000 ft, 12-inch pipe fed by a 150 ft constant-head reservoir (Q₀ = 500 GPM, a = 4000 ft/s).
+- each benchmark names its reference solution or reference artifact explicitly
+- each benchmark defines quantitative tolerances rather than visual checks
+- each benchmark includes a scenario description in the module docstring
+- parameter sweeps are automated where the governing behavior depends on an
+    input such as closure time
+- cross-engine comparisons are used where a trusted engine or export exists
+- checked-in JSON, CSV, and INP artifacts are used for regression tracking
 
-| Metric | Result |
-|--------|--------|
-| Analytical $\Delta H = aV_0/g$ | 176.20 ft |
-| rthym-moc first-step $\Delta H$ | 176.17 ft |
-| Error | **0.02 %** |
-| RMS head diff vs TSNet (3 s) | **0.175 ft** |
-| Speed vs TSNet (pure Python) | **~370×** |
+See [docs/benchmarking.md](/home/jason/RTHYM-MOC/docs/benchmarking.md) for the
+benchmark map and [docs/appendix_b_verification.md](/home/jason/RTHYM-MOC/docs/appendix_b_verification.md)
+for the long-form write-up of the main cross-engine studies.
 
-### 2. Wave period and damping (`test_wave_reflections.py`)
+Representative automated benchmarks include:
 
-Multi-cycle oscillation in a reservoir–pipe–dead-end system.  Measures the full oscillation period $T_0 = 4L/a$ and verifies monotonic amplitude decay due to friction.
+### 1. TSNet Joukowsky benchmark (`tests/test_tsnet_benchmark.py`)
 
-| Metric | rthym-moc | TSNet | Analytical |
-|--------|-----------|-------|-----------|
-| Oscillation period $T_0$ | 3.0050 s | 3.0000 s | $4L/a = 3.0000$ s |
-| Period error | **+0.17 %** | 0.00 % | — |
-| Peak decay over 2 periods | 7.93 ft | 7.94 ft | $\approx 4H_f = 8.4$ ft |
-| Monotonic decay | YES | YES | — |
+Instantaneous valve closure at the end of a 3000 ft, 12-inch pipe, compared
+against both the analytical Joukowsky rise and TSNet.
 
-### 3. Joukowsky criterion — gradual closure (`test_gradual_closure.py`)
+| Metric | Tolerance |
+|--------|-----------|
+| First-step head vs analytical | ±1.0 ft |
+| Maximum transient head vs analytical | ±1.0 ft |
+| Cross-engine RMS head mismatch | ≤ 0.5 ft |
 
-Linear-setting closure schedule; tests the $K = (100/s)^2 - 1$ valve model across three closure times.
+### 2. R-THYM web-app cross-engine benchmarks (`tests/test_long_pipe_valve.py`, `tests/test_joukowsky_rthym.py`)
 
-| $T_c$ | $T_\text{eff}$ | vs $2L/a$ | $\Delta H$ | % Joukowsky |
-|-------|---------------|-----------|-----------|-------------|
-| 0.5 s | 0.060 s | $\ll 2L/a$ | 177.8 ft | **100.9 %** |
-| 3.0 s | 0.363 s | $\ll 2L/a$ | 176.5 ft | **100.2 %** |
-| 150 s | 18.1 s | $\gg 2L/a$ | 88.1 ft | **50.0 %** |
+These compare RTHYM-MOC against stored R-THYM web-app exports using checked-in
+JSON and CSV reference outputs.
 
-The ultra-slow case ($T_c = 150$ s) falls in the Allievi slow-closure regime, confirming that the solver correctly captures the suppression of the waterhammer peak when the wave period is short compared with the effective closure time.
+| Study | Reference assets | Example metrics |
+|-------|------------------|-----------------|
+| Long Pipe Valve | `tests/R-THYM_MOC_Verification.json`, `tests/R-THYM_MOC_Traces.csv` | wave speed, steady heads, peak pressures, RMS traces |
+| Joukowsky with stub-pipe resonance | `tests/R-THYM_Joukowsky_Verification.json`, `tests/R-THYM_Joukowsky_Traces.csv` | first-step surge, pressure extrema, trace RMS |
+
+### 3. EPANET / wntr import benchmark (`tests/test_complex_topology_from_inp.py`)
+
+An imported multi-branch network is checked against EPANET/wntr for the full
+pre-trip operating point using parameterized node-head and pipe-flow checks.
+
+### 4. Closure-time parameter sweep (`tests/test_gradual_closure_benchmark.py`)
+
+The benchmark suite now includes an automated closure-time sweep over `0.5 s`,
+`3.0 s`, and `150 s` closures. This verifies both the rapid-closure Joukowsky
+regime and the slow-closure suppression regime using explicit quantitative peak
+bands.
+
+### 5. Tank-size parameter sweep (`tests/test_tank_size_benchmark.py`)
+
+The benchmark suite now also starts the surge-device sizing sweeps with a
+standpipe-area benchmark over `1`, `2`, `5`, `10`, and `20 ft²`. It verifies
+that larger standpipe size monotonically reduces the protected-node closure peak
+and keeps the node free of cavitation across the sweep.
+
+### 6. Hydropneumatic sizing sweep (`tests/test_hydropneumatic_size_benchmark.py`)
+
+The benchmark suite also includes a hydropneumatic vessel-size sweep over `2`,
+`4`, `6`, `10`, and `20 ft³`, while holding the precharge ratio fixed at
+`gas_volume / tank_volume = 0.4`. This verifies that larger vessels improve
+pump-trip head recovery monotonically and reduce negative-head exposure during
+the trip window.
+
+### 7. Device-placement sweep (`tests/test_device_placement_benchmark.py`)
+
+The benchmark suite also includes a hydropneumatic placement sweep over `40`,
+`120`, `300`, and `600 ft` from pump discharge. This verifies that moving the
+same protection vessel farther from the disturbance source weakens protection,
+reduces trip-window recovery head, and increases negative-head exposure.
+
+### 8. Pipe-length sweep (`tests/test_pipe_length_benchmark.py`)
+
+The benchmark suite also includes a protected pipe-length sweep over `500`,
+`1000`, `2000`, `4000`, and `8000 ft` with a fixed near-pump hydropneumatic
+vessel. This verifies the calibrated system-scale trend in this geometry:
+shorter mains allow deeper low-pressure collapse after a trip, while longer
+protected mains improve trip-window recovery and eliminate negative-head
+exposure.
+
+### 9. Multi-device placement sweep (`tests/test_multi_device_placement_benchmark.py`)
+
+The benchmark suite also includes a split-vessel placement sweep that divides a
+fixed hydropneumatic capacity across two vessels and varies their locations
+along the discharge main. This verifies the key interaction rule in this
+geometry: two smaller vessels still protect the pump trip well if one remains
+near pump discharge, but moving both vessels away from the disturbance source
+causes low-pressure collapse to return.
+
+### 10. Mixed-device interaction benchmark (`tests/test_mixed_device_interaction_benchmark.py`)
+
+The benchmark suite also includes a mixed-device pump-trip benchmark that
+combines a small near-pump hydropneumatic vessel with a nearby air valve. It
+uses aggregate trip-window negative-head exposure across the discharge node and
+vent node as a shared acceptance metric, and verifies that the combined layout
+outperforms either single-device layout on the same protected region.
+
+### 11. Air-valve-dominant mixed layout (`tests/test_air_valve_dominant_mixed_layout_benchmark.py`)
+
+The benchmark suite also includes an alternative mixed-device layout where the
+air valve is the primary protection element and a tiny downstream vessel only
+adds secondary damping. It verifies that the air-only layout beats the
+vessel-only layout on protected-region mean trip head, while the combined
+layout improves that same regional metric further without losing the air valve's
+vacuum protection.
+
+### 12. Air-dominant layout sensitivity sweep (`tests/test_air_valve_dominant_layout_sensitivity_benchmark.py`)
+
+The benchmark suite also includes a downstream-vessel distance sweep within the
+air-valve-dominant regime. The air valve stays fixed near pump discharge while a
+tiny downstream vessel moves from `300` to `3000 ft`, verifying that the air
+valve remains the primary protection element while the vessel's placement changes
+the amount of secondary damping recovered across the protected region.
+
+### 13. Air-dominant size sweep (`tests/test_air_valve_dominant_size_sweep_benchmark.py`)
+
+The benchmark suite also includes the complementary downstream-vessel size sweep
+within the same air-valve-dominant regime. The air valve stays fixed near pump
+discharge and the downstream vessel location stays fixed while the tiny vessel
+grows from `0.3` to `4.8 ft³`, verifying that larger secondary vessels recover
+more protected-region mean trip head even though the air valve remains the
+dominant protection element.
+
+## Versioning
+
+The project now tracks its package version from a single source of truth in
+`rthym_moc/_version.py`. The Python API exposes that value as
+`rthym_moc.__version__`, and both the Python packaging metadata and CMake
+project version read from the same source.
+
+Release-level changes are tracked in [CHANGELOG.md](/home/jason/RTHYM-MOC/CHANGELOG.md).
+
+The repository still includes supporting example-level validation scripts under
+`examples/`, including `benchmark_vs_tsnet.py`, `test_wave_reflections.py`, and
+`test_gradual_closure.py`, but the primary regression-grade benchmarks are now
+the automated pytest modules under `tests/`.
+
+## Benchmark Guide
+
+See [docs/benchmarking.md](/home/jason/RTHYM-MOC/docs/benchmarking.md) for the
+benchmark matrix, reference assets, tolerance metrics, and coverage notes.
 
 ---
 
@@ -678,6 +785,7 @@ RTHYM-MOC/
 │   └── bindings.cpp       # PyBind11 bindings → _rthym_moc extension module
 ├── rthym_moc/
 │   ├── __init__.py        # Re-exports public API from _rthym_moc
+│   ├── _version.py        # Single source of truth for project version
 │   └── _rthym_moc*.so     # Compiled extension (generated by build)
 ├── examples/
 │   ├── basic_example.py            # Minimal Joukowsky quickstart
@@ -687,7 +795,27 @@ RTHYM-MOC/
 │   ├── test_surge_tank.py          # Standpipe mass-oscillation & pressure mitigation
 │   └── load_from_inp.py            # EPANET .inp import example
 ├── tests/
-│   └── test_waterhammer.cpp        # Standalone C++ unit test (BUILD_TESTS=ON)
+│   ├── test_tsnet_benchmark.py                 # Analytical + TSNet benchmark
+│   ├── test_joukowsky_rthym.py                 # R-THYM web-app vs solver benchmark
+│   ├── test_long_pipe_valve.py                 # Cross-engine valve-closure benchmark
+│   ├── test_complex_topology_from_inp.py       # EPANET/wntr import benchmark
+│   ├── test_gradual_closure_benchmark.py       # Parameterized closure-time benchmark
+│   ├── test_tank_size_benchmark.py             # Parameterized standpipe-size benchmark
+│   ├── test_hydropneumatic_size_benchmark.py   # Fixed-ratio vessel-size benchmark
+│   ├── test_device_placement_benchmark.py      # Hydropneumatic placement benchmark
+│   ├── test_pipe_length_benchmark.py           # Protected pipe-length benchmark
+│   ├── test_multi_device_placement_benchmark.py # Split-vessel placement benchmark
+│   ├── test_mixed_device_interaction_benchmark.py # Surge-vessel + air-valve benchmark
+│   ├── test_air_valve_dominant_mixed_layout_benchmark.py # Air-valve-dominant mixed layout
+│   ├── test_air_valve_dominant_layout_sensitivity_benchmark.py # Air-dominant distance sweep
+│   ├── test_air_valve_dominant_size_sweep_benchmark.py # Air-dominant size sweep
+│   ├── test_column_separation_and_stability.py # Cavitation and long-run stability
+│   ├── networks/                               # Benchmark INP fixtures
+│   └── test_waterhammer.cpp                    # Standalone C++ unit test (BUILD_TESTS=ON)
+├── docs/
+│   ├── appendix_b_verification.md  # Long-form cross-engine verification appendix
+│   ├── benchmarking.md             # Benchmark structure and asset map
+│   └── appendix_hydraulic_reference.md
 ├── CMakeLists.txt
 └── pyproject.toml
 ```

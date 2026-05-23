@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rthym-moc"
-version = "0.1.0"
+dynamic = ["version"]
 description = "High-speed 1-D Method of Characteristics transient hydraulic solver (C++ core, Python API)"
 readme = "README.md"
 license = { text = "MIT" }
@@ -28,3 +28,6 @@ docs = ["sphinx", "numpydoc"]
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["rthym_moc*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "rthym_moc._version.__version__" }

@@ -10,6 +10,13 @@ Usage:
 from setuptools import setup
 from pybind11.setup_helpers import Pybind11Extension, build_ext
 
+
+def read_version():
+    namespace = {}
+    with open("rthym_moc/_version.py", encoding="utf-8") as version_file:
+        exec(version_file.read(), namespace)
+    return namespace["__version__"]
+
 ext_modules = [
     Pybind11Extension(
         name="rthym_moc._rthym_moc",
@@ -25,7 +32,7 @@ ext_modules = [
 
 setup(
     name="rthym-moc",
-    version="0.1.0",
+    version=read_version(),
     ext_modules=ext_modules,
     cmdclass={"build_ext": build_ext},
     packages=["rthym_moc"],

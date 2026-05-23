@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.15)
-project(rthym_moc VERSION 0.1.0 LANGUAGES CXX)
+
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/rthym_moc/_version.py" RTHYM_VERSION_LINE
+    REGEX "__version__ = \"[0-9]+\.[0-9]+\.[0-9]+\"")
+string(REGEX REPLACE ".*\"([0-9]+\.[0-9]+\.[0-9]+)\".*" "\\1" RTHYM_PROJECT_VERSION "${RTHYM_VERSION_LINE}")
+
+project(rthym_moc VERSION ${RTHYM_PROJECT_VERSION} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
