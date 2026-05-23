@@ -19,6 +19,8 @@ results.obj
 
 # R-THYM web app source (proprietary — not part of this repo)
 *.js
+*.mjs
+*.cjs
 tests/js_pythonc_differences.md
 
 # Windows metadata
@@ -27,3 +29,10 @@ tests/js_pythonc_differences.md
 # IDE / OS
 .vscode/
 .DS_Store
+
+# Local scratch / one-off analysis notes
+analytical_complex_topology.py
+benchmark_from_inp.py
+net, inspect*
+tests/steadystate_init_plan.md
+tests/Valve Water Hammer Benchmark.inp

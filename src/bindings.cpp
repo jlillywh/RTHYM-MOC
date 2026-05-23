@@ -112,6 +112,7 @@ PYBIND11_MODULE(_rthym_moc, m) {
         id : str
         type : str
             One of: "Junction", "Tank", "PressureBoundary", "FuelTank",
+                "AirValve",
                     "Valve", "Turbine", "Pump",
                     "SurgeTank" (open standpipe, backward-compat alias),
                     "Standpipe" (open surge tank — R-THYM SurgeControl),
@@ -123,8 +124,13 @@ PYBIND11_MODULE(_rthym_moc, m) {
             For Standpipe/SurgeTank: initial water-surface elevation (ft HGL).
             For HydropneumaticTank: steady-state pipeline head at the
               connection point (used to compute the initial gas constant).
-        level : float, %   (Tank fill level 0–100)
-        max_level : float, ft   (Tank depth at 100% full)
+        level : float, %
+            Tank fill level 0–100. Retained for compatibility; when both are
+            present, ``head`` is treated as the authoritative tank HGL.
+        max_level : float, ft
+            Tank depth at 100% full. Used with ``level`` only to derive a
+            display/compatibility value; imported steady-state initialisation
+            uses ``head`` directly.
         demand : float, GPM
         current_speed : float, %   (Pump)
         current_setting : float, % open   (Valve / Turbine)
@@ -133,21 +139,31 @@ PYBIND11_MODULE(_rthym_moc, m) {
         diameter : float, inches
             Valve/Turbine: orifice diameter.
             HydropneumaticTank: connection orifice diameter.
+            AirValve: large-orifice air-admission diameter.
+        air_release_head : float, ft
+            AirValve: gauge head offset applied to the vent reference.
+            Default 0.0, so the vent references atmosphere at the node elevation.
+        air_release_diameter : float, inches
+            AirValve: small-orifice air-release diameter used during repressurisation.
         design_velocity : float, ft/s  (Turbine; computed from design_flow if 0)
         tank_area : float, ft²  (Standpipe/SurgeTank cross-sectional area)
         gas_volume : float, ft³
             HydropneumaticTank: initial trapped gas volume. Default 10.
+            AirValve: initial trapped air-pocket volume inside the valve body.
         tank_volume : float, ft³
             HydropneumaticTank: total vessel volume (gas + water). Default 30.
+            AirValve: maximum local air-pocket chamber volume.
         polytropic_n : float
             HydropneumaticTank: polytropic exponent (1.0=isothermal, 1.4=adiabatic).
             Default 1.2 (typical for air-charged vessels).
         loss_coeff_in : float
             HydropneumaticTank: orifice discharge coefficient C_d for inflow
             (water entering the tank, gas compresses). Default 0.7.
+            AirValve: large-orifice admission discharge coefficient.
         loss_coeff_out : float
             HydropneumaticTank: orifice discharge coefficient C_d for outflow
             (water leaving the tank, gas expands). Default 0.7.
+            AirValve: small-orifice release discharge coefficient.
         )pbdoc")
         .def(py::init<>())
         .def_readwrite("id",               &NodeInput::id)
@@ -165,6 +181,8 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def_readwrite("design_head",      &NodeInput::design_head)
         .def_readwrite("design_flow",      &NodeInput::design_flow)
         .def_readwrite("diameter",         &NodeInput::diameter)
+        .def_readwrite("air_release_head", &NodeInput::air_release_head)
+        .def_readwrite("air_release_diameter", &NodeInput::air_release_diameter)
         .def_readwrite("design_velocity",  &NodeInput::design_velocity)
         .def_readwrite("tank_area",        &NodeInput::tank_area)
         // Hydropneumatic tank fields
@@ -187,6 +205,8 @@ PYBIND11_MODULE(_rthym_moc, m) {
         length : float, ft
         diameter : float, inches
         roughness : float   Hazen-Williams C (default 120)
+        minor_loss : float
+            Dimensionless local-loss coefficient K distributed across the pipe.
         flow_gpm : float, GPM   initial steady-state flow (+ = from→to)
         wall_thickness : float, inches   (for elastic wave speed; default 0.25)
         youngs_modulus : float, psi      (0 = rigid pipe → default 4000 ft/s)
@@ -199,6 +219,7 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def_readwrite("length",         &PipeInput::length)
         .def_readwrite("diameter",       &PipeInput::diameter)
         .def_readwrite("roughness",      &PipeInput::roughness)
+        .def_readwrite("minor_loss",     &PipeInput::minor_loss)
         .def_readwrite("flow_gpm",       &PipeInput::flow_gpm)
         .def_readwrite("wall_thickness", &PipeInput::wall_thickness)
         .def_readwrite("youngs_modulus", &PipeInput::youngs_modulus)
@@ -268,6 +289,62 @@ PYBIND11_MODULE(_rthym_moc, m) {
             solver.set_valve_schedule("V1",
                 [(t, max(0.0, 100.0 - 100.0/3.0 * t))
                  for t in [i * 0.01 for i in range(301)]])
+            )pbdoc")
+        .def("set_pump_schedule",
+            [](MOCSolver& self,
+               const std::string& id,
+               const std::vector<std::pair<double,double>>& schedule) {
+                self.set_pump_schedule(id, schedule);
+            },
+            py::arg("id"), py::arg("schedule"),
+            R"pbdoc(
+            Register a time-varying speed schedule for a Pump node.
+
+            Parameters
+            ----------
+            id : str
+                Pump node id (must already be added via add_node).
+            schedule : list[tuple[float, float]]
+                List of (time_s, pct_speed) pairs in ascending time order.
+                pct_speed is 0 (off) … 100 (rated speed).
+                Values are linearly interpolated during run().
+                Outside the schedule range the nearest endpoint value is held.
+            )pbdoc")
+        .def("set_demand_schedule",
+            [](MOCSolver& self,
+               const std::string& id,
+               const std::vector<std::pair<double,double>>& schedule) {
+                self.set_demand_schedule(id, schedule);
+            },
+            py::arg("id"), py::arg("schedule"),
+            R"pbdoc(
+            Register a time-varying demand schedule for a Junction-like node.
+
+            Parameters
+            ----------
+            id : str
+                Node id (typically Junction, OutflowNode, or InflowNode).
+            schedule : list[tuple[float, float]]
+                List of (time_s, demand_gpm) pairs in ascending time order.
+                Values are linearly interpolated during run().
+            )pbdoc")
+        .def("set_head_schedule",
+            [](MOCSolver& self,
+               const std::string& id,
+               const std::vector<std::pair<double,double>>& schedule) {
+                self.set_head_schedule(id, schedule);
+            },
+            py::arg("id"), py::arg("schedule"),
+            R"pbdoc(
+            Register a time-varying head schedule for a fixed-head node.
+
+            Parameters
+            ----------
+            id : str
+                Node id (typically PressureBoundary or Tank).
+            schedule : list[tuple[float, float]]
+                List of (time_s, head_ft) pairs in ascending time order.
+                Values are linearly interpolated during run().
             )pbdoc")
         .def("run",
             [](MOCSolver& self,

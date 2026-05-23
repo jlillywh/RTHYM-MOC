@@ -31,7 +31,7 @@ RTHYM-MOC solves the 1-D water-hammer equations using the Method of Characterist
 
 ### Key characteristics:
 
-- **Network-capable**: arbitrary topologies of pipes, junctions, reservoirs, valves, pumps, standpipe surge tanks, hydropneumatic tanks, and turbines.
+- **Network-capable**: arbitrary topologies of pipes, junctions, reservoirs, air valves, valves, pumps, standpipe surge tanks, hydropneumatic tanks, and turbines.
 - **Time-varying events**: valve schedules, pump trip/start, demand changes — specified either as discrete step changes between `run()` calls or as continuous piecewise-linear schedules registered before `run()`.
 - **Cavitation detection**: integrates a column-separation flag (pressure < vapour pressure) at each node.
 - **Speed**: the C++ core solves a 900-step, 75-segment single-pipe case in under 1 ms; roughly **370× faster** than the equivalent [TSNet](https://github.com/glorialulu/TSNet) (pure Python) simulation on the same hardware.
@@ -143,7 +143,7 @@ node.id               = "J1"          # str — unique identifier
 node.type             = "Junction"    # str — see table below
 node.elevation        = 0.0           # ft above datum
 node.head             = 100.0         # ft HGL  (Tank, PressureBoundary)
-node.level            = 100.0         # % full  (Tank)
+node.level            = 100.0         # % full  (Tank, derived/legacy compatibility)
 node.max_level        = 20.0          # ft depth at 100 % full (Tank)
 node.demand           = 0.0           # GPM withdrawal (Junction, OutflowNode)
 node.current_setting  = 100.0         # % open (Valve, Turbine; 100 = fully open)
@@ -152,12 +152,14 @@ node.current_speed    = 100.0         # % rated speed (Pump)
 node.design_head      = 50.0          # ft at BEP (Pump)
 node.design_flow      = 100.0         # GPM at BEP (Pump)
 node.design_velocity  = 0.0           # ft/s (Turbine; derived from design_flow if 0)
+node.air_release_head = 0.0           # ft vent reference above elevation (AirValve)
+node.air_release_diameter = 0.25      # inches (AirValve small-orifice release port)
 node.tank_area        = 10.0          # ft² cross-sectional area (Standpipe / SurgeTank)
-node.gas_volume       = 10.0          # ft³ initial trapped gas volume (HydropneumaticTank)
-node.tank_volume      = 30.0          # ft³ total vessel volume — gas + water (HydropneumaticTank)
+node.gas_volume       = 10.0          # ft³ initial trapped gas / air-pocket volume
+node.tank_volume      = 30.0          # ft³ total vessel or chamber volume
 node.polytropic_n     = 1.2           # polytropic exponent (1.0 = isothermal, 1.4 = adiabatic)
-node.loss_coeff_in    = 0.7           # C_d orifice coefficient for inflow (HydropneumaticTank)
-node.loss_coeff_out   = 0.7           # C_d orifice coefficient for outflow (HydropneumaticTank)
+node.loss_coeff_in    = 0.7           # C_d orifice coefficient for inflow / air admission
+node.loss_coeff_out   = 0.7           # C_d orifice coefficient for outflow / air release
 ```
 
 **Node types**
@@ -168,7 +170,12 @@ node.loss_coeff_out   = 0.7           # C_d orifice coefficient for outflow (Hyd
 | `"OutflowNode"` | As Junction, sign convention explicit | `demand` |
 | `"InflowNode"` | Injects flow (demand treated as negative) | `demand` |
 | `"PressureBoundary"` | Fixed total head at all times | `head` |
-| `"Tank"` | Fixed HGL (level not updated in current version) | `head`, `level`, `max_level` |
+| `"Tank"` | Fixed HGL; `head` is authoritative, `level` is compatibility state | `head`, `level`, `max_level` |
+| "AirValve" | Air-pocket valve with large admission port and small release port | `elevation`, `head`, `diameter`, `air_release_diameter`, `gas_volume`, `tank_volume`, `loss_coeff_in`, `loss_coeff_out`, `air_release_head` |
+
+For `"Tank"`, prefer setting `head` directly. The `level` field is retained for
+compatibility with older code paths and is derived from `head` and `max_level`
+when EPANET networks are imported.
 | `"FuelTank"` | Fixed-head boundary at H = 0 | — |
 | `"Valve"` | Quadratic loss, $K = (100/s)^2 - 1$ | `current_setting`, `diameter` |
 | `"Turbine"` | Quadratic loss (design-curve K) | `current_setting`, `design_velocity`, `diameter` |
@@ -191,11 +198,24 @@ pipe.to_node        = "J1"     # str — downstream node id
 pipe.length         = 3000.0   # ft
 pipe.diameter       = 12.0     # inches
 pipe.roughness      = 120.0    # Hazen-Williams C (higher = smoother)
+pipe.minor_loss     = 0.0      # dimensionless local-loss coefficient K
 pipe.flow_gpm       = 500.0    # GPM, initial steady-state flow (+ = from→to)
 pipe.wall_thickness = 0.25     # inches (used only if youngs_modulus > 0)
 pipe.youngs_modulus = 0.0      # psi (0 = rigid pipe, default wave speed ~4000 ft/s)
 pipe.poissons_ratio = 0.3      # (used only if youngs_modulus > 0)
 ```
+
+`pipe.minor_loss` is a dimensionless local-loss coefficient $K$ for bends,
+tees, fittings, entrance/exit losses, or any other concentrated resistance you
+want associated with that pipe. During initialisation, the solver includes this
+term in the steady headloss,
+
+$$H_{f,minor} = K \frac{V^2}{2g}$$
+
+and during the transient it is applied as an added resistance contribution
+distributed across the pipe segments. That distribution is a practical MOC
+approximation of a lumped local loss, and the test suite now includes explicit
+benchmarks against an equivalent lumped-loss case.
 
 **Wave speed** is computed internally from the Korteweg–Joukowsky elastic formula when `youngs_modulus > 0`:
 
@@ -220,6 +240,9 @@ solver = rthym_moc.MOCSolver()
 | `solver.set_pump_speed(id, pct_speed)` | Change a pump speed immediately. |
 | `solver.set_node_demand(id, demand_gpm)` | Change a junction demand immediately. |
 | `solver.set_valve_schedule(id, schedule)` | Register a time-varying valve schedule (see below). |
+| `solver.set_pump_schedule(id, schedule)` | Register a time-varying pump-speed schedule. |
+| `solver.set_demand_schedule(id, schedule)` | Register a time-varying junction demand schedule. |
+| `solver.set_head_schedule(id, schedule)` | Register a time-varying fixed-head schedule for a `PressureBoundary` or `Tank`. |
 | `solver.run(total_time, dt, p_vapor, usf_tau)` | Execute the transient and return results. |
 
 #### `run()` parameters
@@ -368,7 +391,52 @@ results = solver.run(total_time=5.0, dt=0.01)
 
 ## Surge control components
 
-Two passive devices are available for transient pressure protection.
+Three passive devices are available for transient pressure protection.
+
+### AirValve (air-admission / air-release valve)
+
+An `AirValve` behaves like a normal closed vent while the local piezometric head
+stays positive and no trapped pocket is present. If a transient pulls the node
+toward subatmospheric pressure, the valve admits air through a large orifice,
+creating an air pocket. When the system repressurises, that pocket compresses
+and is released gradually through a smaller discharge port, which lets the model
+capture delayed venting and restart overshoot from trapped air.
+
+This is not a binary atmospheric clamp. The current model tracks:
+
+- a finite admission port using `diameter`
+- a finite release port using `air_release_diameter`
+- a local air-pocket / chamber volume using `gas_volume` and `tank_volume`
+- asymmetric admission and release coefficients using `loss_coeff_in` and `loss_coeff_out`
+- an optional vent datum offset using `air_release_head`
+
+That makes the `AirValve` suitable for cases where vacuum protection, trapped-air
+compression, and delayed re-venting materially affect the transient response.
+
+```python
+av = rthym_moc.NodeInput()
+av.id               = "AV1"
+av.type             = "AirValve"
+av.elevation        = 0.0
+av.head             = 160.0   # ft — steady-state pipeline head at the vent node
+av.diameter         = 6.0     # inches — large admission port
+av.air_release_diameter = 0.25  # inches — small release port
+av.gas_volume       = 0.05    # ft³ — initial trapped air pocket (usually small)
+av.tank_volume      = 2.0     # ft³ — local valve-body / riser chamber volume
+av.loss_coeff_in    = 0.8     # admission discharge coefficient
+av.loss_coeff_out   = 0.7     # release discharge coefficient
+av.air_release_head = 0.0     # ft vent reference above elevation
+solver.add_node(av)
+```
+
+The current model includes:
+
+- finite large-orifice air admission
+- finite small-orifice air release
+- trapped-air compression and delayed venting using an isothermal ideal-gas surrogate
+
+It does not yet include choked compressible airflow, float mechanics, or a more
+detailed thermodynamic air-mass model.
 
 ### Standpipe (open surge tank)
 
@@ -425,24 +493,25 @@ solver.add_node(hpt)
 
 ## Scripted multi-event transients
 
-`run()` resets the MOC grid to the steady-state initial conditions each call, so multi-event sequences are best handled with `set_valve_schedule()` covering the full duration, or by rebuilding `NodeInput` objects between calls:
+`run()` resets the MOC grid to the steady-state initial conditions each call, so multi-event sequences are best handled with schedules covering the full duration, or by rebuilding `NodeInput` objects between calls:
 
 ```python
-# Example: valve closes at t=1 s, pump trips at t=2 s
+# Example: valve closes at t=1 s while a downstream demand increases at t=2 s
 import numpy as np
 
-# Build schedule covering the full 5-second window
+# Build schedules covering the full 5-second window
 t_close  = np.array([0.0, 1.0, 1.01, 5.0])
 s_close  = np.array([100.0, 100.0, 0.0, 0.0])
 solver.set_valve_schedule("V1", list(zip(t_close, s_close)))
 
-# For the pump: step changes between run() calls
-solver.run(total_time=2.0, dt=0.01)         # first 2 s
-solver.set_pump_speed("PMP1", 0.0)          # trip pump
-solver.run(total_time=3.0, dt=0.01)         # next 3 s
+demand_times = np.array([0.0, 2.0, 2.01, 5.0])
+demand_vals  = np.array([500.0, 500.0, 700.0, 700.0])
+solver.set_demand_schedule("J1", list(zip(demand_times, demand_vals)))
+
+results = solver.run(total_time=5.0, dt=0.01)
 ```
 
-Note that the second `run()` call re-initialises from the `NodeInput` steady-state values, not from the final state of the first call.  If you need to chain transient states, manually update the relevant `NodeInput` fields before the second `run()`.
+To step a pump or boundary condition between separate `run()` calls, continue using `set_pump_speed()`, `set_node_demand()`, or direct `NodeInput.head` changes before the next `run()`. Each new `run()` call re-initialises from the stored steady-state values rather than the final state of the previous transient.
 
 ---
 
@@ -518,7 +587,7 @@ Use these IDs when calling `set_valve_schedule()`, `set_pump_speed()`, or access
 
 - **PRV / PSV / PBV** pressure setpoints cannot be converted to a % open without system-wide hydraulic information; these valves are initialised fully open with a `UserWarning`.
 - **FCV / GPV** valve types are not supported and are treated as fully-open valves.
-- **Minor losses** (`[PIPES]` column 7) are currently ignored.
+- **Minor losses** (`[PIPES]` column 7) are imported as a dimensionless local-loss coefficient `K`, included in the initial steady headloss, and then applied as distributed resistance across the pipe during the transient. This is an approximation of a truly lumped fitting loss, but dedicated regression benchmarks are included to quantify the mismatch.
 - **Demand patterns** (`[PATTERNS]`, `[CONTROLS]`, `[RULES]`) are not applied; only base demands are used.
 - **Check valves** (Status = CV) are treated as regular pipes; reverse-flow prevention is not enforced.
 

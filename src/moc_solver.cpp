@@ -33,6 +33,7 @@ NodeType parseNodeType(const std::string& s) {
     if (s == "Tank")                return NodeType::Tank;
     if (s == "PressureBoundary")    return NodeType::PressureBoundary;
     if (s == "FuelTank")            return NodeType::FuelTank;
+    if (s == "AirValve")            return NodeType::AirValve;
     if (s == "Valve")               return NodeType::Valve;
     if (s == "Turbine")             return NodeType::Turbine;
     if (s == "Pump")                return NodeType::Pump;
@@ -49,6 +50,7 @@ std::string nodeTypeToStr(NodeType t) {
         case NodeType::Tank:                return "Tank";
         case NodeType::PressureBoundary:    return "PressureBoundary";
         case NodeType::FuelTank:            return "FuelTank";
+        case NodeType::AirValve:            return "AirValve";
         case NodeType::Valve:               return "Valve";
         case NodeType::Turbine:             return "Turbine";
         case NodeType::Pump:                return "Pump";
@@ -70,6 +72,9 @@ void MOCSolver::clear() {
     node_inputs_.clear();
     pipe_inputs_.clear();
     valve_schedules_.clear();
+    pump_schedules_.clear();
+    demand_schedules_.clear();
+    head_schedules_.clear();
 }
 
 void MOCSolver::set_valve_setting(const std::string& id, double pct) {
@@ -95,6 +100,21 @@ void MOCSolver::set_valve_schedule(const std::string& id,
     valve_schedules_[id] = schedule;
 }
 
+void MOCSolver::set_pump_schedule(const std::string& id,
+                                  const std::vector<std::pair<double,double>>& schedule) {
+    pump_schedules_[id] = schedule;
+}
+
+void MOCSolver::set_demand_schedule(const std::string& id,
+                                    const std::vector<std::pair<double,double>>& schedule) {
+    demand_schedules_[id] = schedule;
+}
+
+void MOCSolver::set_head_schedule(const std::string& id,
+                                  const std::vector<std::pair<double,double>>& schedule) {
+    head_schedules_[id] = schedule;
+}
+
 // Linear interpolation helper for a (time, pct_open) schedule.
 static double interpSchedule(
         const std::vector<std::pair<double,double>>& sched, double t) {
@@ -116,11 +136,18 @@ double MOCSolver::getInitialHead(const NodeState& ns) const {
     const auto& n = ns.input;
     switch (n.type) {
         case NodeType::Tank:
-            return n.elevation + (n.level / 100.0) * n.max_level;
+            // Use the imported piezometric head directly. EPANET loaders seed
+            // Tank::head to elevation + initial level, while NodeInput::level
+            // remains a legacy percentage field that may not reflect the
+            // actual operating point.
+            return n.head;
         case NodeType::PressureBoundary:
             return n.head;
         case NodeType::FuelTank:
             return 0.0;
+        case NodeType::AirValve:
+            // Closed at steady state; use the imported/assigned pipeline head.
+            return n.head;
         case NodeType::SurgeTank:
         case NodeType::Standpipe:
             return ns.surge_level_ft;
@@ -166,6 +193,14 @@ void MOCSolver::initGrid() {
             ns.gas_constant = H_g_abs0 *
                 std::pow(std::max(ns.gas_volume_ft3, 1e-6), ns.input.polytropic_n);
         }
+        if (ns.input.type == NodeType::AirValve) {
+            // Air valves start closed in the loaded steady-state operating
+            // point. A trapped pocket is created only when the local junction
+            // would otherwise go subatmospheric.
+            ns.gas_volume_ft3 = std::max(0.0,
+                std::min(ns.input.gas_volume, std::max(ns.input.tank_volume, 1e-6)));
+            ns.gas_constant = 0.0;
+        }
         nodes_.push_back(std::move(ns));
         node_idx_map_[node_inputs_[i].id] = i;
     }
@@ -204,22 +239,25 @@ void MOCSolver::initGrid() {
         const int    num_segs  = std::max(1, static_cast<int>(std::round(p.length / dx_target)));
         ps.a_wave    = (p.length / num_segs) / dt_; // adjusted wave speed
         ps.num_nodes = num_segs + 1;
+        ps.k_minor   = std::max(0.0, p.minor_loss) / num_segs;
 
         // ── Darcy-Weisbach friction factor from Hazen-Williams ─────────────
         // Hf = 10.44 · L · Q^1.852 / (C^1.852 · D_in^4.871)  [all US units]
         const double Q_cfs     = p.flow_gpm * GPM_TO_CFS;
         const double vel_init  = (ps.area > 1e-9) ? Q_cfs / ps.area : 0.0;
-        double Hf_pipe = 0.0;
+        double Hf_pipe_hw = 0.0;
         if (std::abs(p.flow_gpm) > 1e-4) {
-            Hf_pipe = (10.44 * p.length * std::pow(std::abs(p.flow_gpm), 1.852))
-                    / (std::pow(p.roughness, 1.852) * std::pow(p.diameter, 4.871));
+            Hf_pipe_hw = (10.44 * p.length * std::pow(std::abs(p.flow_gpm), 1.852))
+                       / (std::pow(p.roughness, 1.852) * std::pow(p.diameter, 4.871));
         }
         double f_calc = 0.02;
         if (std::abs(vel_init) > 1e-4) {
-            f_calc = (Hf_pipe * ps.D * 2.0 * G_FT_S2)
+            f_calc = (Hf_pipe_hw * ps.D * 2.0 * G_FT_S2)
                    / (p.length * vel_init * vel_init);
         }
         ps.f = std::max(0.001, std::min(f_calc, 0.5));
+        const double Hf_minor = std::max(0.0, p.minor_loss) * vel_init * vel_init / (2.0 * G_FT_S2);
+        const double Hf_pipe = Hf_pipe_hw + Hf_minor;
 
         // ── Initial heads at pipe endpoints ───────────────────────────────
         double H_from = 100.0, H_to = 100.0;
@@ -346,7 +384,7 @@ void MOCSolver::stepMOC() {
         const int  N    = ps.num_nodes;
         const double dx = ps.a_wave * dt_;
         const double B  = ps.a_wave / g;               // ft·s/ft² = s/ft
-        const double R  = ps.f * dx / (2.0 * g * ps.D); // steady-friction resistance
+        const double R  = (ps.f * dx / ps.D + ps.k_minor) / (2.0 * g); // distributed steady + minor-loss resistance
         // Brunone (1991) unsteady-friction scale:  k_u = k_Bru_eff * B  [units: s]
         // Vardy-Brown (1996):  k_Bru = C*/sqrt(π),  C* = 7.41/Re^0.352  (turbulent)
         // Typical range: 0.02–0.15.
@@ -538,6 +576,104 @@ void MOCSolver::stepMOC() {
             // Update gas volume:  Q_net > 0 ⟹ water enters ⟹ V_g decreases
             ns.gas_volume_ft3 = std::max(1e-9,
                 std::min(ns.gas_volume_ft3 - Q_net * dt_, n.tank_volume));
+            break;
+        }
+
+        // ── Air valve with finite admission / release and trapped air ─────
+        // The node contains a trapped air pocket. Water exchange with the pipe
+        // changes pocket volume, while the air valve exchanges mass with the
+        // atmosphere through asymmetric orifices:
+        //   - large admission port: NodeInput::diameter
+        //   - small release port  : NodeInput::air_release_diameter
+        //
+        // Current implementation uses an isothermal ideal-gas surrogate
+        // M = H_abs * V, which is sufficient to capture finite inflow/outflow
+        // and delayed repressurisation from a trapped pocket.
+        case NodeType::AirValve: {
+            constexpr double H_ATM_FT = 33.9;
+            const double H_ref = n.elevation + n.air_release_head;
+            const double H_ref_abs = H_ATM_FT + n.air_release_head;
+
+            double sum_AB_C = 0.0, sum_AB = 0.0;
+            for (int pi : in_pipes) {
+                const double AB = bndry[pi].area / bndry[pi].B;
+                sum_AB_C += AB * bndry[pi].C_P;
+                sum_AB   += AB;
+            }
+            for (int pi : out_pipes) {
+                const double AB = bndry[pi].area / bndry[pi].B;
+                sum_AB_C += AB * bndry[pi].C_M;
+                sum_AB   += AB;
+            }
+            const double Q_dem = n.demand * GPM_TO_CFS;
+            const double H_junc = (sum_AB > 1e-12)
+                ? (sum_AB_C - Q_dem) / sum_AB
+                : getInitialHead(ns);
+
+            const bool pocket_active = ns.gas_volume_ft3 > 1e-6;
+            if (!pocket_active && H_junc >= H_ref) {
+                const double H_closed = std::max(H_vap, H_junc);
+                for (int pi : in_pipes)  set_downstream(pi, H_closed);
+                for (int pi : out_pipes) set_upstream  (pi, H_closed);
+                ns.actual_demand = n.demand;
+                ns.gas_volume_ft3 = 0.0;
+                ns.gas_constant = 0.0;
+                break;
+            }
+
+            if (!pocket_active) {
+                ns.gas_volume_ft3 = std::max(1e-4, n.gas_volume);
+                ns.gas_constant = H_ref_abs * ns.gas_volume_ft3;
+            }
+
+            const double H_abs = std::max(1e-6,
+                ns.gas_constant / std::max(ns.gas_volume_ft3, 1e-6));
+            double H_P = n.elevation + H_abs - H_ATM_FT;
+            if (H_P < H_vap) H_P = H_vap;
+
+            double net_Q = 0.0; // CFS into the air chamber (positive compresses air)
+            for (int pi : in_pipes) {
+                const int last = pipes_[pi].num_nodes - 1;
+                newH[pi][last] = H_P;
+                const double V_new = (bndry[pi].C_P - H_P) / bndry[pi].B;
+                newV[pi][last] = V_new;
+                net_Q += V_new * pipes_[pi].area;
+            }
+            for (int pi : out_pipes) {
+                newH[pi][0] = H_P;
+                const double V_new = (H_P - bndry[pi].C_M) / bndry[pi].B;
+                newV[pi][0] = V_new;
+                net_Q -= V_new * pipes_[pi].area;
+            }
+
+            const double chamber_vol = std::max(n.tank_volume, 1e-6);
+            const double V_after_water = std::max(1e-6,
+                std::min(ns.gas_volume_ft3 - net_Q * dt_, chamber_vol));
+
+            const double admit_d_ft = n.diameter / 12.0;
+            const double release_d_ft = n.air_release_diameter / 12.0;
+            const double A_admit = M_PI_ * std::pow(admit_d_ft / 2.0, 2.0);
+            const double A_release = M_PI_ * std::pow(release_d_ft / 2.0, 2.0);
+
+            double M_after_air = std::max(1e-6, ns.gas_constant);
+            if (H_abs < H_ref_abs - 1e-9) {
+                const double Q_air_in = std::max(n.loss_coeff_in, 1e-9) * A_admit
+                    * std::sqrt(2.0 * g * (H_ref_abs - H_abs));
+                M_after_air += H_ref_abs * Q_air_in * dt_;
+            } else if (H_abs > H_ref_abs + 1e-9 && V_after_water > 1e-6) {
+                const double Q_air_out = std::max(n.loss_coeff_out, 1e-9) * A_release
+                    * std::sqrt(2.0 * g * (H_abs - H_ref_abs));
+                M_after_air = std::max(1e-6, M_after_air - H_abs * Q_air_out * dt_);
+            }
+
+            if (V_after_water <= 5e-4 && H_junc >= H_ref) {
+                ns.gas_volume_ft3 = 0.0;
+                ns.gas_constant = 0.0;
+            } else {
+                ns.gas_volume_ft3 = V_after_water;
+                ns.gas_constant = M_after_air;
+            }
+            ns.actual_demand = n.demand;
             break;
         }
 
@@ -842,6 +978,33 @@ SimResults MOCSolver::run(double total_time_s, double dt,
                 auto nit = node_idx_map_.find(vid);
                 if (nit != node_idx_map_.end())
                     nodes_[nit->second].input.current_setting =
+                        interpSchedule(sched, t_now);
+            }
+        }
+        if (!pump_schedules_.empty()) {
+            const double t_now = static_cast<double>(step) * dt;
+            for (auto& [pid, sched] : pump_schedules_) {
+                auto nit = node_idx_map_.find(pid);
+                if (nit != node_idx_map_.end())
+                    nodes_[nit->second].input.current_speed =
+                        interpSchedule(sched, t_now);
+            }
+        }
+        if (!demand_schedules_.empty()) {
+            const double t_now = static_cast<double>(step) * dt;
+            for (auto& [nid, sched] : demand_schedules_) {
+                auto nit = node_idx_map_.find(nid);
+                if (nit != node_idx_map_.end())
+                    nodes_[nit->second].input.demand =
+                        interpSchedule(sched, t_now);
+            }
+        }
+        if (!head_schedules_.empty()) {
+            const double t_now = static_cast<double>(step) * dt;
+            for (auto& [nid, sched] : head_schedules_) {
+                auto nit = node_idx_map_.find(nid);
+                if (nit != node_idx_map_.end())
+                    nodes_[nit->second].input.head =
                         interpSchedule(sched, t_now);
             }
         }

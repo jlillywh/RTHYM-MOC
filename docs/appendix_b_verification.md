@@ -439,3 +439,139 @@ These results confirm that `rthym-moc` correctly models instant valve closure,
 column separation, and downstream stub-pipe resonance in agreement with the
 R-THYM JavaScript reference engine.
 
+---
+
+## B.8 Open Standpipe Surge Protection
+
+### B.8.1 Purpose
+
+This section verifies that the `Standpipe` boundary condition in `rthym-moc`
+correctly limits transient pressures following a sudden valve closure.  It
+then cross-validates the RTHYM-MOC result against the independently developed
+TSNet 0.2.2 MOC engine (Python, SI units) to confirm that both engines agree
+on the water-column oscillation history.
+
+### B.8.2 Network Description
+
+#### Without surge protection (baseline)
+
+```
+PressureBoundary R1 (H = 150 ft)
+  ──[P1: 3000 ft, 12 in, HW C=130]──► Junction J1
+  ──[P2: 40 ft, 12 in]──► Valve V1 (TCV, instant closure)
+  ──[P3: 40 ft, 12 in]──► PressureBoundary R2 (H = 147.9 ft)
+```
+
+#### With open standpipe at J1
+
+```
+PressureBoundary R1 (H = 150 ft)
+  ──[P1: 3000 ft, 12 in, HW C=130]──► Standpipe SP1 (A_s = 1 ft²)
+  ──[P2: 40 ft, 12 in]──► Valve V1 (TCV, instant closure)
+  ──[P3: 40 ft, 12 in]──► PressureBoundary R2 (H = 147.9 ft)
+```
+
+The standpipe cross-sectional area $A_s = 1\ \text{ft}^2$ is intentionally
+small so that the water column oscillation is clearly observable within a
+25-second simulation.
+
+| Parameter | Value |
+|---|---|
+| Upstream reservoir head | 150.00 ft |
+| Pipe length (P1) | 3 000 ft |
+| Pipe diameter | 12 in |
+| Hazen-Williams C | 130 |
+| Wave speed *a* | 4 000 ft/s |
+| Initial flow Q₀ | 500 GPM |
+| Standpipe area A_s | 1.00 ft² |
+| Time step *dt* | 0.01 s |
+| Simulation duration | 25 s |
+
+### B.8.3 Analytical Reference
+
+#### Steady-state head at SP1
+
+Hazen-Williams head loss over P1:
+
+$$h_f = \frac{10.44 \, L \, Q^{1.852}}{C^{1.852} \, D^{4.871}} = \frac{10.44 \times 3000 \times 500^{1.852}}{130^{1.852} \times 12^{4.871}} \approx 2.10\ \text{ft}$$
+
+$$H_{SP1,ss} = 150.00 - 2.10 = 147.90\ \text{ft}$$
+
+#### Baseline Joukowsky surge (no standpipe)
+
+$$V_0 = \frac{Q_0}{A_{pipe}} = \frac{500 \times 0.002228}{\pi (0.5)^2} \approx 1.418\ \text{ft/s}$$
+
+$$\Delta H = \frac{a \, V_0}{g} = \frac{4000 \times 1.418}{32.2} \approx 176.2\ \text{ft}$$
+
+$$H_{peak,\,\text{no SP}} = 147.90 + 176.2 \approx 324.1\ \text{ft}$$
+
+#### Open standpipe — frictionless lumped oscillation
+
+For a standpipe of area $A_s$ at the mid-point of a pipe of area $A_p$ and
+length $L$, the natural angular frequency and maximum water-surface rise are
+(Wylie & Streeter, 1993, §4.7):
+
+$$\omega = \sqrt{\frac{g \, A_p}{A_s \, L}} \quad\Rightarrow\quad \omega \approx 0.0918\ \text{rad/s},\quad T_{osc} \approx 68.4\ \text{s}$$
+
+$$z_{max} = V_0 \sqrt{\frac{A_p \, L}{g \, A_s}} \approx 12.1\ \text{ft}$$
+
+$$H_{peak,\,\text{analytical}} = H_{SP1,ss} + z_{max} \approx 147.90 + 12.1 = 160.0\ \text{ft}$$
+
+### B.8.4 RTHYM-MOC Results
+
+| Quantity | Value |
+|---|---|
+| Steady-state head SP1 | 147.90 ft |
+| No-standpipe peak at J1 | 326.2 ft |
+| Standpipe peak at SP1 | **160.78 ft** |
+| Water-surface rise $z_{max}$ | 12.88 ft |
+| Analytical $z_{max}$ | 12.13 ft |
+| Error vs. analytical | +0.75 ft (+6.2 %) |
+| Overpressure mitigation | **92.8 %** |
+
+### B.8.5 Cross-Engine Comparison (RTHYM-MOC vs TSNet)
+
+TSNet models the standpipe as a `SurgeTank` node at J1 with the matching
+cross-sectional area (converted to SI).  The network uses a short downstream
+stub pipe (P2, 24.4 m) to satisfy TSNet's requirement that the boundary node
+be adjacent to a pipe rather than a valve.
+
+| Quantity | RTHYM-MOC (SP1) | TSNet (J1) |
+|---|---:|---:|
+| Steady-state head | 147.90 ft | 147.95 ft |
+| Peak transient head | 160.78 ft | 160.64 ft |
+| Peak difference | — | 0.14 ft |
+
+**Time-series RMS (0–20 s window):** 0.10 ft — well within the 2.5 ft
+tolerance.
+
+The two engines agree to within 0.14 ft on peak head and 0.10 ft RMS across
+the 20-second comparison window, confirming that the RTHYM-MOC `Standpipe`
+implementation is consistent with TSNet's `SurgeTank` boundary condition.
+
+### B.8.6 Test Summary
+
+Five automated test cases cover this scenario
+(`tests/test_standpipe_surge_protection.py`):
+
+| Test | Assertion | Result |
+|---|---|---|
+| `test_no_standpipe_joukowsky_peak` | Baseline peak ≈ 324 ft (Joukowsky, ±20 ft) | **PASS** |
+| `test_standpipe_limits_pressure` | SP1 peak < 170 ft | **PASS** |
+| `test_standpipe_peak_near_analytical` | SP1 peak within ±15 ft of 160.0 ft | **PASS** |
+| `test_standpipe_overpressure_reduction` | Mitigation ≥ 80 % | **PASS** |
+| `test_rthym_vs_tsnet_rms` | Cross-engine RMS ≤ 2.5 ft over 0–20 s | **PASS** |
+
+### B.8.7 Summary
+
+`rthym-moc` correctly models an open standpipe as a surge-protection device:
+
+- **Peak pressure reduction:** 160.78 ft vs 326.2 ft baseline (92.8 % reduction).
+- **Agreement with frictionless analytical oscillation theory:** peak rise
+  within 6.2 % of the lumped-parameter prediction.
+- **Cross-engine agreement with TSNet:** 0.14 ft peak difference, 0.10 ft
+  time-series RMS over 20 s.
+
+These results confirm that the `Standpipe` boundary condition in `rthym-moc`
+is physically correct and cross-validated against an independent MOC solver.
+

@@ -1,0 +1,40 @@
+[TITLE]
+Simple Pump And Valve Transient Benchmark
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+
+[JUNCTIONS]
+;ID           Elevation  Demand
+Pump_A_in     0          0
+Pump_A_out    0          0
+Valve_A_in    0          0
+Valve_A_out   0          0
+
+[RESERVOIRS]
+;ID              Head
+Reservoir_Low    100
+Reservoir_High   160
+
+[PIPES]
+;ID              Node1           Node2           Length  Diameter  Roughness  MinorLoss  Status
+Pipe_Suction     Reservoir_Low   Pump_A_in       500     12        130        0          Open
+Pipe_Main        Pump_A_out      Valve_A_in      4000    12        130        0          Open
+Pipe_Discharge   Valve_A_out     Reservoir_High  500     12        130        0          Open
+
+[PUMPS]
+;ID       Node1      Node2       Parameters
+Pump_A    Pump_A_in  Pump_A_out  HEAD Curve_Pump_A
+
+[VALVES]
+;ID       Node1       Node2        Diameter  Type  Setting  MinorLoss
+Valve_A   Valve_A_in  Valve_A_out  12        TCV   99.0     0
+
+[CURVES]
+;ID            X-Value  Y-Value
+Curve_Pump_A   0        120
+Curve_Pump_A   500      100
+Curve_Pump_A   1000     60
+
+[END]

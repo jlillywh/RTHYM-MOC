@@ -21,7 +21,7 @@ Supported sections
  [CURVES]      → Pump H-Q curves
  [STATUS]      → Per-link status overrides (OPEN / CLOSED / CV)
  [OPTIONS]     → Units, Headloss formula
- [RTHYM]       → Surge-control component overrides (Standpipe, HydropneumaticTank)
+ [RTHYM]       → Surge-control component overrides (Standpipe, HydropneumaticTank, AirValve)
 
 Ignored sections
 ----------------
@@ -163,7 +163,7 @@ def _get_option(sec: dict, key: str, default: str) -> str:
 # ── [RTHYM] section parser ────────────────────────────────────────────────────
 
 # NodeType strings that map to surge-control components
-_RTHYM_SURGE_TYPES = {"Standpipe", "HydropneumaticTank"}
+_RTHYM_SURGE_TYPES = {"Standpipe", "HydropneumaticTank", "AirValve"}
 
 def _parse_rthym_overrides(
     sec: dict,
@@ -178,16 +178,25 @@ def _parse_rthym_overrides(
     Supported types and their recognised ``key=value`` parameters
     (all numeric values already in US customary units as given in the file):
 
-    **Standpipe** (R-THYM ``SurgeControl``):
-      - ``tank_area`` — ft² cross-sectional area of the standpipe
+        **Standpipe** (R-THYM ``SurgeControl``):
+            - ``tank_area`` — ft² cross-sectional area of the standpipe
 
-    **HydropneumaticTank** (R-THYM ``SurgeTank``):
-      - ``gas_volume``    — ft³ initial trapped gas
-      - ``tank_volume``   — ft³ total vessel volume
-      - ``polytropic_n``  — polytropic exponent (default 1.2)
-      - ``loss_coeff_in`` — discharge coeff for inflow (default 0.7)
-      - ``loss_coeff_out``— discharge coeff for outflow (default 0.7)
-      - ``diameter``      — inches, orifice connection diameter
+        **HydropneumaticTank** (R-THYM ``SurgeTank``):
+            - ``gas_volume``    — ft³ initial trapped gas
+            - ``tank_volume``   — ft³ total vessel volume
+            - ``polytropic_n``  — polytropic exponent (default 1.2)
+            - ``loss_coeff_in`` — discharge coeff for inflow (default 0.7)
+            - ``loss_coeff_out``— discharge coeff for outflow (default 0.7)
+            - ``diameter``      — inches, orifice connection diameter
+
+        **AirValve** (R-THYM ``AirValve``):
+            - ``air_release_head``     — ft vent reference above node elevation
+            - ``diameter``             — inches, large-orifice air-admission diameter
+            - ``air_release_diameter`` — inches, small-orifice air-release diameter
+            - ``gas_volume``           — ft³ initial trapped air-pocket volume
+            - ``tank_volume``          — ft³ air-valve chamber volume
+            - ``loss_coeff_in``        — admission discharge coefficient
+            - ``loss_coeff_out``       — release discharge coefficient
 
     Returns
     -------
@@ -437,7 +446,9 @@ def load_inp(
     **D-W and C-M roughness** values are converted to approximate H-W C
     values using the Swamee-Jain and Manning approximations respectively.
 
-    **Minor losses** (column 7 of ``[PIPES]``) are currently ignored.
+    **Minor losses** (column 7 of ``[PIPES]``) are imported as a dimensionless
+    local-loss coefficient and distributed across the pipe for the transient
+    resistance term.
     """
     if not os.path.isfile(path):
         raise FileNotFoundError(f"EPANET .inp file not found: {path!r}")
@@ -513,6 +524,7 @@ def load_inp(
         n.id = nid;  n.type = "Tank"
         n.elevation = elev
         n.head      = elev + init_lv    # HGL = bottom + current water level
+        n.level     = (100.0 * init_lv / max_lv) if max_lv > 0.0 else 0.0
         n.max_level = max_lv
         n.tank_area = area
         nodes[nid] = n
@@ -529,6 +541,7 @@ def load_inp(
         L     = float(row[3]) * lf
         diam  = float(row[4]) * df      # → in
         rough = float(row[5])
+        minor_loss = float(row[6]) if len(row) >= 7 else 0.0
 
         # Status: column 7 (index 7) may be OPEN / CLOSED / CV;
         # [STATUS] section overrides take precedence.
@@ -562,6 +575,7 @@ def load_inp(
         p.length    = max(L, 1.0)
         p.diameter  = diam
         p.roughness = hw_c
+        p.minor_loss = max(0.0, minor_loss)
         p.flow_gpm  = 0.0   # populated below
         pipes.append(p)
 
@@ -673,6 +687,12 @@ def load_inp(
         if jn.type == "Junction" and jid in init_heads:
             jn.head = init_heads[jid]
 
+    for tid, tn in nodes.items():
+        if tn.type == "Tank" and tid in init_heads:
+            tn.head = init_heads[tid]
+            if tn.max_level > 0.0:
+                tn.level = 100.0 * (tn.head - tn.elevation) / tn.max_level
+
     # For generated valve/pump inline nodes, prefer an explicit entry in
     # init_heads keyed by the generated ID; fall back to the upstream
     # junction's head.
@@ -704,8 +724,8 @@ def load_inp(
         valve_stubs[2 * i].flow_gpm     = q
         valve_stubs[2 * i + 1].flow_gpm = q
 
-    # ── Apply [RTHYM] section overrides (Standpipe / HydropneumaticTank) ──────
-    # Both node types are exported to EPANET as plain Junctions for steady-state
+    # ── Apply [RTHYM] section overrides (Standpipe / HydropneumaticTank / AirValve) ──
+    # These node types are exported to EPANET as plain Junctions for steady-state
     # compatibility.  The [RTHYM] section records their actual type and the
     # physical parameters the MOC solver needs.
     for nid, params in rthym_overrides.items():
@@ -718,7 +738,7 @@ def load_inp(
             continue
         n = nodes[nid]
         ntype = params["node_type"]
-        n.type = ntype  # "Standpipe" or "HydropneumaticTank"
+        n.type = ntype
 
         if ntype == "Standpipe":
             if "tank_area" in params:
@@ -733,6 +753,22 @@ def load_inp(
             if "loss_coeff_out"in params: n.loss_coeff_out= params["loss_coeff_out"]
             if "diameter"      in params: n.diameter      = params["diameter"]
             # head from wntr = steady-state pipeline head at the connection node
+
+        elif ntype == "AirValve":
+            if "air_release_head" in params:
+                n.air_release_head = params["air_release_head"]
+            if "diameter" in params:
+                n.diameter = params["diameter"]
+            if "air_release_diameter" in params:
+                n.air_release_diameter = params["air_release_diameter"]
+            if "gas_volume" in params:
+                n.gas_volume = params["gas_volume"]
+            if "tank_volume" in params:
+                n.tank_volume = params["tank_volume"]
+            if "loss_coeff_in" in params:
+                n.loss_coeff_in = params["loss_coeff_in"]
+            if "loss_coeff_out" in params:
+                n.loss_coeff_out = params["loss_coeff_out"]
 
     # ── Assemble solver ────────────────────────────────────────────────────────
     solver = MOCSolver()

@@ -1,0 +1,91 @@
+[TITLE]
+Exported from R-THYM Digital Twin
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+
+[JUNCTIONS]
+;ID Elevation Demand
+Junction_A 120 0
+Junction_B 120 0
+Junction_C 105 0
+Junction_D 105 0
+Junction_E 100 0
+Junction_F 100 0
+OutflowNode_A 110 50
+OutflowNode_B 100 50
+Valve_A_in 110 0
+Valve_A_out 110 0
+OutflowNode_C 100 50
+Valve_B_in 100 0
+Valve_B_out 100 0
+Pump_A_in 0 0
+Pump_A_out 0 0
+
+[RESERVOIRS]
+;ID Head
+PressureBoundary_A 160
+PressureBoundary_B 140
+
+[TANKS]
+;ID Elevation InitLevel MinLevel MaxLevel Diameter
+Tank_A 150 10 0 20 50
+Tank_B 120 10 0 20 50
+
+[PIPES]
+;ID Node1 Node2 Length Diameter Roughness MinorLoss Status
+Pipe_1 Junction_A Junction_C 500 8 140 0 Open
+Pipe_2 Junction_C Junction_D 500 8 140 0 Open
+Pipe_3 Junction_A Junction_B 500 8 140 0 Open
+Pipe_4 Junction_B Junction_D 500 8 140 0 Open
+Pipe_5 Junction_C Junction_E 500 8 140 0 Open
+Pipe_6 Junction_D Junction_F 500 8 140 0 Open
+Pipe_7 Junction_E Junction_F 500 8 140 0 Open
+Pipe_9 Tank_B OutflowNode_B 500 8 140 0 Open
+Pipe_10 Junction_B Tank_A 500 8 140 0 Open
+Pipe_11 PressureBoundary_A Junction_A 500 8 140 0 Open
+Pipe_12 Junction_F Valve_B_in 500 8 140 0 Open
+Pipe_13 Tank_A OutflowNode_A 500 8 140 0 Open
+Pipe_14 Junction_E Valve_A_in 500 8 140 0 Open
+Pipe_15 Valve_A_out OutflowNode_C 500 8 140 0 Open
+Pipe_16 Valve_B_out PressureBoundary_B 500 8 140 0 Open
+Pipe_8 Tank_B Pump_A_in 500 8 140 0 Open
+Pipe_17 Pump_A_out Junction_E 500 8 140 0 Open
+
+[PUMPS]
+;ID Node1 Node2 Parameters
+Pump_A Pump_A_in Pump_A_out HEAD Curve_Pump_A
+
+[VALVES]
+;ID Node1 Node2 Diameter Type Setting MinorLoss
+Valve_A Valve_A_in Valve_A_out 8 TCV 99.000 0
+Valve_B Valve_B_in Valve_B_out 8 TCV 99.000 0
+
+[CURVES]
+;ID X-Value Y-Value
+Curve_Pump_A 100 250
+
+[COORDINATES]
+;Node X-Coord Y-Coord
+PressureBoundary_A 690 -510
+Junction_A 960 -510
+Junction_B 1110 -510
+Junction_C 960 -660
+Junction_D 1110 -660
+Junction_E 960 -810
+Junction_F 1110 -810
+Tank_A 1260 -450
+Tank_B 750 -810
+OutflowNode_A 1410 -450
+OutflowNode_B 630 -930
+PressureBoundary_B 1410 -810
+Valve_A_in 1100 -930
+Valve_A_out 1120 -930
+OutflowNode_C 1260 -960
+Valve_B_in 1220 -810
+Valve_B_out 1240 -810
+Pump_A_in 830 -810
+Pump_A_out 850 -810
+
+[END]
