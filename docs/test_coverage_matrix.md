@@ -46,7 +46,7 @@ Status meanings:
 
 | Scenario family | Status | Primary automated coverage | Notes |
 |---|---|---|---|
-| Instant valve closure / Joukowsky | Direct | `tests/test_tsnet_benchmark.py`, `tests/test_joukowsky_rthym.py` | Analytical and cross-engine validation. |
+| Instant valve closure / Joukowsky | Direct | `tests/test_joukowsky_rthym.py` | Analytical constraints plus stored R-THYM reference validation. |
 | Gradual closure regimes | Direct | `tests/test_gradual_closure_benchmark.py` | Closure-time sweep. |
 | Pipe material / wave speed sensitivity | Direct | `tests/test_pipe_materials.py` | Wave-speed effect on surge magnitude. |
 | Pipe minor loss import and response | Direct | `tests/test_pipe_minor_losses.py` | Direct and INP-loaded variants. |

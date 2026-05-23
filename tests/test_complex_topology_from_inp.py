@@ -180,4 +180,3 @@ def test_pump_trip_reverses_suction_pipe_flow(data):
     )
     assert pretrip_flow_gpm > 0.0, f"Expected pre-trip Pipe_8 flow to be positive, got {pretrip_flow_gpm:.2f} GPM"
     assert posttrip_flow_gpm < 0.0, f"Expected post-trip Pipe_8 flow to reverse, got {posttrip_flow_gpm:.2f} GPM"
-

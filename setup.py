@@ -7,6 +7,9 @@ Usage:
     pip install .             # standard install
     python setup.py build_ext --inplace   # build in-place for quick testing
 """
+import os
+import sys
+
 from setuptools import setup
 from pybind11.setup_helpers import Pybind11Extension, build_ext
 
@@ -17,6 +20,16 @@ def read_version():
         exec(version_file.read(), namespace)
     return namespace["__version__"]
 
+
+def get_extra_compile_args():
+    if sys.platform == "win32":
+        return ["/O2", "/EHsc"]
+
+    extra_compile_args = ["-O3", "-ffast-math", "-funroll-loops"]
+    if os.environ.get("RTHYM_MOC_NATIVE_OPT") == "1":
+        extra_compile_args.append("-march=native")
+    return extra_compile_args
+
 ext_modules = [
     Pybind11Extension(
         name="rthym_moc._rthym_moc",
@@ -25,7 +38,7 @@ ext_modules = [
             "src/bindings.cpp",
         ],
         include_dirs=["src"],
-        extra_compile_args=["-O3", "-march=native", "-ffast-math", "-funroll-loops"],
+        extra_compile_args=get_extra_compile_args(),
         cxx_std=17,
     ),
 ]
@@ -36,6 +49,6 @@ setup(
     ext_modules=ext_modules,
     cmdclass={"build_ext": build_ext},
     packages=["rthym_moc"],
-    package_data={"rthym_moc": ["*.pyi"]},
+    package_data={"rthym_moc": ["*.pyi", "py.typed"]},
     zip_safe=False,
 )

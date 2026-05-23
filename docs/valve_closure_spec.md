@@ -1,8 +1,8 @@
 # R-THYM — Valve Closure Redesign Specification
 
-**Version**: 1.0  
-**Date**: 2026-05-15  
-**Prepared for**: R-THYM Dev Team  
+**Version**: 1.0
+**Date**: 2026-05-15
+**Prepared for**: R-THYM Dev Team
 **Context**: Coordinated with rthym_moc engine (C++/Python MOC solver)
 
 ---

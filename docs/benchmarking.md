@@ -22,7 +22,6 @@ Each benchmark should provide the following where practical:
 
 | Benchmark | Scenario / expected outcome | Reference solution | Automated checks | Stored artifacts | Parameterized coverage | Cross-engine |
 |---|---|---|---|---|---|---|
-| `tests/test_tsnet_benchmark.py` | Instant downstream closure should match Joukowsky first-step rise and transient peak | Analytical Joukowsky + TSNet | first-step error, max-head error, cross-engine RMS | none needed | no | TSNet |
 | `tests/test_joukowsky_rthym.py` | Instant closure with downstream stub and column-separation dynamics should match R-THYM export | R-THYM web app + analytical Joukowsky constraints | wave speed, steady state, first-step surge, trace RMS, min/max pressure | `tests/R-THYM_Joukowsky_Verification.json`, `tests/R-THYM_Joukowsky_Traces.csv` | no | R-THYM web app |
 | `tests/test_long_pipe_valve.py` | Equal-percentage closure network should match R-THYM heads, peaks, and pressure traces | R-THYM web app export | wave speed, steady heads, peak pressures, RMS traces | `tests/R-THYM_MOC_Verification.json`, `tests/R-THYM_MOC_Traces.csv` | nodes and trace quantities only | R-THYM web app |
 | `tests/test_complex_topology_from_inp.py` | Imported complex network should match EPANET operating point and pump-trip directionality | EPANET/wntr steady state | per-node head tolerances, per-pipe flow tolerances, transient direction checks | `tests/networks/complex_topology.inp` | per-node and per-pipe parametrization | wntr / EPANET |
@@ -57,6 +56,29 @@ Current metrics include:
 - RMS trace mismatch over a declared time window
 - bounded late-time envelopes for stability-focused transients
 
+Tolerance values are expressed in one of three explicit forms in the suite:
+
+- named module-level constants for reusable cross-engine or analytical checks,
+  such as wave-speed, RMS, head, flow, and pressure-error limits
+- parameter matrices for benchmark sweeps, where each input case carries its own
+  acceptance floor, cap, or maximum exposure count
+- inline acceptance bands in direct behavior regressions when the threshold is
+  scenario-specific and not reused elsewhere
+
+For direct behavior regressions, these numbers are still part of the documented
+test contract: the test docstring describes the intended behavior, and the
+assertion message states the exact quantitative band being enforced. This is
+used deliberately for local hydraulic ordering checks such as:
+
+- minimum head-drop or flow-change bands after a control action
+- maximum allowed negative-head or cavitation exposure counts
+- minimum separation between fast and slow transients in startup/shutdown tests
+- monotonic improvement or degradation floors across placement and sizing sweeps
+
+In short, the project policy is that every numerical acceptance rule should be
+visible either as a named tolerance constant, a parameterized case bound, or an
+explicit numeric band in the assertion itself.
+
 ## Regression Tracking
 
 Reference outputs are stored in-repo for benchmarks that depend on external or
@@ -70,6 +92,45 @@ cross-engine replay data:
 
 This means code changes are checked against fixed reference outputs rather than
 only against relative trends.
+
+## Reference Artifact Inventory
+
+The following checked-in artifacts are the repository's current versioned
+reference dataset for regression and import validation. Because these files are
+ committed to git beside the tests that consume them, any change to a reference
+artifact is reviewable in normal code review and tied to the benchmark update
+that required it.
+
+| Artifact | Type | Source / meaning | Primary automated consumer |
+|---|---|---|---|
+| `tests/R-THYM_Joukowsky_Verification.json` | JSON | R-THYM web-app export of steady-state values, valve schedule, peaks, and wave speeds for the instant-closure Joukowsky case | `tests/test_joukowsky_rthym.py` |
+| `tests/R-THYM_Joukowsky_Traces.csv` | CSV | R-THYM web-app time-series trace for the same Joukowsky benchmark | `tests/test_joukowsky_rthym.py` |
+| `tests/R-THYM_MOC_Verification.json` | JSON | R-THYM web-app export of steady-state values, valve schedule, peaks, and wave speeds for the long-pipe valve benchmark | `tests/test_long_pipe_valve.py` |
+| `tests/R-THYM_MOC_Traces.csv` | CSV | R-THYM web-app time-series trace for the long-pipe valve benchmark | `tests/test_long_pipe_valve.py` |
+| `tests/Joukowsky Benchmark.inp` | INP | EPANET-style network definition for the single-pipe Joukowsky benchmark geometry referenced by the cross-engine study | benchmark geometry reference for `tests/test_joukowsky_rthym.py` |
+| `tests/Long Pipe Valve.inp` | INP | EPANET-style network definition for the long-pipe valve benchmark geometry | `tests/test_long_pipe_valve.py` |
+| `tests/networks/complex_topology.inp` | INP | Imported multi-node network used to validate EPANET/wntr-aligned operating points and transient directionality | `tests/test_complex_topology_from_inp.py` |
+| `tests/networks/pump_valve_benchmark.inp` | INP | Imported pump/valve benchmark network used for trip, restart, and closure regression coverage | `tests/test_pump_valve_transients_from_inp.py` |
+
+## Reference Data Policy
+
+Reference artifacts are treated as first-class test inputs rather than ad hoc
+attachments:
+
+- CSV and JSON artifacts remain checked into the repository so regressions run
+  against fixed external outputs, not regenerated files from the local machine.
+- INP fixtures remain checked into the repository so import-based tests run
+  against stable hydraulic layouts.
+- When a reference artifact changes intentionally, the consuming test and this
+  guide should be updated in the same change so reviewers can see both the data
+  delta and the expected behavioral delta.
+- Benchmark-oriented documentation in this guide and
+  `docs/appendix_b_verification.md` should continue to explain the provenance of
+  any new external reference dataset added to the suite.
+
+TSNet comparisons remain documented benchmark studies rather than default test
+dependencies. The published Joukowsky performance comparison lives in
+`examples/benchmark_vs_tsnet.py` and the long-form verification appendix.
 
 ## Gaps And Current Policy
 

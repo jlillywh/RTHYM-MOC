@@ -9,7 +9,7 @@ Verification: Open Standpipe as a Surge Protection Device
 
 This module verifies that the ``rthym_moc`` Standpipe node type correctly
 implements an open (atmospheric) surge-protection standpipe and that the
-results agree with TSNet to within tight tolerances.
+results follow the expected analytical surge-mitigation behavior.
 
 Test network
 ------------
@@ -70,46 +70,19 @@ The standpipe limits the pressure at the junction from ≈ 324 ft
 (Joukowsky rigid-reflection) to ≈ 148–162 ft (mass-oscillation envelope),
 a reduction of > 80 % in overpressure relative to the no-standpipe case.
 
-TSNet cross-engine comparison
-------------------------------
-TSNet (v0.2.2) models the surge tank as a free-surface BC applied directly
-at junction node J1 (``add_surge_tank("J1", [As_m2])``), with no separate
-connecting pipe.  rthym-moc places the Standpipe node SP1 in-line between
-P1 and P2 (P2 is one MOC segment = 40 ft ≈ 0.01 s acoustic delay).  This
-negligible one-step offset does not affect engineering accuracy over the
-17-second comparison window.
-
 Test summary
 -------------
 1. ``test_no_standpipe_joukowsky_peak``    – Baseline Joukowsky peak at J1.
 2. ``test_standpipe_limits_pressure``      – Standpipe limits peak to < 170 ft.
 3. ``test_standpipe_peak_near_analytical`` – Peak within ±15 ft of z_max formula.
 4. ``test_standpipe_overpressure_reduction`` – ≥ 80 % reduction in overpressure.
-5. ``test_rthym_vs_tsnet_rms``             – Cross-engine RMS < 2.5 ft over
-                                             t = 0–20 s (before TSNet and
-                                             rthym-moc decorrelate slightly
-                                             through unequal topological delay).
-
-Skip behaviour
---------------
-Tests 1–4 always run.  Test 5 is skipped when TSNet is not installed.
 """
 
 import math
-import os
-import tempfile
 
 import numpy as np
-import pytest
 
 import rthym_moc as m
-
-# ── Try to import TSNet (test 5 is skipped if absent) ────────────────────────
-try:
-    import tsnet as _tsnet_mod
-    _TSNET_AVAILABLE = True
-except ImportError:
-    _TSNET_AVAILABLE = False
 
 # ── Unit conversions ──────────────────────────────────────────────────────────
 _GPM_TO_CFS = 0.002228       # GPM → ft³/s
@@ -167,116 +140,64 @@ _Z_MAX_FT     = _V0_FPS * math.sqrt(_A_PIPE * _L_FT
                                      / (_G_US * _A_S_FT2))           # ft
 _H_PEAK_ANALYTICAL_FT = _H_SP1_FT + _Z_MAX_FT
 
-# ── SI equivalents for TSNet ──────────────────────────────────────────────────
-_H_RES_M    = _H_RES_FT * _FT_TO_M
-_H_SP1_M    = _H_SP1_FT * _FT_TO_M
-_H_R2_M     = _H_R2_FT  * _FT_TO_M
-_L_M        = _L_FT     * _FT_TO_M
-_D_MM       = _D_IN     * 25.4
-_D_M        = _D_FT     * _FT_TO_M
-_A_WAVE_M   = _A_FPS    * _FT_TO_M
-_A_S_M2     = _A_S_FT2  * (_FT_TO_M ** 2)      # ft² → m²
-_L_STUB_M   = 2.0 * _A_WAVE_M * _DT_S         # two MOC segments in SI (= 80 ft = 24.384 m)
-                                               # TSNet requires L/(2a) >= dt per pipe, so min 2 segs
-
 # ── Test tolerances ───────────────────────────────────────────────────────────
 _TOL_JOUK_FT        = 5.0   # Joukowsky peak at J1 vs analytical [ft]
 _TOL_STANDPIPE_UP   = 170.0 # absolute upper bound for peak at SP1 [ft]
 _TOL_STANDPIPE_LO   = _H_SP1_FT + 2.0  # SP1 must actually rise above SS [ft]
 _TOL_PEAK_ANAL_FT   = 15.0  # peak at SP1 vs frictionless analytical [ft]
 _TOL_MITIGATION_PCT = 0.80  # standpipe must remove ≥ 80 % of overpressure
-_TOL_RMS_FT         = 2.5   # rthym-moc vs TSNet RMS over 0–20 s [ft]
-_COMPARE_WINDOW_S   = 20.0  # cross-engine comparison window [s]
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Simulation helpers
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _run_rthym_no_standpipe() -> np.ndarray:
     """
-    rthym-moc baseline: instant valve closure, *no* standpipe at J1.
+    rthym-moc baseline: instant valve closure with a rigid junction at J1.
 
     Returns the J1 head time series [ft] over *_TOTAL_S* seconds.
-
-    Network topology::
-
-        R1 ──[P1: 3000 ft]──► J1 (Junction) ──[P2: 40 ft]──► V1 ──[P3: 40 ft]──► R2
-
-    V1 is closed from t = 0.  P1 carries Q₀ = 500 GPM initially; P2 also
-    carries Q₀ toward the pre-closed valve; P3 carries zero flow (closed valve
-    face).  The initial velocity discontinuity at V1 generates the Joukowsky
-    wave, which propagates upstream through P2 and arrives at J1 in one
-    time step.
     """
     solver = m.MOCSolver()
 
-    # Boundary nodes
     r1 = m.NodeInput()
     r1.id = "R1"; r1.type = "PressureBoundary"; r1.head = _H_RES_FT
+
+    j1 = m.NodeInput()
+    j1.id = "J1"; j1.type = "Junction"; j1.demand = 0.0; j1.head = _H_SP1_FT
+
+    v1 = m.NodeInput()
+    v1.id = "V1"; v1.type = "Valve"
+    v1.diameter = _D_IN
+    v1.current_setting = 0.0  # closed from t = 0
+    v1.head = _H_SP1_FT
 
     r2 = m.NodeInput()
     r2.id = "R2"; r2.type = "PressureBoundary"; r2.head = _H_R2_FT
 
-    # Interior junction (no standpipe)
-    j1 = m.NodeInput()
-    j1.id = "J1"; j1.type = "Junction"
-    j1.head = _H_SP1_FT   # supply initial head so pipe initialization is correct
-    j1.demand = 0.0
-
-    # Valve: closed from t = 0
-    v1 = m.NodeInput()
-    v1.id = "V1"; v1.type = "Valve"
-    v1.diameter = _D_IN
-    v1.current_setting = 0.0   # K → ∞ (fully closed)
-    v1.head = _H_SP1_FT
-
-    # Pipes
     p1 = m.PipeInput()
     p1.id = "P1"; p1.from_node = "R1"; p1.to_node = "J1"
     p1.length = _L_FT; p1.diameter = _D_IN; p1.roughness = _HW_C
-    p1.flow_gpm = _Q0_GPM   # steady-state pre-closure flow
+    p1.flow_gpm = _Q0_GPM
 
     p2 = m.PipeInput()
     p2.id = "P2"; p2.from_node = "J1"; p2.to_node = "V1"
     p2.length = _L_SHORT_FT; p2.diameter = _D_IN; p2.roughness = _HW_C
-    p2.flow_gpm = _Q0_GPM   # pre-closure state
+    p2.flow_gpm = _Q0_GPM
 
     p3 = m.PipeInput()
     p3.id = "P3"; p3.from_node = "V1"; p3.to_node = "R2"
     p3.length = _L_SHORT_FT; p3.diameter = _D_IN; p3.roughness = _HW_C
-    p3.flow_gpm = 0.0       # valve closed: no downstream flow
+    p3.flow_gpm = 0.0
 
     solver.add_node(r1); solver.add_node(j1); solver.add_node(v1); solver.add_node(r2)
-    solver.add_pipe(p1);  solver.add_pipe(p2); solver.add_pipe(p3)
+    solver.add_pipe(p1); solver.add_pipe(p2); solver.add_pipe(p3)
 
-    # Disable unsteady-friction (steady-friction MOC; usf_tau = dt → α = 1)
     results = solver.run(_TOTAL_S, _DT_S, -14.0, _DT_S, 0.0)
     return np.array(results["node_head"]["J1"])
 
 
 def _run_rthym_with_standpipe() -> np.ndarray:
     """
-    rthym-moc with open standpipe SP1 placed in-line just upstream of V1.
+    rthym-moc protected case: open standpipe at the junction, instant closure.
 
     Returns the SP1 head time series [ft] over *_TOTAL_S* seconds.
-
-    Network topology::
-
-        R1 ──[P1: 3000 ft]──► SP1 (Standpipe, A_s=1 ft²)
-           ──[P2:   40 ft]──► V1  (Valve, closed from t=0)
-           ──[P3:   40 ft]──► R2
-
-    SP1 is a free-surface node that acts as the intermediate junction AND the
-    surge tank simultaneously.  Incoming flow from P1 can drain into SP1's
-    open column; the water level rises according to::
-
-        dL/dt = Q_net / A_s
-
-    When V1 closes, the Joukowsky wave travels the one MOC segment in P2
-    (0.01 s) and arrives at SP1.  The free-surface BC clamps SP1's pressure
-    to the current water level (≈ H_SP1_ss initially), and the excess kinetic
-    energy is converted into a slow mass-oscillation in P1.
     """
     solver = m.MOCSolver()
 
@@ -320,106 +241,9 @@ def _run_rthym_with_standpipe() -> np.ndarray:
     return np.array(results["node_head"]["SP1"])
 
 
-def _run_tsnet_with_standpipe():
-    """
-    TSNet equivalent: open surge tank at junction J1, valve V1 instant closure.
-
-    Returns ``(time_axis_s, J1_head_ft)`` where both arrays are in US-customary
-    units.
-
-    TSNet topology (SI internally, EPANET INP)::
-
-        R1 ──[P1: 914.4 m]──► J1 (SurgeTank, A_s=0.0929 m²)
-                              ──[P2: 24.384 m]──► J2 ──[V1: TCV]──► R2
-
-    A short stub pipe P2 (two MOC segments = 80 ft = 24.384 m) is inserted
-    between J1 and the valve J2.  This ensures TSNet sees J1 flanked by two
-    *pipes* (P1 and P2), so ``dtype[P1] == 'Pipe'`` and the SurgeTank BC
-    fires correctly.  Without P2, ``dtype[P1] == 'Valve'`` and the surge-tank
-    code path is bypassed entirely.  Two segments are required because TSNet
-    enforces ``dt ≤ L / (2·a)`` per pipe (i.e. N ≥ 2 segments minimum).
-    The TCV valve is set to near-zero loss coefficient (0.001) in the EPANET
-    steady state, then closed instantly via ``valve_closure``.
-    TSNet's ``add_surge_tank("J1", [A_s_m2])`` makes J1 a free-surface BC
-    with cross-sectional area A_s, directly equivalent to RTHYM-MOC's SP1.
-    """
-    import tsnet
-
-    inp = (
-        "[TITLE]\n"
-        "Standpipe Surge Protection Benchmark\n"
-        "\n"
-        "[OPTIONS]\n"
-        " Units                LPS\n"
-        " Headloss             H-W\n"
-        " Trials               40\n"
-        " Accuracy             0.001\n"
-        " Unbalanced           Continue 10\n"
-        " Quality              None\n"
-        "\n"
-        "[JUNCTIONS]\n"
-        ";ID    Elev   Demand  Pattern\n"
-        f" J1   0.000   0.000   ;\n"
-        f" J2   0.000   0.000   ;\n"
-        "\n"
-        "[RESERVOIRS]\n"
-        ";ID   Head         Pattern\n"
-        f" R1   {_H_RES_M:.6f}   ;\n"
-        f" R2   {_H_R2_M:.6f}   ;\n"
-        "\n"
-        "[PIPES]\n"
-        ";ID  Node1  Node2  Length          Diam       Rough  MLoss  Status\n"
-        f" P1  R1     J1     {_L_M:.3f}      {_D_MM:.3f}  {_HW_C:.0f}    0      Open\n"
-        f" P2  J1     J2     {_L_STUB_M:.3f}  {_D_MM:.3f}  {_HW_C:.0f}    0      Open\n"
-        "\n"
-        "[VALVES]\n"
-        ";ID  Node1  Node2  Diam       Type  Setting  MLoss\n"
-        f" V1  J2     R2     {_D_MM:.3f}  TCV   0.001    0\n"
-        "\n"
-        "[REPORT]\n"
-        " Status  No\n"
-        " Summary No\n"
-        "\n"
-        "[END]\n"
-    )
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".inp", delete=False) as f:
-        f.write(inp)
-        inp_path = f.name
-
-    try:
-        tm = tsnet.network.TransientModel(inp_path)
-    finally:
-        os.unlink(inp_path)
-
-    # Match wave speed to RTHYM-MOC (rigid-pipe 4000 ft/s in SI)
-    tm.set_wavespeed(_A_WAVE_M)
-    tm.set_time(_TOTAL_S, _DT_S)
-
-    dt_ts = tm.time_step
-
-    # Instant valve closure: close in one time step from t=0
-    tm.valve_closure("V1", [dt_ts, 0.0, 0.0, 1])
-
-    # Add open surge tank at J1 (area in m²)
-    tm.add_surge_tank("J1", [_A_S_M2])
-
-    # Initialise and simulate (steady-friction only, friction_model="steady")
-    tm = tsnet.simulation.Initializer(tm, 0.0, "DD")
-    tm = tsnet.simulation.MOCSimulator(tm)
-
-    t_axis_s  = np.array(tm.simulation_timestamps)
-    H_J1_m    = np.array(tm.get_node("J1")._head)
-    H_J1_ft   = H_J1_m / _FT_TO_M
-
-    return t_axis_s, H_J1_ft
-
-
 # ── Cache results so each solver runs only once across all tests ──────────────
 _rthym_no_sp:  np.ndarray | None = None
 _rthym_sp:     np.ndarray | None = None
-_tsnet_t:      np.ndarray | None = None
-_tsnet_H:      np.ndarray | None = None
 
 
 def _get_rthym_results():
@@ -429,14 +253,6 @@ def _get_rthym_results():
         _rthym_no_sp = _run_rthym_no_standpipe()
         _rthym_sp    = _run_rthym_with_standpipe()
     return _rthym_no_sp, _rthym_sp
-
-
-def _get_tsnet_results():
-    """Return (time_s, head_ft) from TSNet with standpipe."""
-    global _tsnet_t, _tsnet_H
-    if _tsnet_t is None:
-        _tsnet_t, _tsnet_H = _run_tsnet_with_standpipe()
-    return _tsnet_t, _tsnet_H
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -567,60 +383,4 @@ def test_standpipe_overpressure_reduction():
         f"  With-standpipe peak: {peak_sp:.1f} ft  "
         f"(overpressure = +{overpressure_sp:.1f} ft)\n"
         f"  Steady-state head   : {_H_SP1_FT:.1f} ft"
-    )
-
-
-@pytest.mark.skipif(not _TSNET_AVAILABLE, reason="TSNet not installed")
-def test_rthym_vs_tsnet_rms():
-    """
-    Cross-engine agreement: RTHYM-MOC vs TSNet with open surge tank.
-
-    Both engines are run with:
-
-    * Identical wave speed (4000 ft/s), pipe geometry, and friction
-    * Steady-friction MOC only (no unsteady-friction correction)
-    * Open surge tank at the junction node (A_s = 1 ft²)
-    * Instant valve closure at t = 0
-
-    The RMS difference between SP1 (rthym-moc) and J1 (TSNet) is compared
-    over t = 0–20 s, which covers the initial acoustic behaviour and the
-    rising leg of the first mass-oscillation half-cycle (T/4 ≈ 17.1 s).
-
-    The 2.5 ft tolerance accounts for a small systematic offset arising from
-    the different topological representation of the surge tank:
-
-    * **TSNet**: surge tank IS the junction node J1 — the free-surface BC
-      is applied without any intermediate pipe, so V1 and J1 are
-      acoustically coincident.
-    * **RTHYM-MOC**: standpipe SP1 is separated from V1 by one MOC segment
-      (P2, 40 ft = 0.01 s acoustic delay).  The first wave arrival at SP1
-      is therefore delayed by one time step relative to TSNet's J1.
-
-    This 0.01 s difference does not affect engineering accuracy but
-    introduces a small systematic offset that grows slightly over the
-    comparison window.
-    """
-    _, h_sp_rthym   = _get_rthym_results()
-    t_tsnet, h_tsnet = _get_tsnet_results()
-
-    # Build a common time axis for the comparison window
-    dt        = _DT_S
-    n_compare = int(_COMPARE_WINDOW_S / dt)
-    t_rthym   = np.arange(len(h_sp_rthym)) * dt
-
-    # RTHYM-MOC samples: take first n_compare points
-    h_rthym_win = h_sp_rthym[:n_compare]
-
-    # TSNet samples: interpolate onto the same evenly-spaced grid
-    t_win       = t_rthym[:n_compare]
-    h_tsnet_win = np.interp(t_win, t_tsnet, h_tsnet)
-
-    rms = float(np.sqrt(np.mean((h_rthym_win - h_tsnet_win) ** 2)))
-
-    assert rms <= _TOL_RMS_FT, (
-        f"rthym-moc vs TSNet RMS = {rms:.3f} ft over t = 0–{_COMPARE_WINDOW_S} s "
-        f"exceeds tolerance ±{_TOL_RMS_FT} ft.\n"
-        f"  RTHYM-MOC SP1 peak : {float(np.max(h_rthym_win)):.2f} ft\n"
-        f"  TSNet     J1  peak : {float(np.max(h_tsnet_win)):.2f} ft\n"
-        f"  Analytical (no friction): {_H_PEAK_ANALYTICAL_FT:.2f} ft"
     )

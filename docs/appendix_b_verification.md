@@ -265,17 +265,12 @@ spanning the first wave cycle):
 **~65 ms** for TSNet (pure Python), a speedup of roughly **200–400×** on
 typical hardware.
 
-### B.6.6 Test Summary
+### B.6.6 Benchmark Summary
 
-All 5 test cases pass.
-
-| Test | Result |
-|---|---|
-| `test_rthym_joukowsky_first_step` | **PASS** |
-| `test_rthym_transient_max` | **PASS** |
-| `test_tsnet_joukowsky_first_step` | **PASS** |
-| `test_tsnet_transient_max` | **PASS** |
-| `test_cross_engine_rms` | **PASS** |
+This comparison is now maintained as a documented benchmark study rather than a
+default pytest module. The reproducible TSNet side-by-side script lives in
+`examples/benchmark_vs_tsnet.py`, while the automated regression suite keeps the
+analytical and stored-reference Joukowsky checks under `tests/`.
 
 Both `rthym-moc` and `TSNet` reproduce the Joukowsky analytical solution to
 within 0.05 %, and agree with each other within 0.175 ft RMS over the first
@@ -560,7 +555,9 @@ Five automated test cases cover this scenario
 | `test_standpipe_limits_pressure` | SP1 peak < 170 ft | **PASS** |
 | `test_standpipe_peak_near_analytical` | SP1 peak within ±15 ft of 160.0 ft | **PASS** |
 | `test_standpipe_overpressure_reduction` | Mitigation ≥ 80 % | **PASS** |
-| `test_rthym_vs_tsnet_rms` | Cross-engine RMS ≤ 2.5 ft over 0–20 s | **PASS** |
+
+The TSNet cross-engine standpipe comparison in §B.8.5 remains documented here
+as a benchmark study rather than a default pytest dependency.
 
 ### B.8.7 Summary
 
@@ -574,4 +571,3 @@ Five automated test cases cover this scenario
 
 These results confirm that the `Standpipe` boundary condition in `rthym-moc`
 is physically correct and cross-validated against an independent MOC solver.
-

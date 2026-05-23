@@ -1,0 +1,22 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.14
+    hooks:
+      - id: ruff
+        files: ^rthym_moc/.*\.py$
+
+  - repo: local
+    hooks:
+      - id: mypy-rthym-moc
+        name: mypy rthym_moc
+        entry: mypy rthym_moc
+        language: system
+        pass_filenames: false

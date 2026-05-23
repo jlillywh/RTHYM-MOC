@@ -22,7 +22,7 @@ classifiers = [
 
 [project.optional-dependencies]
 inp  = ["wntr>=0.4"]
-dev  = ["pytest", "numpy", "matplotlib"]
+dev  = ["pytest", "pytest-cov", "ruff", "mypy", "pre-commit", "numpy", "matplotlib"]
 docs = ["sphinx", "numpydoc"]
 
 [tool.setuptools.packages.find]
@@ -31,3 +31,13 @@ include = ["rthym_moc*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "rthym_moc._version.__version__" }
+
+[tool.ruff]
+target-version = "py39"
+
+[tool.ruff.lint.per-file-ignores]
+"rthym_moc/epanet.py" = ["E701", "E702"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["rthym_moc"]

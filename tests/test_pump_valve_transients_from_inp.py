@@ -35,6 +35,18 @@ VALVE_OPEN_PRE_END_S = 7.0
 VALVE_OPEN_LATE_START_S = 10.2
 VALVE_OPEN_LATE_END_S = 11.5
 
+INITIAL_FORWARD_FLOW_MIN_GPM = 700.0
+PUMP_TRIP_HEAD_DROP_MIN_FT = 150.0
+PUMP_RESTART_HEAD_RECOVERY_MIN_FT = 150.0
+PUMP_RESTART_DISCHARGE_HEAD_MIN_FT = 140.0
+PUMP_RESTART_SUCTION_FLOW_MIN_GPM = 300.0
+FAST_CLOSURE_PEAK_HEAD_DELTA_MIN_FT = 20.0
+FAST_CLOSURE_PEAK_HEAD_MIN_FT = 780.0
+FAST_CLOSURE_REVERSE_FLOW_MAX_GPM = -50.0
+SLOW_CLOSURE_LATE_FORWARD_FLOW_MIN_GPM = 100.0
+VALVE_REOPENING_FLOW_RECOVERY_MIN_GPM = 60.0
+VALVE_REOPENING_HEAD_RELIEF_MIN_FT = 15.0
+
 
 def _mean_over_window(time_s, values, start_s, end_s):
     mask = (time_s >= start_s) & (time_s <= end_s)
@@ -128,8 +140,12 @@ def test_initial_operating_point_pumps_uphill(pump_cycle_data):
         PRE_EVENT_END_S,
     )
 
-    assert pre_suction_flow_gpm >= 700.0, f"Expected strong suction-side forward flow, got {pre_suction_flow_gpm:.2f} GPM"
-    assert pre_main_flow_gpm >= 700.0, f"Expected strong mainline forward flow, got {pre_main_flow_gpm:.2f} GPM"
+    assert pre_suction_flow_gpm >= INITIAL_FORWARD_FLOW_MIN_GPM, (
+        f"Expected strong suction-side forward flow of at least {INITIAL_FORWARD_FLOW_MIN_GPM:.0f} GPM, got {pre_suction_flow_gpm:.2f} GPM"
+    )
+    assert pre_main_flow_gpm >= INITIAL_FORWARD_FLOW_MIN_GPM, (
+        f"Expected strong mainline forward flow of at least {INITIAL_FORWARD_FLOW_MIN_GPM:.0f} GPM, got {pre_main_flow_gpm:.2f} GPM"
+    )
     assert high_side_head_ft >= 162.0, f"Expected the pump to lift the main above the high reservoir, got {high_side_head_ft:.2f} ft"
 
 
@@ -160,8 +176,8 @@ def test_pump_trip_collapses_discharge_head_and_reverses_suction_flow(pump_cycle
         PUMP_TRIP_END_S,
     )
 
-    assert pre_discharge_head_ft - tripped_discharge_head_ft >= 150.0, (
-        f"Expected pump trip to drop discharge head by at least 150 ft, got {pre_discharge_head_ft - tripped_discharge_head_ft:.2f} ft"
+    assert pre_discharge_head_ft - tripped_discharge_head_ft >= PUMP_TRIP_HEAD_DROP_MIN_FT, (
+        f"Expected pump trip to drop discharge head by at least {PUMP_TRIP_HEAD_DROP_MIN_FT:.0f} ft, got {pre_discharge_head_ft - tripped_discharge_head_ft:.2f} ft"
     )
     assert pre_suction_flow_gpm > 0.0, f"Expected pre-trip suction flow to be positive, got {pre_suction_flow_gpm:.2f} GPM"
     assert tripped_suction_flow_gpm < 0.0, f"Expected suction flow reversal after trip, got {tripped_suction_flow_gpm:.2f} GPM"
@@ -188,13 +204,15 @@ def test_pump_restart_recovers_forward_flow_and_discharge_head(pump_cycle_data):
         PUMP_RESTART_END_S,
     )
 
-    assert restarted_discharge_head_ft - tripped_discharge_head_ft >= 150.0, (
-        f"Expected restart to recover at least 150 ft of discharge head, got {restarted_discharge_head_ft - tripped_discharge_head_ft:.2f} ft"
+    assert restarted_discharge_head_ft - tripped_discharge_head_ft >= PUMP_RESTART_HEAD_RECOVERY_MIN_FT, (
+        f"Expected restart to recover at least {PUMP_RESTART_HEAD_RECOVERY_MIN_FT:.0f} ft of discharge head, got {restarted_discharge_head_ft - tripped_discharge_head_ft:.2f} ft"
     )
-    assert restarted_discharge_head_ft >= 140.0, (
-        f"Expected recovered discharge head near the pumped operating range, got {restarted_discharge_head_ft:.2f} ft"
+    assert restarted_discharge_head_ft >= PUMP_RESTART_DISCHARGE_HEAD_MIN_FT, (
+        f"Expected recovered discharge head near the pumped operating range and at least {PUMP_RESTART_DISCHARGE_HEAD_MIN_FT:.0f} ft, got {restarted_discharge_head_ft:.2f} ft"
     )
-    assert restarted_suction_flow_gpm >= 300.0, f"Expected restart to restore strong forward suction flow, got {restarted_suction_flow_gpm:.2f} GPM"
+    assert restarted_suction_flow_gpm >= PUMP_RESTART_SUCTION_FLOW_MIN_GPM, (
+        f"Expected restart to restore strong forward suction flow of at least {PUMP_RESTART_SUCTION_FLOW_MIN_GPM:.0f} GPM, got {restarted_suction_flow_gpm:.2f} GPM"
+    )
 
 
 def test_fast_valve_closure_creates_larger_upstream_surge_than_slow_closure(
@@ -205,10 +223,12 @@ def test_fast_valve_closure_creates_larger_upstream_surge_than_slow_closure(
     fast_peak_head_ft = float(np.max(np.asarray(fast_closure_data["node_head"]["Valve_A_in"])))
     slow_peak_head_ft = float(np.max(np.asarray(slow_closure_data["node_head"]["Valve_A_in"])))
 
-    assert fast_peak_head_ft >= slow_peak_head_ft + 20.0, (
-        f"Expected fast closure peak head to exceed slow closure by at least 20 ft, got {fast_peak_head_ft - slow_peak_head_ft:.2f} ft"
+    assert fast_peak_head_ft >= slow_peak_head_ft + FAST_CLOSURE_PEAK_HEAD_DELTA_MIN_FT, (
+        f"Expected fast closure peak head to exceed slow closure by at least {FAST_CLOSURE_PEAK_HEAD_DELTA_MIN_FT:.0f} ft, got {fast_peak_head_ft - slow_peak_head_ft:.2f} ft"
     )
-    assert fast_peak_head_ft >= 780.0, f"Expected a pronounced fast-closure surge, got {fast_peak_head_ft:.2f} ft"
+    assert fast_peak_head_ft >= FAST_CLOSURE_PEAK_HEAD_MIN_FT, (
+        f"Expected a pronounced fast-closure surge of at least {FAST_CLOSURE_PEAK_HEAD_MIN_FT:.0f} ft, got {fast_peak_head_ft:.2f} ft"
+    )
 
 
 def test_fast_valve_closure_drives_stronger_flow_reversal_than_slow_closure(
@@ -225,9 +245,13 @@ def test_fast_valve_closure_drives_stronger_flow_reversal_than_slow_closure(
         11.0,
     )
 
-    assert fast_min_flow_gpm <= -50.0, f"Expected fast closure to reverse Pipe_Main strongly, got {fast_min_flow_gpm:.2f} GPM"
+    assert fast_min_flow_gpm <= FAST_CLOSURE_REVERSE_FLOW_MAX_GPM, (
+        f"Expected fast closure to reverse Pipe_Main strongly to at most {FAST_CLOSURE_REVERSE_FLOW_MAX_GPM:.0f} GPM, got {fast_min_flow_gpm:.2f} GPM"
+    )
     assert slow_min_flow_gpm >= 0.0, f"Expected slow closure to avoid full reversal during closure, got {slow_min_flow_gpm:.2f} GPM"
-    assert slow_late_flow_gpm >= 100.0, f"Expected slow closure to retain forward flow late in the ramp, got {slow_late_flow_gpm:.2f} GPM"
+    assert slow_late_flow_gpm >= SLOW_CLOSURE_LATE_FORWARD_FLOW_MIN_GPM, (
+        f"Expected slow closure to retain forward flow late in the ramp at at least {SLOW_CLOSURE_LATE_FORWARD_FLOW_MIN_GPM:.0f} GPM, got {slow_late_flow_gpm:.2f} GPM"
+    )
 
 
 def test_valve_reopening_restores_flow_and_relieves_deadhead_pressure(reopening_data):
@@ -257,9 +281,9 @@ def test_valve_reopening_restores_flow_and_relieves_deadhead_pressure(reopening_
         VALVE_OPEN_LATE_END_S,
     )
 
-    assert late_flow_gpm - preopen_flow_gpm >= 60.0, (
-        f"Expected valve reopening to increase mainline flow by at least 60 GPM, got {late_flow_gpm - preopen_flow_gpm:.2f} GPM"
+    assert late_flow_gpm - preopen_flow_gpm >= VALVE_REOPENING_FLOW_RECOVERY_MIN_GPM, (
+        f"Expected valve reopening to increase mainline flow by at least {VALVE_REOPENING_FLOW_RECOVERY_MIN_GPM:.0f} GPM, got {late_flow_gpm - preopen_flow_gpm:.2f} GPM"
     )
-    assert preopen_head_ft - late_head_ft >= 15.0, (
-        f"Expected valve reopening to relieve at least 15 ft of discharge head, got {preopen_head_ft - late_head_ft:.2f} ft"
+    assert preopen_head_ft - late_head_ft >= VALVE_REOPENING_HEAD_RELIEF_MIN_FT, (
+        f"Expected valve reopening to relieve at least {VALVE_REOPENING_HEAD_RELIEF_MIN_FT:.0f} ft of discharge head, got {preopen_head_ft - late_head_ft:.2f} ft"
     )

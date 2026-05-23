@@ -131,6 +131,7 @@ def test_pipe_material_wave_speed(mat):
 
 @pytest.mark.parametrize("mat", MATERIALS.keys())
 def test_pipe_material_steady_state_flow(mat):
+    """Changing pipe elasticity should not reverse the positive steady operating-point flow."""
     results = _build_material_case(mat)
     q = results["pipe_flow_gpm"]["P1"][-1]
     assert q > 0, f"{mat}: steady-state flow should be positive, got {q} GPM"
