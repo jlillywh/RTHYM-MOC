@@ -8,6 +8,16 @@ versioning for package releases.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-24
+
+### Added
+- quickstart notebook validation section that overlays the checked-in R-THYM pressure trace, reports RMS/peak benchmark metrics, and documents the benchmark tolerances used by the automated test suite
+- quickstart notebook exploratory plots for the shortened 2-second closure case, including valve-side pressure, flow, closure schedule, peak-check annotations, and reloaded persisted artifacts
+
+### Changed
+- package metadata now marks the public release line as beta instead of alpha
+- quickstart notebook structure now separates formal benchmark validation from exploratory scenario visualization and keeps the persisted-output workflow reusable from disk
+
 ## [0.1.0] - 2026-05-23
 
 ### Added
