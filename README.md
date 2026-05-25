@@ -307,6 +307,10 @@ solver = rthym_moc.MOCSolver()
 | `solver.add_node(node)` | Append a `NodeInput` to the network. |
 | `solver.add_pipe(pipe)` | Append a `PipeInput` to the network. |
 | `solver.clear()` | Remove all nodes, pipes, and schedules. |
+| `solver.add_control_rule(rule)` | Register a dynamic operational control rule. |
+| `solver.clear_control_rules()` | Clear all registered control rules. |
+| `solver.get_node_head(id)` | Query the current piezometric HGL head (ft) of a node. |
+| `solver.get_node_pressure(id)` | Query the current gauge pressure (psi) of a node. |
 | `solver.set_valve_setting(id, pct_open)` | Change a valve's opening immediately (used between `run()` calls). |
 | `solver.set_pump_speed(id, pct_speed)` | Change a pump speed immediately. |
 | `solver.set_node_demand(id, demand_gpm)` | Change a junction demand immediately. |
@@ -456,6 +460,82 @@ schedule = [
 ]
 solver.set_valve_schedule("V1", schedule)
 results = solver.run(total_time=5.0, dt=0.01)
+```
+
+## Operational Controls & Event Logic
+
+In addition to static time-varying schedules, the solver supports active, state-based operational controls evaluated at each time step ($dt$) inside the core engine. This allows simulating realistic system responses to dynamic transient events (e.g., pressure-relief valve opening, tank level control, variable speed pump modulation).
+
+Control rules are registered using `ControlRuleInput` and added via `solver.add_control_rule()`.
+
+### Control Types
+
+The solver supports four control strategies (`rthym_moc.ControlType`):
+
+1. **Threshold**: Switches a pump's speed or a valve's opening to a `target` value when a monitored quantity (pressure, head, level, or flow) crosses a `threshold` (with `"lt"` or `"gt"` conditions).
+2. **Deadband**: Maintains a level or pressure within a range (`[threshold, threshold + deadband]`) using `"fill"` or `"drain"` logic, switching a controlled pump/valve ON ($100\%$) or OFF ($0\%$).
+3. **PID**: Continuously modulates a pump's speed or valve's open percentage using a proportional-integral-derivative feedback loop. Includes bumpless transfer initialization and anti-windup clamping.
+4. **PCV (Pump Control Valve)**: Interlocks a pump and its discharge control valve (ramping the valve open over `threshold` seconds when the pump starts; ramping the valve closed over `deadband` seconds when the pump stops while keeping the pump running, and finally shutting the pump off when the valve is fully closed).
+
+### Example Configurations
+
+#### 1. Threshold Control (Slam Valve Closed on High Pressure)
+```python
+rule = rthym_moc.ControlRuleInput()
+rule.id = "valve_safety"
+rule.type = rthym_moc.ControlType.Threshold
+rule.monitored_node = "J1"
+rule.controlled_node = "V1"
+rule.monitored_quantity = "pressure"
+rule.condition = "gt"
+rule.threshold = 45.0  # psi
+rule.target = 0.0      # slam shut (0% open)
+
+solver.add_control_rule(rule)
+```
+
+#### 2. Deadband Control (Pump Fill Cycle on Tank Level)
+```python
+rule = rthym_moc.ControlRuleInput()
+rule.id = "tank_fill"
+rule.type = rthym_moc.ControlType.Deadband
+rule.monitored_node = "T1"
+rule.controlled_node = "Pmp1"
+rule.monitored_quantity = "level"
+rule.threshold = 40.0  # low limit (40% full)
+rule.deadband = 20.0   # range (high limit = 40 + 20 = 60% full)
+rule.action = "fill"   # start pump on low limit, stop on high limit
+
+solver.add_control_rule(rule)
+```
+
+#### 3. PID Control (Variable Speed Pump Regulating Pressure)
+```python
+rule = rthym_moc.ControlRuleInput()
+rule.id = "pressure_reg"
+rule.type = rthym_moc.ControlType.PID
+rule.monitored_node = "J2"
+rule.controlled_node = "Pmp2"
+rule.monitored_quantity = "pressure"
+rule.target = 30.0     # target setpoint (30.0 psi)
+rule.kp = 2.0
+rule.ki = 1.0
+rule.kd = 0.1
+
+solver.add_control_rule(rule)
+```
+
+#### 4. PCV Sequencing (Pump & Valve Interlock)
+```python
+rule = rthym_moc.ControlRuleInput()
+rule.id = "pump_valve_seq"
+rule.type = rthym_moc.ControlType.PCV
+rule.monitored_node = "Pmp1"   # pump to monitor
+rule.controlled_node = "V1"    # control valve to sequence
+rule.threshold = 10.0          # open ramp time (seconds)
+rule.deadband = 15.0           # close ramp time (seconds)
+
+solver.add_control_rule(rule)
 ```
 
 ---
@@ -660,7 +740,7 @@ Use these IDs when calling `set_valve_schedule()`, `set_pump_speed()`, or access
 - **PRV / PSV / PBV** pressure setpoints cannot be converted to a % open without system-wide hydraulic information; these valves are initialised fully open with a `UserWarning`.
 - **FCV / GPV** valve types are not supported and are treated as fully-open valves.
 - **Minor losses** (`[PIPES]` column 7) are imported as a dimensionless local-loss coefficient `K`, included in the initial steady headloss, and then applied as distributed resistance across the pipe during the transient. This is an approximation of a truly lumped fitting loss, but dedicated regression benchmarks are included to quantify the mismatch.
-- **Demand patterns** (`[PATTERNS]`, `[CONTROLS]`, `[RULES]`) are not applied; only base demands are used.
+- **Demand patterns** (`[PATTERNS]`) are not applied; only base demands are used.
 - **Check valves** (`CV` status on a pipe) are imported as generated inline `CheckValve` nodes with split pipes. Phase 1 models them as ideal one-way devices: forward flow is allowed, while reverse-flow tendency closes the valve without detailed slam dynamics.
 
 See `examples/load_from_inp.py` for a complete worked example.
