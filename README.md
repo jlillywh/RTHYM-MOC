@@ -176,6 +176,15 @@ The repository includes runnable script examples under `examples/`, including
 For an interactive walkthrough focused on reproducibility and deterministic
 solver behavior, see `examples/quickstart_notebook.ipynb`.
 
+Students and first-time users can launch that notebook in a browser via Binder
+without installing Jupyter locally:
+
+[![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fquickstart_notebook.ipynb)
+
+The first Binder launch can take a few minutes while the environment builds the
+compiled extension. After it opens, users can run the notebook directly in
+JupyterLab.
+
 ## Contributing
 
 Contributions are welcome for solver behavior, benchmark coverage,
