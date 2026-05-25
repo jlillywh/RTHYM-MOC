@@ -819,11 +819,11 @@ void MOCSolver::stepMOC() {
             const double setting = std::max(1e-6, n.current_setting);
 
             double K; // dimensionless loss coefficient
-            if (n.type == NodeType::Valve && !(n.design_head > 0.0 && n.design_flow > 0.0)) {
+            if (n.type == NodeType::Valve) {
                 // K = (100/setting)² − 1   (K→∞ when fully closed)
                 K = std::pow(100.0 / setting, 2.0) - 1.0;
             } else {
-                // Turbine or Valve with design curve modeled as variable-K orifice
+                // Turbine modeled as a variable-K orifice from its design point.
                 const double A_t  = M_PI_ * std::pow(n.diameter / 24.0, 2.0); // ft²
                 const double V_d  = (n.design_velocity > 1e-6)
                     ? n.design_velocity
