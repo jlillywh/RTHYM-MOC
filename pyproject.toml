@@ -44,3 +44,6 @@ target-version = "py39"
 [tool.mypy]
 python_version = "3.12"
 files = ["rthym_moc"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
