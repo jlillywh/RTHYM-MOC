@@ -266,3 +266,96 @@ HEADLOSS H-W
     # a reverse-flow tendency and begin closing from t=0.
     # At the end of the simulation (0.4s), position should be roughly exp(-0.4/2.5) ≈ 0.852.
     assert 0.80 < valve_pos[-1] < 0.90, f"Expected final position around 0.85, got {valve_pos[-1]:.4f}"
+
+
+def test_load_inp_with_all_rthym_overrides(tmp_path: Path):
+    """It should parse all override types (CheckValve, Standpipe, HydropneumaticTank, AirValve)
+    and look them up correctly in junctions/nodes, pump_nodes, and valve_nodes.
+    """
+    import unittest.mock as mock
+
+    inp_path = tmp_path / "rthym_all_overrides.inp"
+    inp_path.write_text(
+        """[TITLE]
+All overrides test
+
+[JUNCTIONS]
+J1   0          0
+J2   0          0
+
+[RESERVOIRS]
+R1   160
+R2   140
+
+[PUMPS]
+PU1  R1  J1  100
+
+[VALVES]
+VA1  J1  J2  12  TCV  10
+
+[PIPES]
+P2   J2  R2  40      12        130        0          CV
+
+[RTHYM]
+_CHECKVALVE_P2 CheckValve closure_time=2.5 flipped=1
+_PUMP_PU1 AirValve diameter=2.0 air_release_head=10.0 air_release_diameter=0.5 gas_volume=0.1 tank_volume=1.0 loss_coeff_in=0.6 loss_coeff_out=0.8
+_VALVE_VA1 HydropneumaticTank gas_volume=5.0 tank_volume=50.0 polytropic_n=1.3 loss_coeff_in=0.5 loss_coeff_out=0.6 diameter=4.0
+J1 Standpipe tank_area=1.5
+INVALID_NODE Standpipe
+MALFORMED_ROW CheckValve closure_time=abc
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+
+[END]
+""",
+        encoding="utf-8",
+    )
+
+    added_nodes = {}
+    original_add_node = m.MOCSolver.add_node
+
+    def mock_add_node(self, node):
+        added_nodes[node.id] = node
+        return original_add_node(self, node)
+
+    with mock.patch.object(m.MOCSolver, "add_node", mock_add_node):
+        solver = m.load_inp(
+            str(inp_path),
+            use_wntr=False,
+            initial_flows={"P1": 500.0, "P2": 500.0},
+            initial_heads={"J1": 150.0},
+        )
+
+    # 1. Check check valve overrides
+    cv_node = added_nodes["_CHECKVALVE_P2"]
+    assert cv_node.type == "CheckValve"
+    assert cv_node.closure_time == 2.5
+    assert cv_node.flipped is True
+
+    # 2. Check pump override to AirValve and its properties
+    pump_node = added_nodes["_PUMP_PU1"]
+    assert pump_node.type == "AirValve"
+    assert pump_node.diameter == 2.0
+    assert pump_node.air_release_head == 10.0
+    assert pump_node.air_release_diameter == 0.5
+    assert pump_node.gas_volume == 0.1
+    assert pump_node.tank_volume == 1.0
+    assert pump_node.loss_coeff_in == 0.6
+    assert pump_node.loss_coeff_out == 0.8
+
+    # 3. Check valve override to HydropneumaticTank and its properties
+    valve_node = added_nodes["_VALVE_VA1"]
+    assert valve_node.type == "HydropneumaticTank"
+    assert valve_node.gas_volume == 5.0
+    assert valve_node.tank_volume == 50.0
+    assert valve_node.polytropic_n == 1.3
+    assert valve_node.loss_coeff_in == 0.5
+    assert valve_node.loss_coeff_out == 0.6
+    assert valve_node.diameter == 4.0
+
+    # 4. Check junction override to Standpipe and its properties
+    j1_node = added_nodes["J1"]
+    assert j1_node.type == "Standpipe"
+    assert j1_node.tank_area == 1.5
