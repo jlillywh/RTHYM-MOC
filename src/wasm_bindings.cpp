@@ -62,6 +62,12 @@ emscripten::val MOCSolver::get_step_results() const {
             actualDemand = ns.actual_demand;
         }
 
+        const bool reverseFlowBlocked =
+            n.type == NodeType::CheckValve &&
+            downH > upH + 1e-9 &&
+            std::abs(nodeFlowGPM) <= 1e-6;
+
+        node_res.set("type", nodeTypeToStr(n.type));
         node_res.set("pressure", pressure);
         node_res.set("upstreamPressure", upPressurePsi);
         node_res.set("downstreamPressure", downPressurePsi);
@@ -69,6 +75,7 @@ emscripten::val MOCSolver::get_step_results() const {
         node_res.set("downstreamHead", downH);
         node_res.set("flowGPM", nodeFlowGPM);
         node_res.set("actualDemandGPM", actualDemand);
+        node_res.set("reverseFlowBlocked", reverseFlowBlocked);
         node_res.set("cavitation", upH <= n.elevation + p_vapor_ || downH <= n.elevation + p_vapor_);
 
         if (n.type == NodeType::Standpipe) {
