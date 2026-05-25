@@ -21,7 +21,10 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-inp  = ["wntr>=0.4"]
+inp  = [
+    "wntr>=0.4,<1.4; python_version < '3.10'",
+    "wntr>=0.4; python_version >= '3.10'",
+]
 dev  = ["pytest", "pytest-cov", "ruff", "mypy", "pre-commit", "numpy", "matplotlib"]
 docs = ["sphinx", "numpydoc"]
 
