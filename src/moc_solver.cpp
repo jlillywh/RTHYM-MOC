@@ -198,8 +198,10 @@ void MOCSolver::set_pump_speed(const std::string& id, double pct) {
     requireNodeType(node_input, id, "set_pump_speed()", {NodeType::Pump}, "Pump");
     node_input.current_speed = pct;
     auto it = node_idx_map_.find(id);
-    if (it != node_idx_map_.end())
+    if (it != node_idx_map_.end()) {
         nodes_[it->second].input.current_speed = pct;
+        nodes_[it->second].command_speed = pct;
+    }
 }
 
 void MOCSolver::set_node_demand(const std::string& id, double demand_gpm) {
@@ -332,6 +334,8 @@ void MOCSolver::initGrid() {
         ns.air_cumulative_loss_gal = 0.0;
         ns.gas_pressure_psi = 0.0;
         ns.tank_flow_gpm = 0.0;
+        if (ns.input.type == NodeType::Pump || ns.input.type == NodeType::Turbine)
+            ns.command_speed = ns.input.current_speed;
         if (ns.input.type == NodeType::Standpipe)
             ns.surge_level_ft = ns.input.head; // initial water-surface elevation (ft HGL)
         if (ns.input.type == NodeType::HydropneumaticTank) {
@@ -521,7 +525,7 @@ void MOCSolver::initGrid() {
         if (rule.type == ControlType::PCV) {
             bool pump_on = false;
             if (p_it != node_idx_map_.end() && nodes_[p_it->second].input.type == NodeType::Pump) {
-                pump_on = nodes_[p_it->second].input.current_speed > 0.0;
+                pump_on = nodes_[p_it->second].command_speed > 0.0;
             }
             bool valve_open = false;
             if (v_it != node_idx_map_.end()) {
@@ -1322,6 +1326,8 @@ void MOCSolver::recordStep(SimResults& results) const {
         // CheckValve closure dynamics telemetry
         results.valve_position[n.id].push_back(ns.valve_position);
         results.valve_velocity[n.id].push_back(ns.valve_velocity);
+        if (n.type == NodeType::Valve || n.type == NodeType::Turbine)
+            results.valve_setting[n.id].push_back(n.current_setting);
     }
 
     for (int i = 0; i < static_cast<int>(pipes_.size()); ++i) {
@@ -1382,9 +1388,11 @@ SimResults MOCSolver::run(double total_time_s, double dt,
             const double t_now = static_cast<double>(step) * dt;
             for (auto& [pid, sched] : pump_schedules_) {
                 auto nit = node_idx_map_.find(pid);
-                if (nit != node_idx_map_.end())
-                    nodes_[nit->second].input.current_speed =
-                        interpSchedule(sched, t_now);
+                if (nit != node_idx_map_.end()) {
+                    const double val = interpSchedule(sched, t_now);
+                    nodes_[nit->second].input.current_speed = val;
+                    nodes_[nit->second].command_speed = val;
+                }
             }
         }
         if (!demand_schedules_.empty()) {
@@ -1462,7 +1470,9 @@ void MOCSolver::evaluateControlRules(double t_now) {
                 if (it != node_idx_map_.end()) {
                     auto& ns = nodes_[it->second];
                     if (ns.input.type == NodeType::Pump) {
-                        ns.input.current_speed = std::clamp(rule.target, 0.0, 100.0);
+                        const double spd = std::clamp(rule.target, 0.0, 100.0);
+                        ns.input.current_speed = spd;
+                        ns.command_speed = spd;
                     } else if (ns.input.type == NodeType::Valve || ns.input.type == NodeType::Turbine) {
                         ns.input.current_setting = std::clamp(rule.target, 0.0, 100.0);
                     }
@@ -1504,6 +1514,7 @@ void MOCSolver::evaluateControlRules(double t_now) {
                 double target_val = active ? 100.0 : 0.0;
                 if (ns.input.type == NodeType::Pump) {
                     ns.input.current_speed = target_val;
+                    ns.command_speed = target_val;
                 } else if (ns.input.type == NodeType::Valve || ns.input.type == NodeType::Turbine) {
                     ns.input.current_setting = target_val;
                 }
@@ -1540,6 +1551,7 @@ void MOCSolver::evaluateControlRules(double t_now) {
                 auto& ns = nodes_[it->second];
                 if (ns.input.type == NodeType::Pump) {
                     ns.input.current_speed = clamped_output;
+                    ns.command_speed = clamped_output;
                 } else if (ns.input.type == NodeType::Valve || ns.input.type == NodeType::Turbine) {
                     ns.input.current_setting = clamped_output;
                 }
@@ -1553,7 +1565,7 @@ void MOCSolver::evaluateControlRules(double t_now) {
                 auto& pump = nodes_[p_it->second];
                 auto& valve = nodes_[v_it->second];
                 
-                double cmd_speed = pump.input.current_speed;
+                double cmd_speed = pump.command_speed;
                 double ramp_open = std::max(1e-6, rule.threshold);
                 double ramp_close = std::max(1e-6, rule.deadband);
                 

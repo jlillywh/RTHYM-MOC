@@ -81,6 +81,8 @@ emscripten::val MOCSolver::get_step_results() const {
         node_res.set("actualDemandGPM", actualDemand);
         node_res.set("reverseFlowBlocked", reverseFlowBlocked);
         node_res.set("cavitation", upH <= n.elevation + p_vapor_ || downH <= n.elevation + p_vapor_);
+        node_res.set("currentSpeed", ns.input.current_speed);
+        node_res.set("currentSetting", ns.input.current_setting);
 
         if (n.type == NodeType::Standpipe) {
             node_res.set("surgeLevel", ns.surge_level_ft);

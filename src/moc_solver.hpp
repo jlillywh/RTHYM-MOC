@@ -118,6 +118,8 @@ struct SimResults {
     // CheckValve closure dynamics telemetry
     std::unordered_map<std::string, std::vector<double>> valve_position;
     std::unordered_map<std::string, std::vector<double>> valve_velocity;
+    // Throttling valve / turbine % open (from control rules and schedules)
+    std::unordered_map<std::string, std::vector<double>> valve_setting;
 };
 
 enum class ControlType {
@@ -190,6 +192,9 @@ struct NodeState {
         double valve_velocity = 0.0;     // rate of closure/opening (1/s)
         bool is_closing = false;         // true if closure is in progress
     NodeInput input;
+    // Pump: commanded target speed (%) separate from input.current_speed, which
+    // PCV and other rules may override transiently during valve ramping.
+    double command_speed = 100.0;
     double surge_level_ft   = 0.0;  // Standpipe current water surface (ft)
     double actual_demand    = 0.0;  // GPM  (updated by solver, Junction/OutflowNode)
     double gas_volume_ft3   = 0.0;  // HydropneumaticTank / AirValve current gas volume (ft³)
