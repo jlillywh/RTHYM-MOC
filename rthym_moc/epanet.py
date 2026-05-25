@@ -25,7 +25,8 @@ Supported sections
 
 Ignored sections
 ----------------
-PATTERNS, CONTROLS, RULES, DEMANDS, EMITTERS, QUALITY, REACTIONS,
+DEMANDS and multipliers from PATTERNS (subset), simple LINK [CONTROLS], RULES,
+EMITTERS, QUALITY, REACTIONS,
 ENERGY, COORDINATES, VERTICES, LABELS, BACKDROP, TITLE.
 
 Initial flows
@@ -365,6 +366,152 @@ def _wntr_hydraulics(path: str) -> tuple[dict[str, float], dict[str, float]]:
         return {}, {}
 
 
+# ── Demand patterns and simple controls ───────────────────────────────────────
+
+def _pattern_timestep_seconds(sec: dict) -> float:
+    """EPANET pattern timestep from [TIMES] (hours → seconds). Defaults to 1 hour."""
+    for row in sec.get("TIMES", []):
+        if len(row) >= 3 and row[0].upper() == "PATTERN" and row[1].upper() == "TIMESTEP":
+            try:
+                return float(row[2]) * 3600.0
+            except ValueError:
+                break
+    return 3600.0
+
+
+def _parse_patterns(sec: dict) -> dict[str, list[float]]:
+    """Parse ``[PATTERNS]`` → ``{pattern_id: [multiplier, ...]}``."""
+    patterns: dict[str, list[float]] = {}
+    for row in sec.get("PATTERNS", []):
+        if len(row) < 2:
+            continue
+        pid = row[0]
+        mults: list[float] = []
+        for tok in row[1:]:
+            try:
+                mults.append(float(tok))
+            except ValueError:
+                continue
+        if mults:
+            patterns[pid] = mults
+    return patterns
+
+
+def _parse_link_controls(sec: dict) -> list[tuple[str, str, float]]:
+    """Parse simple EPANET ``[CONTROLS]`` LINK STATUS rows.
+
+    Returns ``[(link_id, status, time_s), ...]`` with times converted from EPANET
+    hours to seconds.
+    """
+    events: list[tuple[str, str, float]] = []
+    for row in sec.get("CONTROLS", []):
+        if len(row) < 7 or row[0].upper() != "LINK":
+            continue
+        if row[2].upper() != "STATUS":
+            continue
+        status = row[3].upper()
+        if status not in ("OPEN", "CLOSED"):
+            continue
+        if row[4].upper() != "AT" or row[5].upper() != "TIME":
+            continue
+        try:
+            time_s = float(row[6]) * 3600.0
+        except ValueError:
+            continue
+        events.append((row[1], status, time_s))
+    return events
+
+
+def _build_step_schedule(
+    initial: float,
+    events: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    """Piecewise-constant schedule from ``(time_s, value)`` control events."""
+    if not events:
+        return [(0.0, initial)]
+    ordered = sorted(events)
+    schedule: list[tuple[float, float]] = [(0.0, initial)]
+    for t_s, value in ordered:
+        if schedule and t_s <= schedule[-1][0]:
+            schedule[-1] = (t_s, value)
+        else:
+            schedule.append((t_s, value))
+    return schedule
+
+
+def _apply_pattern_demands(
+    nodes: dict[str, NodeInput],
+    patterns: dict[str, list[float]],
+    base_demands: dict[str, float],
+    pattern_ids: dict[str, str],
+) -> None:
+    """Set junction demand from base demand × pattern multiplier at index 0."""
+    for jid, base in base_demands.items():
+        jn = nodes.get(jid)
+        if jn is None or jn.type != "Junction":
+            continue
+        mult = 1.0
+        pid = pattern_ids.get(jid)
+        if pid and pid in patterns and patterns[pid]:
+            mult = patterns[pid][0]
+        jn.demand = base * mult
+
+
+def _attach_import_schedules(
+    solver: MOCSolver,
+    sec: dict,
+    patterns: dict[str, list[float]],
+    pattern_ids: dict[str, str],
+    base_demands: dict[str, float],
+    pump_link_ids: list[str],
+    valve_link_ids: list[str],
+    pump_initial_speed: dict[str, float],
+    valve_initial_setting: dict[str, float],
+) -> None:
+    """Register demand / pump / valve schedules derived from the INP file."""
+    dt_pat_s = _pattern_timestep_seconds(sec)
+
+    for jid, base in base_demands.items():
+        pid = pattern_ids.get(jid)
+        if not pid or pid not in patterns or len(patterns[pid]) < 2:
+            continue
+        sched = [
+            (i * dt_pat_s, base * mult)
+            for i, mult in enumerate(patterns[pid])
+        ]
+        solver.set_demand_schedule(jid, sched)
+
+    controls = _parse_link_controls(sec)
+    pump_events: dict[str, list[tuple[float, float]]] = {}
+    valve_events: dict[str, list[tuple[float, float]]] = {}
+
+    for lid, status, time_s in controls:
+        pct = 100.0 if status == "OPEN" else 0.0
+        if lid in pump_link_ids:
+            pump_events.setdefault(lid, []).append((time_s, pct))
+        elif lid in valve_link_ids:
+            valve_events.setdefault(lid, []).append((time_s, pct))
+
+    for lid in pump_link_ids:
+        events = pump_events.get(lid, [])
+        if events:
+            init = pump_initial_speed.get(lid, 100.0)
+            solver.set_pump_schedule(f"_PUMP_{lid}", _build_step_schedule(init, events))
+
+    for lid in valve_link_ids:
+        events = valve_events.get(lid, [])
+        if events:
+            init = valve_initial_setting.get(lid, 100.0)
+            solver.set_valve_schedule(f"_VALVE_{lid}", _build_step_schedule(init, events))
+
+    if sec.get("RULES"):
+        warnings.warn(
+            "[RULES] are not imported; use rthym_moc control rules or explicit schedules.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def load_inp(
@@ -482,6 +629,9 @@ def load_inp(
 
     curves = _parse_curves(sec)
     rthym_overrides = _parse_rthym_overrides(sec, lf)
+    patterns = _parse_patterns(sec)
+    base_demands: dict[str, float] = {}
+    demand_patterns: dict[str, str] = {}
 
     # Per-link STATUS overrides from [STATUS] section
     status_map: dict[str, str] = {
@@ -499,10 +649,29 @@ def load_inp(
         nid  = row[0]
         elev = float(row[1]) * lf
         dem  = float(row[2]) * ff if len(row) >= 3 else 0.0
+        base_demands[nid] = base_demands.get(nid, 0.0) + dem
+        if len(row) >= 4:
+            demand_patterns[nid] = row[3]
         n = NodeInput()
         n.id = nid;  n.type = "Junction"
         n.elevation = elev;  n.demand = dem
         nodes[nid] = n
+
+    for row in sec.get("DEMANDS", []):
+        if len(row) < 2:
+            continue
+        jid = row[0]
+        try:
+            dem = float(row[1]) * ff
+        except ValueError:
+            continue
+        base_demands[jid] = base_demands.get(jid, 0.0) + dem
+        if len(row) >= 3:
+            demand_patterns[jid] = row[2]
+        if jid in nodes and nodes[jid].type == "Junction":
+            nodes[jid].demand = base_demands[jid]
+
+    _apply_pattern_demands(nodes, patterns, base_demands, demand_patterns)
 
     for row in sec.get("RESERVOIRS", []):
         if len(row) < 2:
@@ -612,6 +781,8 @@ def load_inp(
     pump_nodes:    list[NodeInput] = []
     pump_stubs:    list[PipeInput] = []
     pump_link_ids: list[str]       = []   # original EPANET link IDs (for flow lookup)
+    pump_initial_speed: dict[str, float] = {}
+    valve_initial_setting: dict[str, float] = {}
 
     for row in sec.get("PUMPS", []):
         if len(row) < 4:
@@ -627,6 +798,7 @@ def load_inp(
         pn.current_speed = 100.0
         pump_nodes.append(pn)
         pump_link_ids.append(lid)
+        pump_initial_speed[lid] = pn.current_speed
 
         up = PipeInput()
         up.id = f"_P_{lid}_up";  up.from_node = frm;  up.to_node = nid
@@ -690,6 +862,7 @@ def load_inp(
             vn.head = setpoint_head
         valve_nodes.append(vn)
         valve_link_ids.append(lid)
+        valve_initial_setting[lid] = pct
 
         up = PipeInput()
         up.id = f"_P_{lid}_up";  up.from_node = frm;  up.to_node = nid
@@ -737,16 +910,24 @@ def load_inp(
             r for r in sec.get("VALVES", []) if len(r) >= 2 and r[0] == lid
         )
         frm_nid = row[1]
+        to_nid = row[2] if len(row) >= 3 else frm_nid
         # PRV/PSV/PBV use NodeInput.head as a control setpoint, not a user IC override.
         if str(vn.type) not in _PRESSURE_VALVE_TYPES:
-            vn.head = init_heads.get(vn.id, init_heads.get(frm_nid, vn.head))
+            vn.head = init_heads.get(
+                vn.id,
+                init_heads.get(frm_nid, init_heads.get(to_nid, vn.head)),
+            )
 
     for i, (lid, pn) in enumerate(zip(pump_link_ids, pump_nodes)):
         row = next(
             r for r in sec.get("PUMPS", []) if len(r) >= 2 and r[0] == lid
         )
         frm_nid = row[1]
-        pn.head = init_heads.get(pn.id, init_heads.get(frm_nid, pn.head))
+        to_nid = row[2] if len(row) >= 3 else frm_nid
+        pn.head = init_heads.get(
+            pn.id,
+            init_heads.get(frm_nid, init_heads.get(to_nid, pn.head)),
+        )
 
     for lid, cn in zip(check_valve_link_ids, check_valve_nodes):
         row = next(
@@ -848,5 +1029,29 @@ def load_inp(
 
     for p in pipes + pump_stubs + valve_stubs + check_valve_stubs:
         solver.add_pipe(p)
+
+    _attach_import_schedules(
+        solver,
+        sec,
+        patterns,
+        demand_patterns,
+        base_demands,
+        pump_link_ids,
+        valve_link_ids,
+        pump_initial_speed,
+        valve_initial_setting,
+    )
+
+    non_link_controls = [
+        row for row in sec.get("CONTROLS", [])
+        if row and row[0].upper() != "LINK"
+    ]
+    if non_link_controls:
+        warnings.warn(
+            f"{len(non_link_controls)} [CONTROLS] row(s) use unsupported object types "
+            "(only LINK STATUS OPEN/CLOSED AT TIME is imported).",
+            UserWarning,
+            stacklevel=2,
+        )
 
     return solver
