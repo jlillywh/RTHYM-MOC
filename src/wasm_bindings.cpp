@@ -195,11 +195,36 @@ EMSCRIPTEN_BINDINGS(rthym_moc) {
         .property("youngs_modulus", &PipeInput::youngs_modulus)
         .property("poissons_ratio", &PipeInput::poissons_ratio);
 
+    enum_<ControlType>("ControlType")
+        .value("Threshold", ControlType::Threshold)
+        .value("Deadband", ControlType::Deadband)
+        .value("PID", ControlType::PID)
+        .value("PCV", ControlType::PCV);
+
+    class_<ControlRuleInput>("ControlRuleInput")
+        .constructor<>()
+        .property("id", &ControlRuleInput::id)
+        .property("type", &ControlRuleInput::type)
+        .property("monitored_node", &ControlRuleInput::monitored_node)
+        .property("controlled_node", &ControlRuleInput::controlled_node)
+        .property("monitored_quantity", &ControlRuleInput::monitored_quantity)
+        .property("monitored_pipe", &ControlRuleInput::monitored_pipe)
+        .property("condition", &ControlRuleInput::condition)
+        .property("threshold", &ControlRuleInput::threshold)
+        .property("target", &ControlRuleInput::target)
+        .property("deadband", &ControlRuleInput::deadband)
+        .property("action", &ControlRuleInput::action)
+        .property("kp", &ControlRuleInput::kp)
+        .property("ki", &ControlRuleInput::ki)
+        .property("kd", &ControlRuleInput::kd);
+
     class_<MOCSolver>("MOCSolver")
         .constructor<>()
         .function("add_node", &MOCSolver::add_node)
         .function("add_pipe", &MOCSolver::add_pipe)
         .function("clear", &MOCSolver::clear)
+        .function("add_control_rule", &MOCSolver::add_control_rule)
+        .function("clear_control_rules", &MOCSolver::clear_control_rules)
         .function("set_valve_setting", &MOCSolver::set_valve_setting)
         .function("set_pump_speed", &MOCSolver::set_pump_speed)
         .function("set_node_demand", &MOCSolver::set_node_demand)
