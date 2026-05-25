@@ -163,7 +163,7 @@ def _get_option(sec: dict, key: str, default: str) -> str:
 # ── [RTHYM] section parser ────────────────────────────────────────────────────
 
 # NodeType strings that map to surge-control components
-_RTHYM_SURGE_TYPES = {"Standpipe", "HydropneumaticTank", "AirValve"}
+_RTHYM_SURGE_TYPES = {"Standpipe", "HydropneumaticTank", "AirValve", "CheckValve"}
 
 def _parse_rthym_overrides(
     sec: dict,
@@ -767,46 +767,66 @@ def load_inp(
     # compatibility.  The [RTHYM] section records their actual type and the
     # physical parameters the MOC solver needs.
     for nid, params in rthym_overrides.items():
-        if nid not in nodes:
+        override_node: NodeInput | None = nodes.get(nid)
+        if override_node is None:
+            for cvn in check_valve_nodes:
+                if cvn.id == nid:
+                    override_node = cvn
+                    break
+            if override_node is None:
+                for pn in pump_nodes:
+                    if pn.id == nid:
+                        override_node = pn
+                        break
+            if override_node is None:
+                for vn in valve_nodes:
+                    if vn.id == nid:
+                        override_node = vn
+                        break
+        if override_node is None:
             warnings.warn(
                 f"[RTHYM] section references node '{nid}' which is not found in "
                 "[JUNCTIONS] or other node sections; skipped.",
                 UserWarning, stacklevel=2,
             )
             continue
-        n = nodes[nid]
         ntype = params["node_type"]
-        n.type = ntype
+        override_node.type = ntype
 
         if ntype == "Standpipe":
             if "tank_area" in params:
-                n.tank_area = params["tank_area"]
+                override_node.tank_area = params["tank_area"]
             # head was already populated from wntr (= initial water-surface elev)
 
         elif ntype == "HydropneumaticTank":
-            if "gas_volume"    in params: n.gas_volume    = params["gas_volume"]
-            if "tank_volume"   in params: n.tank_volume   = params["tank_volume"]
-            if "polytropic_n"  in params: n.polytropic_n  = params["polytropic_n"]
-            if "loss_coeff_in" in params: n.loss_coeff_in = params["loss_coeff_in"]
-            if "loss_coeff_out"in params: n.loss_coeff_out= params["loss_coeff_out"]
-            if "diameter"      in params: n.diameter      = params["diameter"]
+            if "gas_volume"    in params: override_node.gas_volume    = params["gas_volume"]
+            if "tank_volume"   in params: override_node.tank_volume   = params["tank_volume"]
+            if "polytropic_n"  in params: override_node.polytropic_n  = params["polytropic_n"]
+            if "loss_coeff_in" in params: override_node.loss_coeff_in = params["loss_coeff_in"]
+            if "loss_coeff_out"in params: override_node.loss_coeff_out= params["loss_coeff_out"]
+            if "diameter"      in params: override_node.diameter      = params["diameter"]
             # head from wntr = steady-state pipeline head at the connection node
 
         elif ntype == "AirValve":
             if "air_release_head" in params:
-                n.air_release_head = params["air_release_head"]
+                override_node.air_release_head = params["air_release_head"]
             if "diameter" in params:
-                n.diameter = params["diameter"]
+                override_node.diameter = params["diameter"]
             if "air_release_diameter" in params:
-                n.air_release_diameter = params["air_release_diameter"]
+                override_node.air_release_diameter = params["air_release_diameter"]
             if "gas_volume" in params:
-                n.gas_volume = params["gas_volume"]
+                override_node.gas_volume = params["gas_volume"]
             if "tank_volume" in params:
-                n.tank_volume = params["tank_volume"]
+                override_node.tank_volume = params["tank_volume"]
             if "loss_coeff_in" in params:
-                n.loss_coeff_in = params["loss_coeff_in"]
+                override_node.loss_coeff_in = params["loss_coeff_in"]
             if "loss_coeff_out" in params:
-                n.loss_coeff_out = params["loss_coeff_out"]
+                override_node.loss_coeff_out = params["loss_coeff_out"]
+        elif ntype == "CheckValve":
+            if "closure_time" in params:
+                override_node.closure_time = params["closure_time"]
+            if "flipped" in params:
+                override_node.flipped = bool(params["flipped"])
 
     # ── Assemble solver ────────────────────────────────────────────────────────
     solver = MOCSolver()
