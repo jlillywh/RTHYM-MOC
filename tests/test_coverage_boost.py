@@ -200,8 +200,10 @@ HEADLOSS H-W
             assert solver is not None
 
     # 2. Trigger wntr solve failure exception (lines 358-363)
-    # We patch the Simulator inside wntr to raise an exception
-    with patch("wntr.sim.EpanetSimulator", side_effect=Exception("Mock simulator error")):
+    # We mock the wntr module entirely to prevent real wntr import/dependency failures in CI
+    mock_wntr = MagicMock()
+    mock_wntr.sim.EpanetSimulator.side_effect = Exception("Mock simulator error")
+    with patch.dict(sys.modules, {"wntr": mock_wntr}):
         with pytest.warns(UserWarning, match="wntr hydraulic solve failed"):
             solver2 = m.load_inp(str(inp_path), use_wntr=True)
             assert solver2 is not None
