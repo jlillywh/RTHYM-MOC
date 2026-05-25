@@ -204,6 +204,15 @@ void MOCSolver::set_pump_speed(const std::string& id, double pct) {
     }
 }
 
+void MOCSolver::set_pump_power(const std::string& id, bool has_power) {
+    auto& node_input = requireNodeInputMutable(node_inputs_, id, "set_pump_power()");
+    requireNodeType(node_input, id, "set_pump_power()", {NodeType::Pump}, "Pump");
+    node_input.has_power = has_power;
+    auto it = node_idx_map_.find(id);
+    if (it != node_idx_map_.end())
+        nodes_[it->second].input.has_power = has_power;
+}
+
 void MOCSolver::set_node_demand(const std::string& id, double demand_gpm) {
     auto& node_input = requireNodeInputMutable(node_inputs_, id, "set_node_demand()");
     requireNodeType(
@@ -1569,7 +1578,7 @@ void MOCSolver::evaluateControlRules(double t_now) {
                 double ramp_open = std::max(1e-6, rule.threshold);
                 double ramp_close = std::max(1e-6, rule.deadband);
                 
-                if (cmd_speed > 0.0) {
+                if (cmd_speed > 0.0 && pump.input.has_power) {
                     if (state.pcv_phase == "idle" || state.pcv_phase == "closing" || state.pcv_phase == "off") {
                         state.pcv_phase = "opening";
                         state.pcv_timer = 0.0;
@@ -1601,8 +1610,10 @@ void MOCSolver::evaluateControlRules(double t_now) {
                             valve.input.current_setting = 0.0;
                             state.pcv_phase = "idle";
                             pump.input.current_speed = 0.0;
-                        } else {
+                        } else if (pump.input.has_power) {
                             pump.input.current_speed = 100.0;
+                        } else {
+                            pump.input.current_speed = 0.0;
                         }
                     } else if (state.pcv_phase == "idle" || state.pcv_phase == "off") {
                         valve.input.current_setting = 0.0;
