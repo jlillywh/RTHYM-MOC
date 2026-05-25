@@ -7,7 +7,7 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
-from typing import Any, Mapping, MutableMapping, TypedDict
+from typing import Any, Mapping, TypedDict
 
 import numpy as np
 
