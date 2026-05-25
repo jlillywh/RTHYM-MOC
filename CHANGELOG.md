@@ -13,6 +13,7 @@ versioning for package releases.
 ### Added
 - quickstart notebook validation section that overlays the checked-in R-THYM pressure trace, reports RMS/peak benchmark metrics, and documents the benchmark tolerances used by the automated test suite
 - quickstart notebook exploratory plots for the shortened 2-second closure case, including valve-side pressure, flow, closure schedule, peak-check annotations, and reloaded persisted artifacts
+- Binder configuration and README launch path so the quickstart notebook can be opened in a hosted Jupyter environment without a local notebook install
 
 ### Changed
 - package metadata now marks the public release line as beta instead of alpha

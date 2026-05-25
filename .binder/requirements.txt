@@ -1,0 +1,5 @@
+jupyterlab>=4
+ipykernel>=6
+matplotlib>=3.8
+numpy>=1.21
+pybind11>=2.11
