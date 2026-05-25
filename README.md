@@ -744,7 +744,8 @@ Use these IDs when calling `set_valve_schedule()`, `set_pump_speed()`, or access
 - **PRV / PSV / PBV** are modeled as active pressure-control valves during transients (`NodeInput.head` stores the setpoint in ft HGL, or differential ft for PBV). Imported EPANET settings are converted from pressure units to head. This is a simplified regulating model, not a full EPANET steady-state valve solve each step.
 - **FCV / GPV** valve types are not supported and are treated as fully-open valves.
 - **Minor losses** (`[PIPES]` column 7) are imported as a dimensionless local-loss coefficient `K`, included in the initial steady headloss, and then applied as distributed resistance across the pipe during the transient. This is an approximation of a truly lumped fitting loss, but dedicated regression benchmarks are included to quantify the mismatch.
-- **Demand patterns** (`[PATTERNS]`) are not applied; only base demands are used.
+- **Demand patterns** — `[PATTERNS]` with `[JUNCTIONS]` / `[DEMANDS]` apply multiplier at index 0 to initial demand; multi-point patterns become `set_demand_schedule()`. Pattern timestep comes from `[TIMES]` (hours → seconds). See [`docs/import_fidelity.md`](docs/import_fidelity.md).
+- **Simple controls** — `[CONTROLS]` rows of the form `LINK <id> STATUS OPEN|CLOSED AT TIME <hours>` map to pump/valve schedules on `_PUMP_<id>` / `_VALVE_<id>`. `[RULES]` and NODE-based controls are not imported.
 - **Check valves** (`CV` status on a pipe) are imported as generated inline `CheckValve` nodes with split pipes. Phase 1 models them as ideal one-way devices: forward flow is allowed, while reverse-flow tendency closes the valve without detailed slam dynamics.
 
 See `examples/load_from_inp.py` for a complete worked example.

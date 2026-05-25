@@ -1,0 +1,43 @@
+[TITLE]
+Import fidelity fixture (patterns, demands, controls)
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+
+[JUNCTIONS]
+;ID  Elev  Demand  Pattern
+J1    0     10      PAT1
+J2    0     0
+
+[RESERVOIRS]
+R1    120
+R2    80
+
+[PIPES]
+P3    J2    R2    200   12   130   0   OPEN
+
+[PUMPS]
+PU1   R1    J1    HEAD C1
+
+[VALVES]
+V1    J1    J2    12   TCV   50
+
+[CURVES]
+C1    0     80
+C1    200   60
+
+[PATTERNS]
+PAT1  2.0   1.0   0.5
+
+[DEMANDS]
+J2    5     PAT1
+
+[TIMES]
+PATTERN TIMESTEP 0.01
+
+[CONTROLS]
+LINK  PU1  STATUS  CLOSED  AT  TIME  0.02
+LINK  V1   STATUS  CLOSED  AT  TIME  0.03
+
+[END]
