@@ -30,6 +30,7 @@ enum class NodeType {
     Tank,                // Fixed-level reservoir
     PressureBoundary,    // Fixed-head pressure source
     AirValve,            // Air-admission / vacuum-break valve (clamps to atmosphere when open)
+    CheckValve,          // Inline one-way valve (forward flow only)
     Valve,               // Inline throttling device  (K quadratic)
     Turbine,             // Inline turbine            (K quadratic, design-curve K)
     Pump,                // Inline centrifugal pump   (3-coeff affinity curve)

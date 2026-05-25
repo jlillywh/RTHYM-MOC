@@ -238,6 +238,7 @@ node.loss_coeff_out   = 0.7           # C_d orifice coefficient for outflow / ai
 | `"InflowNode"` | Injects flow (demand treated as negative) | `demand` |
 | `"PressureBoundary"` | Fixed total head at all times | `head` |
 | `"Tank"` | Fixed HGL; `head` is authoritative, `level` is compatibility state | `head`, `level`, `max_level` |
+| `"CheckValve"` | Ideal inline one-way valve; forward flow only, reverse flow clamps shut | `diameter` |
 | "AirValve" | Air-pocket valve with large admission port and small release port | `elevation`, `head`, `diameter`, `air_release_diameter`, `gas_volume`, `tank_volume`, `loss_coeff_in`, `loss_coeff_out`, `air_release_head` |
 
 For `"Tank"`, prefer setting `head` directly. The `level` field is retained for
@@ -630,14 +631,14 @@ solver = rthym_moc.load_inp(
 | `[JUNCTIONS]` | `Junction` nodes |
 | `[RESERVOIRS]` | `PressureBoundary` nodes |
 | `[TANKS]` | `Tank` nodes |
-| `[PIPES]` | `PipeInput` (H-W, D-W, and C-M roughness converted to H-W C) |
+| `[PIPES]` | `PipeInput` (H-W, D-W, and C-M roughness converted to H-W C; `CV` pipes become generated `CheckValve` nodes plus split pipes) |
 | `[PUMPS]` | `Pump` node + two stub pipes; design point read from `[CURVES]` |
 | `[VALVES]` | `Valve` node + two stub pipes (TCV, PRV, PSV, PBV) |
 | `[OPTIONS]` | `Units`, `Headloss` formula |
 
 All US customary unit variants (GPM, CFS, MGD, IMGD, AFD) and SI metric variants (LPS, LPM, MLD, CMH, CMD) are supported.
 
-### Pump and valve node IDs
+### Pump, valve, and check-valve generated IDs
 
 Because EPANET treats pumps and valves as *links* (not nodes), `load_inp()` injects an intermediate node and two 50 ft stub pipes for each one.  The generated IDs follow a predictable pattern:
 
@@ -645,6 +646,7 @@ Because EPANET treats pumps and valves as *links* (not nodes), `load_inp()` inje
 |---|---|---|
 | Pump | `_PUMP_V1` | `_P_V1_up`, `_P_V1_dn` |
 | Valve | `_VALVE_V1` | `_P_V1_up`, `_P_V1_dn` |
+| CV pipe | `_CHECKVALVE_V1` | `_CV_V1_up`, `_CV_V1_dn` |
 
 Use these IDs when calling `set_valve_schedule()`, `set_pump_speed()`, or accessing results.
 
@@ -654,7 +656,7 @@ Use these IDs when calling `set_valve_schedule()`, `set_pump_speed()`, or access
 - **FCV / GPV** valve types are not supported and are treated as fully-open valves.
 - **Minor losses** (`[PIPES]` column 7) are imported as a dimensionless local-loss coefficient `K`, included in the initial steady headloss, and then applied as distributed resistance across the pipe during the transient. This is an approximation of a truly lumped fitting loss, but dedicated regression benchmarks are included to quantify the mismatch.
 - **Demand patterns** (`[PATTERNS]`, `[CONTROLS]`, `[RULES]`) are not applied; only base demands are used.
-- **Check valves** (Status = CV) are treated as regular pipes; reverse-flow prevention is not enforced.
+- **Check valves** (`CV` status on a pipe) are imported as generated inline `CheckValve` nodes with split pipes. Phase 1 models them as ideal one-way devices: forward flow is allowed, while reverse-flow tendency closes the valve without detailed slam dynamics.
 
 See `examples/load_from_inp.py` for a complete worked example.
 

@@ -34,6 +34,7 @@ NodeType parseNodeType(const std::string& s) {
     if (s == "Tank")                return NodeType::Tank;
     if (s == "PressureBoundary")    return NodeType::PressureBoundary;
     if (s == "AirValve")            return NodeType::AirValve;
+    if (s == "CheckValve")          return NodeType::CheckValve;
     if (s == "Valve")               return NodeType::Valve;
     if (s == "Turbine")             return NodeType::Turbine;
     if (s == "Pump")                return NodeType::Pump;
@@ -49,6 +50,7 @@ std::string nodeTypeToStr(NodeType t) {
         case NodeType::Tank:                return "Tank";
         case NodeType::PressureBoundary:    return "PressureBoundary";
         case NodeType::AirValve:            return "AirValve";
+        case NodeType::CheckValve:          return "CheckValve";
         case NodeType::Valve:               return "Valve";
         case NodeType::Turbine:             return "Turbine";
         case NodeType::Pump:                return "Pump";
@@ -412,7 +414,7 @@ void MOCSolver::initGrid() {
                 auto fit2 = node_idx_map_.find(p.from_node);
                 auto tit2 = node_idx_map_.find(p.to_node);
                 auto is_device = [](NodeType t) {
-                    return t == NodeType::Valve || t == NodeType::Pump;
+                    return t == NodeType::Valve || t == NodeType::CheckValve || t == NodeType::Pump;
                 };
                 bool from_is_device = (fit2 != node_idx_map_.end()) &&
                                        is_device(nodes_[fit2->second].input.type);
@@ -780,6 +782,32 @@ void MOCSolver::stepMOC() {
             }
             ns.gas_pressure_psi = (H_abs - 33.9) * 0.433;
             ns.actual_demand = n.demand;
+            break;
+        }
+
+        // ── Check valve ────────────────────────────────────────────────────
+        // Ideal one-way inline device: forward flow only, zero loss when open.
+        // Reverse-flow tendency closes the device and enforces Q = 0 while
+        // allowing a head discontinuity across the valve.
+        case NodeType::CheckValve: {
+            if (in_pipes.size() == 1 && out_pipes.size() == 1) {
+                const int bIn  = in_pipes[0];
+                const int bOut = out_pipes[0];
+                const double B_eq = (bndry[bIn].B  / bndry[bIn].area)
+                                  + (bndry[bOut].B / bndry[bOut].area);
+                const double C_eq = bndry[bIn].C_P - bndry[bOut].C_M;
+                const double Q = (B_eq > 1e-12) ? std::max(0.0, C_eq / B_eq) : 0.0;
+
+                const double H_up = bndry[bIn].C_P  - (bndry[bIn].B  / bndry[bIn].area)  * Q;
+                const double H_dn = bndry[bOut].C_M + (bndry[bOut].B / bndry[bOut].area) * Q;
+
+                set_downstream(bIn,  std::max(H_vap, H_up));
+                set_upstream  (bOut, std::max(H_vap, H_dn));
+            } else {
+                const double H_f = std::max(H_vap, getInitialHead(ns));
+                for (int pi : in_pipes)  set_downstream(pi, H_f);
+                for (int pi : out_pipes) set_upstream  (pi, H_f);
+            }
             break;
         }
 
