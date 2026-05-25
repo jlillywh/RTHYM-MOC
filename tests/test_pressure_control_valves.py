@@ -1,5 +1,9 @@
 """Regressions for PRV, PSV, and PBV pressure-control valve behavior."""
 
+from __future__ import annotations
+
+import unittest.mock as mock
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +14,20 @@ import rthym_moc as m
 
 DT_S = 0.01
 TOTAL_TIME_S = 0.5
+
+
+def _nodes_from_inp(inp_path: Path, **load_kw) -> dict[str, m.NodeInput]:
+    """Return NodeInput objects passed to MOCSolver.add_node during load_inp."""
+    added: dict[str, m.NodeInput] = {}
+    original_add_node = m.MOCSolver.add_node
+
+    def capture_add_node(self, node):
+        added[node.id] = node
+        return original_add_node(self, node)
+
+    with mock.patch.object(m.MOCSolver, "add_node", capture_add_node):
+        m.load_inp(str(inp_path), use_wntr=False, **load_kw)
+    return added
 
 
 def _make_node(node_id, node_type, **kwargs):
@@ -185,3 +203,188 @@ HEADLOSS H-W
         f"Imported PRV should regulate downstream head near {prv_setpoint_ft:.1f} ft, "
         f"got max {downstream_head:.1f} ft"
     )
+
+
+def test_load_inp_maps_prv_setpoint_with_downstream_elevation(tmp_path: Path):
+    """PRV setpoint head = downstream junction elevation + pressure setting (ft)."""
+    inp_path = tmp_path / "prv_elev.inp"
+    inp_path.write_text(
+        """[JUNCTIONS]
+J1   50   0
+J2   25   0
+
+[RESERVOIRS]
+R1   200
+R2   120
+
+[PIPES]
+P1   R1   J1   500   12   130   0   OPEN
+P2   J1   J2   500   12   130   0   OPEN
+
+[VALVES]
+V1   J1   J2   12   PRV   50
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+""",
+        encoding="utf-8",
+    )
+
+    nodes = _nodes_from_inp(
+        inp_path,
+        initial_flows={"P1": 300.0, "P2": 300.0, "_P_V1_up": 300.0, "_P_V1_dn": 300.0},
+    )
+    valve = nodes["_VALVE_V1"]
+    expected_ft = 25.0 + 50.0 * m.PSI_TO_FT
+
+    assert valve.type == "PRV"
+    assert valve.head == pytest.approx(expected_ft, rel=1e-6)
+
+
+def test_load_inp_maps_psv_setpoint_with_upstream_elevation(tmp_path: Path):
+    """PSV setpoint head = upstream junction elevation + pressure setting (ft)."""
+    inp_path = tmp_path / "psv.inp"
+    inp_path.write_text(
+        """[JUNCTIONS]
+J1   80   0
+J2   20   0
+
+[RESERVOIRS]
+R1   200
+R2   120
+
+[PIPES]
+P1   R1   J1   500   12   130   0   OPEN
+P2   J1   J2   500   12   130   0   OPEN
+
+[VALVES]
+V1   J1   J2   12   PSV   40
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+""",
+        encoding="utf-8",
+    )
+
+    nodes = _nodes_from_inp(
+        inp_path,
+        initial_flows={"P1": 300.0, "P2": 300.0, "_P_V1_up": 300.0, "_P_V1_dn": 300.0},
+    )
+    valve = nodes["_VALVE_V1"]
+    expected_ft = 80.0 + 40.0 * m.PSI_TO_FT
+
+    assert valve.type == "PSV"
+    assert valve.head == pytest.approx(expected_ft, rel=1e-6)
+
+
+def test_load_inp_maps_pbv_differential_setpoint_head(tmp_path: Path):
+    """PBV setpoint head is the differential pressure setting converted to ft."""
+    inp_path = tmp_path / "pbv.inp"
+    inp_path.write_text(
+        """[JUNCTIONS]
+J1   10   0
+J2   5   0
+
+[RESERVOIRS]
+R1   200
+R2   120
+
+[PIPES]
+P1   R1   J1   500   12   130   0   OPEN
+P2   J1   J2   500   12   130   0   OPEN
+
+[VALVES]
+V1   J1   J2   12   PBV   30
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+""",
+        encoding="utf-8",
+    )
+
+    nodes = _nodes_from_inp(
+        inp_path,
+        initial_flows={"P1": 300.0, "P2": 300.0, "_P_V1_up": 300.0, "_P_V1_dn": 300.0},
+    )
+    valve = nodes["_VALVE_V1"]
+    expected_ft = 30.0 * m.PSI_TO_FT
+
+    assert valve.type == "PBV"
+    assert valve.head == pytest.approx(expected_ft, rel=1e-6)
+
+
+def test_load_inp_prv_preserves_setpoint_against_initial_heads(tmp_path: Path):
+    """initial_heads must not overwrite PRV/PSV/PBV control setpoints on valve nodes."""
+    inp_path = tmp_path / "prv_ic.inp"
+    inp_path.write_text(
+        """[JUNCTIONS]
+J1   0   0
+J2   0   0
+
+[RESERVOIRS]
+R1   200
+R2   120
+
+[PIPES]
+P1   R1   J1   500   12   130   0   OPEN
+P2   J1   J2   500   12   130   0   OPEN
+
+[VALVES]
+V1   J1   J2   12   PRV   50
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+""",
+        encoding="utf-8",
+    )
+
+    nodes = _nodes_from_inp(
+        inp_path,
+        initial_flows={"P1": 300.0, "P2": 300.0, "_P_V1_up": 300.0, "_P_V1_dn": 300.0},
+        initial_heads={"_VALVE_V1": 999.0, "J1": 180.0, "J2": 150.0},
+    )
+    valve = nodes["_VALVE_V1"]
+    expected_ft = 50.0 * m.PSI_TO_FT
+
+    assert valve.type == "PRV"
+    assert valve.head == pytest.approx(expected_ft, rel=1e-6)
+    assert valve.head != pytest.approx(999.0)
+
+
+def test_load_inp_rthym_type_only_placeholder_does_not_warn(tmp_path: Path):
+    """[RTHYM] rows with only node id and type (no params) are silent placeholders."""
+    inp_path = tmp_path / "rthym_placeholder.inp"
+    inp_path.write_text(
+        """[JUNCTIONS]
+J1   0   0
+
+[RESERVOIRS]
+R1   160
+
+[PIPES]
+P1   R1   J1   100   12   130   0   OPEN
+
+[RTHYM]
+COMMENT_NODE NotASurgeType
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+""",
+        encoding="utf-8",
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _nodes_from_inp(inp_path, initial_flows={"P1": 100.0})
+
+    rthym_msgs = [
+        str(w.message)
+        for w in caught
+        if w.category is UserWarning and "[RTHYM]" in str(w.message)
+    ]
+    assert rthym_msgs == []
