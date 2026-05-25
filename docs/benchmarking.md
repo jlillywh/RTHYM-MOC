@@ -42,7 +42,7 @@ Scenario documentation is provided in two layers:
 
 - benchmark test-module docstrings describe the network, schematic, references,
   and expected metrics directly beside the automated checks
-- [docs/appendix_b_verification.md](/home/jason/RTHYM-MOC/docs/appendix_b_verification.md)
+- [docs/appendix_b_verification.md](appendix_b_verification.md)
   provides the long-form narrative for the three primary cross-engine studies
 
 ## Quantitative Tolerances

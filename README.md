@@ -709,8 +709,8 @@ The benchmark structure follows these rules:
 - cross-engine comparisons are used where a trusted engine or export exists
 - checked-in JSON, CSV, and INP artifacts are used for regression tracking
 
-See [docs/benchmarking.md](/home/jason/RTHYM-MOC/docs/benchmarking.md) for the
-benchmark map and [docs/appendix_b_verification.md](/home/jason/RTHYM-MOC/docs/appendix_b_verification.md)
+See [docs/benchmarking.md](docs/benchmarking.md) for the
+benchmark map and [docs/appendix_b_verification.md](docs/appendix_b_verification.md)
 for the long-form write-up of the main cross-engine studies.
 
 Representative automated benchmarks include:
@@ -818,7 +818,7 @@ The project now tracks its package version from a single source of truth in
 `rthym_moc.__version__`, and both the Python packaging metadata and CMake
 project version read from the same source.
 
-Release-level changes are tracked in [CHANGELOG.md](/home/jason/RTHYM-MOC/CHANGELOG.md).
+Release-level changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
 The repository still includes supporting example-level validation scripts under
 `examples/`, including `benchmark_vs_tsnet.py`, `test_wave_reflections.py`, and
@@ -829,7 +829,7 @@ modules under `tests/`.
 
 ## Benchmark Guide
 
-See [docs/benchmarking.md](/home/jason/RTHYM-MOC/docs/benchmarking.md) for the
+See [docs/benchmarking.md](docs/benchmarking.md) for the
 benchmark matrix, reference assets, tolerance metrics, and coverage notes.
 
 ---
