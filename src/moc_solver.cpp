@@ -167,6 +167,15 @@ void MOCSolver::set_node_demand(const std::string& id, double demand_gpm) {
         nodes_[it->second].input.demand = demand_gpm;
 }
 
+void MOCSolver::set_node_head(const std::string& id, double head_ft) {
+    auto& node_input = requireNodeInputMutable(node_inputs_, id, "set_node_head()");
+    requireNodeType(node_input, id, "set_node_head()", {NodeType::Tank, NodeType::PressureBoundary}, "Tank or PressureBoundary");
+    node_input.head = head_ft;
+    auto it = node_idx_map_.find(id);
+    if (it != node_idx_map_.end())
+        nodes_[it->second].input.head = head_ft;
+}
+
 void MOCSolver::set_valve_schedule(const std::string& id,
                                    const std::vector<std::pair<double,double>>& schedule) {
     const auto& node_input = requireNodeInput(node_inputs_, id, "set_valve_schedule()");
@@ -265,6 +274,10 @@ void MOCSolver::initGrid() {
     for (int i = 0; i < static_cast<int>(node_inputs_.size()); ++i) {
         NodeState ns;
         ns.input = node_inputs_[i];
+        ns.air_loss_rate_gpm = 0.0;
+        ns.air_cumulative_loss_gal = 0.0;
+        ns.gas_pressure_psi = 0.0;
+        ns.tank_flow_gpm = 0.0;
         if (ns.input.type == NodeType::Standpipe)
             ns.surge_level_ft = ns.input.head; // initial water-surface elevation (ft HGL)
         if (ns.input.type == NodeType::HydropneumaticTank) {
@@ -658,6 +671,12 @@ void MOCSolver::stepMOC() {
             // Update gas volume:  Q_net > 0 ⟹ water enters ⟹ V_g decreases
             ns.gas_volume_ft3 = std::max(1e-9,
                 std::min(ns.gas_volume_ft3 - Q_net * dt_, n.tank_volume));
+
+            // Store transient metrics
+            const double H_g_abs_new = ns.gas_constant /
+                std::pow(std::max(ns.gas_volume_ft3, 1e-9), n.polytropic_n);
+            ns.gas_pressure_psi = (H_g_abs_new - 33.9) * 0.433;
+            ns.tank_flow_gpm = Q_net / GPM_TO_CFS;
             break;
         }
 
@@ -738,12 +757,13 @@ void MOCSolver::stepMOC() {
             const double A_release = M_PI_ * std::pow(release_d_ft / 2.0, 2.0);
 
             double M_after_air = std::max(1e-6, ns.gas_constant);
+            double Q_air_out = 0.0;
             if (H_abs < H_ref_abs - 1e-9) {
                 const double Q_air_in = std::max(n.loss_coeff_in, 1e-9) * A_admit
                     * std::sqrt(2.0 * g * (H_ref_abs - H_abs));
                 M_after_air += H_ref_abs * Q_air_in * dt_;
             } else if (H_abs > H_ref_abs + 1e-9 && V_after_water > 1e-6) {
-                const double Q_air_out = std::max(n.loss_coeff_out, 1e-9) * A_release
+                Q_air_out = std::max(n.loss_coeff_out, 1e-9) * A_release
                     * std::sqrt(2.0 * g * (H_abs - H_ref_abs));
                 M_after_air = std::max(1e-6, M_after_air - H_abs * Q_air_out * dt_);
             }
@@ -751,10 +771,14 @@ void MOCSolver::stepMOC() {
             if (V_after_water <= 5e-4 && H_junc >= H_ref) {
                 ns.gas_volume_ft3 = 0.0;
                 ns.gas_constant = 0.0;
+                ns.air_loss_rate_gpm = 0.0;
             } else {
                 ns.gas_volume_ft3 = V_after_water;
                 ns.gas_constant = M_after_air;
+                ns.air_loss_rate_gpm = Q_air_out * 448.831;
+                ns.air_cumulative_loss_gal += Q_air_out * dt_ * 7.48052;
             }
+            ns.gas_pressure_psi = (H_abs - 33.9) * 0.433;
             ns.actual_demand = n.demand;
             break;
         }
@@ -767,11 +791,11 @@ void MOCSolver::stepMOC() {
             const double setting = std::max(1e-6, n.current_setting);
 
             double K; // dimensionless loss coefficient
-            if (n.type == NodeType::Valve) {
+            if (n.type == NodeType::Valve && !(n.design_head > 0.0 && n.design_flow > 0.0)) {
                 // K = (100/setting)² − 1   (K→∞ when fully closed)
                 K = std::pow(100.0 / setting, 2.0) - 1.0;
             } else {
-                // Turbine modelled as variable-K orifice
+                // Turbine or Valve with design curve modeled as variable-K orifice
                 const double A_t  = M_PI_ * std::pow(n.diameter / 24.0, 2.0); // ft²
                 const double V_d  = (n.design_velocity > 1e-6)
                     ? n.design_velocity

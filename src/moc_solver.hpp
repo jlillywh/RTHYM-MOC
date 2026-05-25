@@ -11,6 +11,10 @@
 #include <cmath>
 #include <stdexcept>
 
+#ifdef EMSCRIPTEN
+#include <emscripten/val.h>
+#endif
+
 namespace rthym {
 
 // ── Physical constants (US customary units) ──────────────────────────────────
@@ -130,6 +134,12 @@ struct NodeState {
     double actual_demand    = 0.0;  // GPM  (updated by solver, Junction/OutflowNode)
     double gas_volume_ft3   = 0.0;  // HydropneumaticTank / AirValve current gas volume (ft³)
     double gas_constant     = 0.0;  // HydropneumaticTank: C = H_g_abs * V_g^n; AirValve: M = H_g_abs * V_g
+
+    // Additional transient metrics for UI compatibility
+    double air_loss_rate_gpm = 0.0;
+    double air_cumulative_loss_gal = 0.0;
+    double gas_pressure_psi = 0.0;
+    double tank_flow_gpm = 0.0;
 };
 
 // ── Main MOC solver class ────────────────────────────────────────────────────
@@ -144,6 +154,7 @@ public:
     void set_valve_setting(const std::string& id, double pct_open);
     void set_pump_speed   (const std::string& id, double pct_speed);
     void set_node_demand  (const std::string& id, double demand_gpm);
+    void set_node_head    (const std::string& id, double head_ft);
 
     // Time-varying valve schedule: list of (time_s, pct_open) pairs.
     // During run() the setting is linearly interpolated at each time step.
@@ -163,6 +174,19 @@ public:
                    double p_vapor_psi   = -14.0,
                    double usf_tau       = 0.5,
                    double k_bru         = -1.0); // -1 = auto Vardy-Brown; 0 = no USF; >0 = static
+
+    // Step-by-step API for WASM integration
+    void   initGrid();
+    void   stepMOC();
+    void   set_dt(double dt) { dt_ = dt; }
+    double get_dt() const { return dt_; }
+    void   set_p_vapor_psi(double p_vapor_psi) { p_vapor_ = p_vapor_psi * PSI_TO_FT; }
+    void   set_usf_tau(double usf_tau) { usf_tau_ = usf_tau; }
+    void   set_k_bru(double k_bru) { k_Bru_ = k_bru; }
+
+#ifdef EMSCRIPTEN
+    emscripten::val get_step_results() const;
+#endif
 
 private:
     // User inputs (persistent across run() calls)
@@ -204,8 +228,6 @@ private:
     //   > 0  :  user-supplied static value (typical calibrated range: 0.02–0.15)
     double k_Bru_   = -1.0;
 
-    void   initGrid();
-    void   stepMOC();
     double getInitialHead(const NodeState& ns) const;
     void   recordStep(SimResults& results) const;
 };
