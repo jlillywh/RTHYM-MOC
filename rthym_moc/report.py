@@ -146,10 +146,10 @@ def format_study_table(summary: StudySummary) -> str:
         f"  {'ID':<20} {'H_min':>8} {'@t':>7} {'H_max':>8} {'@t':>7} "
         f"{'P_min':>8} {'P_max':>8} {'Cav_s':>7}",
     ]
-    for node_id, row in sorted(summary["nodes"].items()):
-        h = row["head_ft"]
-        p = row.get("pressure_psi")
-        cav = row.get("cavitation")
+    for node_id, node_row in sorted(summary["nodes"].items()):
+        h = node_row["head_ft"]
+        p = node_row.get("pressure_psi")
+        cav = node_row.get("cavitation")
         p_min = p["min"] if p else float("nan")
         p_max = p["max"] if p else float("nan")
         cav_d = cav["duration_s"] if cav and cav["occurred"] else 0.0
@@ -160,8 +160,8 @@ def format_study_table(summary: StudySummary) -> str:
         )
 
     lines.extend(["", "Pipe flow peaks:", f"  {'ID':<20} {'Q_min':>10} {'@t':>7} {'Q_max':>10} {'@t':>7}"])
-    for pipe_id, row in sorted(summary["pipes"].items()):
-        q = row["flow_gpm"]
+    for pipe_id, pipe_row in sorted(summary["pipes"].items()):
+        q = pipe_row["flow_gpm"]
         lines.append(
             f"  {pipe_id:<20} {q['min']:10.1f} {q['min_time_s']:7.2f} "
             f"{q['max']:10.1f} {q['max_time_s']:7.2f}"
@@ -198,10 +198,10 @@ def export_study_csv(directory: str | Path, summary: StudySummary) -> dict[str, 
                 "cavitation_first_time_s",
             ]
         )
-        for node_id, row in sorted(summary["nodes"].items()):
-            h = row["head_ft"]
-            p = row.get("pressure_psi")
-            cav = row.get("cavitation")
+        for node_id, node_row in sorted(summary["nodes"].items()):
+            h = node_row["head_ft"]
+            p = node_row.get("pressure_psi")
+            cav = node_row.get("cavitation")
             writer.writerow(
                 [
                     node_id,
@@ -229,8 +229,8 @@ def export_study_csv(directory: str | Path, summary: StudySummary) -> dict[str, 
                 "flow_max_time_s",
             ]
         )
-        for pipe_id, row in sorted(summary["pipes"].items()):
-            q = row["flow_gpm"]
+        for pipe_id, pipe_row in sorted(summary["pipes"].items()):
+            q = pipe_row["flow_gpm"]
             writer.writerow(
                 [pipe_id, q["min"], q["min_time_s"], q["max"], q["max_time_s"]]
             )
