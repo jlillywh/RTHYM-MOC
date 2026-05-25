@@ -34,5 +34,12 @@ tests/js_pythonc_differences.md
 analytical_complex_topology.py
 benchmark_from_inp.py
 net, inspect*
+docs/industry_roadmap.md
 tests/steadystate_init_plan.md
 tests/Valve Water Hammer Benchmark.inp
+
+# Testing and local build outputs
+*.wasm
+.coverage
+coverage.xml
+examples/notebook_outputs/

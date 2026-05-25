@@ -1,0 +1,110 @@
+"""WASM-facing regression coverage for CheckValve bindings."""
+
+from __future__ import annotations
+
+from pathlib import Path
+import json
+import os
+import shutil
+import subprocess
+
+import pytest
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+WASM_BINDINGS_CPP = REPO_ROOT / "src" / "wasm_bindings.cpp"
+WASM_JS = REPO_ROOT / "src" / "rthym_moc.js"
+WASM_BIN = REPO_ROOT / "src" / "rthym_moc.wasm"
+
+
+def test_wasm_bindings_expose_check_valve_runtime_contract():
+    """The frontend-facing WASM payload should explicitly expose CheckValve state."""
+    source = WASM_BINDINGS_CPP.read_text(encoding="utf-8")
+
+    assert 'n.type == NodeType::CheckValve' in source
+    assert 'node_res.set("type", nodeTypeToStr(n.type));' in source
+    assert 'node_res.set("reverseFlowBlocked", reverseFlowBlocked);' in source
+
+
+@pytest.mark.skipif(
+  os.getenv("RTHYM_ENABLE_WASM_RUNTIME_TESTS") != "1"
+  or shutil.which("node") is None
+  or not WASM_JS.exists()
+  or not WASM_BIN.exists(),
+  reason=(
+    "Set RTHYM_ENABLE_WASM_RUNTIME_TESTS=1 and provide fresh generated WASM artifacts "
+    "to run the runtime WASM smoke test"
+  ),
+)
+def test_wasm_runtime_reports_check_valve_type_and_reverse_flow_blocked():
+    """The generated WASM module should report explicit CheckValve runtime state."""
+    node_program = f"""
+const createRthymMOC = require({json.dumps(str(WASM_JS))});
+
+function makeNode(Module, id, type, fields = {{}}) {{
+  const node = new Module.NodeInput();
+  node.id = id;
+  node.type = type;
+  for (const [key, value] of Object.entries(fields)) {{
+    node[key] = value;
+  }}
+  return node;
+}}
+
+function makePipe(Module, id, fromNode, toNode, flowGPM) {{
+  const pipe = new Module.PipeInput();
+  pipe.id = id;
+  pipe.from_node = fromNode;
+  pipe.to_node = toNode;
+  pipe.length = 40.0;
+  pipe.diameter = 12.0;
+  pipe.roughness = 130.0;
+  pipe.flow_gpm = flowGPM;
+  return pipe;
+}}
+
+(async () => {{
+  const Module = await createRthymMOC();
+  const solver = new Module.MOCSolver();
+
+  solver.add_node(makeNode(Module, "R1", "PressureBoundary", {{ head: 160.0 }}));
+  solver.add_node(makeNode(Module, "CV1", "CheckValve", {{ head: 150.0, diameter: 12.0 }}));
+  solver.add_node(makeNode(Module, "R2", "PressureBoundary", {{ head: 260.0 }}));
+
+  solver.add_pipe(makePipe(Module, "P1", "R1", "CV1", 500.0));
+  solver.add_pipe(makePipe(Module, "P2", "CV1", "R2", 500.0));
+
+  solver.set_dt(0.01);
+  solver.initGrid();
+  for (let i = 0; i < 50; i++) {{
+    solver.stepMOC();
+  }}
+
+  const results = solver.get_step_results();
+  const cv = results.nodes.CV1;
+  process.stdout.write(JSON.stringify({{
+    type: cv.type,
+    reverseFlowBlocked: cv.reverseFlowBlocked,
+    flowGPM: cv.flowGPM,
+    upstreamHead: cv.upstreamHead,
+    downstreamHead: cv.downstreamHead
+  }}));
+}})().catch((error) => {{
+  console.error(error);
+  process.exit(1);
+}});
+"""
+
+    completed = subprocess.run(
+        ["node", "-e", node_program],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    payload = json.loads(completed.stdout)
+
+    assert payload["type"] == "CheckValve"
+    assert payload["reverseFlowBlocked"] is True
+    assert abs(payload["flowGPM"]) <= 1.0
+    assert payload["downstreamHead"] > payload["upstreamHead"]

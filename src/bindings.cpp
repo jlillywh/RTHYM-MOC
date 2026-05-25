@@ -86,6 +86,16 @@ static py::dict results_to_dict(SimResults&& r) {
     for (auto& [k, v] : r.pipe_flow_gpm) pf[k.c_str()] = to_numpy(std::move(v));
     out["pipe_flow_gpm"] = pf;
 
+    // valve_position dict
+    py::dict vp;
+    for (auto& [k, v] : r.valve_position) vp[k.c_str()] = to_numpy(std::move(v));
+    out["valve_position"] = vp;
+
+    // valve_velocity dict
+    py::dict vv;
+    for (auto& [k, v] : r.valve_velocity) vv[k.c_str()] = to_numpy(std::move(v));
+    out["valve_velocity"] = vv;
+
     return out;
 }
 
@@ -195,7 +205,11 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def_readwrite("tank_volume",      &NodeInput::tank_volume)
         .def_readwrite("polytropic_n",     &NodeInput::polytropic_n)
         .def_readwrite("loss_coeff_in",    &NodeInput::loss_coeff_in)
-        .def_readwrite("loss_coeff_out",   &NodeInput::loss_coeff_out);
+        .def_readwrite("loss_coeff_out",   &NodeInput::loss_coeff_out)
+        // CheckValve closure dynamics
+        .def_readwrite("closure_time",     &NodeInput::closure_time)
+        .def_readwrite("closure_damping",  &NodeInput::closure_damping)
+        .def_readwrite("flipped",          &NodeInput::flipped);
 
     // ── PipeInput ──────────────────────────────────────────────────────────
     py::class_<PipeInput>(m, "PipeInput",

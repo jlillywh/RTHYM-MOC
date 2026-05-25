@@ -57,6 +57,10 @@ emscripten::val MOCSolver::get_step_results() const {
             nodeFlowGPM = pipes_[pi].V.back() * pipes_[pi].area / GPM_TO_CFS;
         }
 
+        if (n.type == NodeType::CheckValve && n.flipped) {
+            nodeFlowGPM = -nodeFlowGPM;
+        }
+
         double actualDemand = 0.0;
         if (n.type == NodeType::InflowNode || n.type == NodeType::OutflowNode) {
             actualDemand = ns.actual_demand;
@@ -64,7 +68,7 @@ emscripten::val MOCSolver::get_step_results() const {
 
         const bool reverseFlowBlocked =
             n.type == NodeType::CheckValve &&
-            downH > upH + 1e-9 &&
+            (n.flipped ? (upH > downH + 1e-9) : (downH > upH + 1e-9)) &&
             std::abs(nodeFlowGPM) <= 1e-6;
 
         node_res.set("type", nodeTypeToStr(n.type));
@@ -167,7 +171,8 @@ EMSCRIPTEN_BINDINGS(rthym_moc) {
         .property("tank_volume", &NodeInput::tank_volume)
         .property("polytropic_n", &NodeInput::polytropic_n)
         .property("loss_coeff_in", &NodeInput::loss_coeff_in)
-        .property("loss_coeff_out", &NodeInput::loss_coeff_out);
+        .property("loss_coeff_out", &NodeInput::loss_coeff_out)
+        .property("flipped", &NodeInput::flipped);
 
     class_<PipeInput>("PipeInput")
         .constructor<>()

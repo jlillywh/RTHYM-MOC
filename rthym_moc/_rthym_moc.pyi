@@ -12,6 +12,8 @@ class SimResultsDict(TypedDict):
     node_pressure: dict[str, NDArray[np.float64]]
     node_cavitation: dict[str, NDArray[np.int_]]
     pipe_flow_gpm: dict[str, NDArray[np.float64]]
+    valve_position: dict[str, NDArray[np.float64]]
+    valve_velocity: dict[str, NDArray[np.float64]]
 
 
 class NodeInput:
