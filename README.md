@@ -317,6 +317,7 @@ solver = rthym_moc.MOCSolver()
 | `solver.get_node_pressure(id)` | Query the current gauge pressure (psi) of a node. |
 | `solver.set_valve_setting(id, pct_open)` | Change a valve's opening immediately (used between `run()` calls). |
 | `solver.set_pump_speed(id, pct_speed)` | Change a pump speed immediately. |
+| `solver.set_pump_power(id, has_power)` | Set pump electrical power (PCV shutdown vs outage). |
 | `solver.set_node_demand(id, demand_gpm)` | Change a junction demand immediately. |
 | `solver.set_valve_schedule(id, schedule)` | Register a time-varying valve schedule (see below). |
 | `solver.set_pump_schedule(id, schedule)` | Register a time-varying pump-speed schedule. |
@@ -479,7 +480,7 @@ The solver supports four control strategies (`rthym_moc.ControlType`):
 1. **Threshold**: Switches a pump's speed or a valve's opening to a `target` value when a monitored quantity (pressure, head, level, or flow) crosses a `threshold` (with `"lt"` or `"gt"` conditions).
 2. **Deadband**: Maintains a level or pressure within a range (`[threshold, threshold + deadband]`) using `"fill"` or `"drain"` logic, switching a controlled pump/valve ON ($100\%$) or OFF ($0\%$).
 3. **PID**: Continuously modulates a pump's speed or valve's open percentage using a proportional-integral-derivative feedback loop. Includes bumpless transfer initialization and anti-windup clamping.
-4. **PCV (Pump Control Valve)**: Interlocks a pump and its discharge control valve (ramping the valve open over `threshold` seconds when the pump starts; ramping the valve closed over `deadband` seconds when the pump stops while keeping the pump running, and finally shutting the pump off when the valve is fully closed).
+4. **PCV (Pump Control Valve)**: Interlocks a pump and its discharge control valve (ramping the valve open over `threshold` seconds when the pump starts and has power; ramping the valve closed over `deadband` seconds when the pump command stops. With `has_power=True` (default), the pump stays at command speed until the valve is closed; with `has_power=False`, physical speed drops to 0 immediately for a power-outage trip).
 
 ### Example Configurations
 
@@ -540,6 +541,10 @@ rule.threshold = 10.0          # open ramp time (seconds)
 rule.deadband = 15.0           # close ramp time (seconds)
 
 solver.add_control_rule(rule)
+
+# Powered shutdown: pump keeps running until the valve finishes closing (default has_power=True).
+# Power outage: drop pump speed immediately while the valve still ramps closed on backup power.
+solver.set_pump_power("Pmp1", False)
 ```
 
 ---
