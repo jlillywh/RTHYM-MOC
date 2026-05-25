@@ -79,6 +79,7 @@ Test summary
 """
 
 import math
+from typing import Optional
 
 import numpy as np
 
@@ -242,8 +243,8 @@ def _run_rthym_with_standpipe() -> np.ndarray:
 
 
 # ── Cache results so each solver runs only once across all tests ──────────────
-_rthym_no_sp:  np.ndarray | None = None
-_rthym_sp:     np.ndarray | None = None
+_rthym_no_sp: Optional[np.ndarray] = None
+_rthym_sp: Optional[np.ndarray] = None
 
 
 def _get_rthym_results():
