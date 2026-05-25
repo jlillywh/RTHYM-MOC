@@ -267,10 +267,10 @@ typical hardware.
 
 ### B.6.6 Benchmark Summary
 
-This comparison is now maintained as a documented benchmark study rather than a
-default pytest module. The reproducible TSNet side-by-side script lives in
-`examples/benchmark_vs_tsnet.py`, while the automated regression suite keeps the
-analytical and stored-reference Joukowsky checks under `tests/`.
+This comparison is maintained as a documented performance study rather than a
+default pytest module. See [docs/benchmarking.md](benchmarking.md) and
+`examples/benchmark_vs_tsnet.py` for timing reproduction; automated correctness
+regressions remain under `tests/` and [docs/validation.md](validation.md).
 
 Both `rthym-moc` and `TSNet` reproduce the Joukowsky analytical solution to
 within 0.05 %, and agree with each other within 0.175 ft RMS over the first

@@ -8,6 +8,15 @@ versioning for package releases.
 
 ## [Unreleased]
 
+### Added
+- `examples/benchmark_matrix.py` performance matrix sweeping time step and
+  duration on the standard Joukowsky case (median timings vs TSNet)
+
+### Changed
+- split correctness documentation (`docs/validation.md`) from TSNet performance
+  benchmarking (`docs/benchmarking.md`) and restructured README Validation and
+  Benchmarking sections accordingly
+
 ## [0.2.0] - 2026-05-24
 
 ### Added

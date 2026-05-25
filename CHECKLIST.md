@@ -9,11 +9,11 @@ This checklist will help you systematically improve the quality, reliability, an
 - [x] Parametrized tests for input variations
 	Covered by existing `pytest.mark.parametrize` sweeps across materials, imported topology checks, and benchmark/input matrices.
 - [x] Regression tests with reference outputs
-	Covered by checked-in JSON/CSV/INP reference assets and cross-engine regression tests documented in `docs/benchmarking.md`.
+	Covered by checked-in JSON/CSV/INP reference assets and cross-engine regression tests documented in `docs/validation.md`.
 - [x] All assertions have clear, descriptive messages
 	Verified by test-suite audit: current `assert` statements in `tests/` include explicit failure messages.
 - [x] Numerical tolerances are explicit and documented
-	Documented in `docs/benchmarking.md`; tests use named tolerance constants, parameterized case bounds, or explicit numeric acceptance bands.
+	Documented in `docs/validation.md`; tests use named tolerance constants, parameterized case bounds, or explicit numeric acceptance bands.
 - [x] Tests are isolated (no shared state)
 	Verified by audit: shared fixtures cache read-only result data from fresh solver runs, with no writes back into shared fixture/result objects.
 - [x] Random seeds set for reproducibility (if needed)
@@ -49,7 +49,7 @@ This checklist will help you systematically improve the quality, reliability, an
 - [x] Example scripts and notebooks are provided
 	Documented in `README.md`; the repo now includes runnable script examples under `examples/` plus `examples/quickstart_notebook.ipynb` for an interactive deterministic/reproducibility walkthrough.
 - [x] Reference data (CSV/JSON) is versioned and documented
-	Documented in `docs/benchmarking.md` with an explicit inventory of checked-in CSV/JSON/INP assets, their provenance, and the tests that consume them.
+	Documented in `docs/validation.md` with an explicit inventory of checked-in CSV/JSON/INP assets, their provenance, and the tests that consume them.
 - [x] README includes usage, install, and test instructions
 	Documented in `README.md` with installation, quickstart usage, and explicit local test / lint / pre-commit commands.
 - [x] Badges for build, coverage, PyPI, etc.
