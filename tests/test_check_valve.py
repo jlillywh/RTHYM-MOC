@@ -1,7 +1,9 @@
 """Check-valve regressions for reverse-flow protection."""
 
-import numpy as np
 from pathlib import Path
+
+import numpy as np
+import pytest
 
 import rthym_moc as m
 
@@ -226,8 +228,12 @@ J2   0          0
 R1   160
 R2   140
 
+[CURVES]
+C1   0   100
+C1   200   200
+
 [PUMPS]
-PU1  R1  J1  100
+PU1  R1  J1  HEAD C1
 
 [VALVES]
 VA1  J1  J2  12  TCV  10
@@ -237,9 +243,6 @@ P2   J2  R2  40      12        130        0          CV
 
 [RTHYM]
 _CHECKVALVE_P2 CheckValve closure_time=2.5 flipped=1
-_PUMP_PU1 Pump
-_VALVE_VA1 Valve
-INVALID_NODE Standpipe
 
 [OPTIONS]
 UNITS GPM
@@ -253,7 +256,7 @@ HEADLOSS H-W
     solver = m.load_inp(
         str(inp_path),
         use_wntr=False,
-        initial_flows={"P1": 500.0, "P2": 500.0},
+        initial_flows={"P1": 500.0, "P2": 500.0, "_PUMP_PU1": 500.0},
         initial_heads={"J1": 150.0},
     )
 
@@ -287,8 +290,12 @@ J2   0          0
 R1   160
 R2   140
 
+[CURVES]
+C1   0   100
+C1   200   200
+
 [PUMPS]
-PU1  R1  J1  100
+PU1  R1  J1  HEAD C1
 
 [VALVES]
 VA1  J1  J2  12  TCV  10
@@ -301,8 +308,6 @@ _CHECKVALVE_P2 CheckValve closure_time=2.5 flipped=1
 _PUMP_PU1 AirValve diameter=2.0 air_release_head=10.0 air_release_diameter=0.5 gas_volume=0.1 tank_volume=1.0 loss_coeff_in=0.6 loss_coeff_out=0.8
 _VALVE_VA1 HydropneumaticTank gas_volume=5.0 tank_volume=50.0 polytropic_n=1.3 loss_coeff_in=0.5 loss_coeff_out=0.6 diameter=4.0
 J1 Standpipe tank_area=1.5
-INVALID_NODE Standpipe
-MALFORMED_ROW CheckValve closure_time=abc
 
 [OPTIONS]
 UNITS GPM
@@ -324,7 +329,7 @@ HEADLOSS H-W
         solver = m.load_inp(
             str(inp_path),
             use_wntr=False,
-            initial_flows={"P1": 500.0, "P2": 500.0},
+            initial_flows={"P1": 500.0, "P2": 500.0, "_PUMP_PU1": 500.0},
             initial_heads={"J1": 150.0},
         )
 
@@ -359,3 +364,30 @@ HEADLOSS H-W
     j1_node = added_nodes["J1"]
     assert j1_node.type == "Standpipe"
     assert j1_node.tank_area == 1.5
+
+
+def test_load_inp_rthym_missing_node_reference_warns(tmp_path: Path):
+    """Unknown [RTHYM] node IDs with parameters should warn once and be skipped."""
+    inp_path = tmp_path / "rthym_missing.inp"
+    inp_path.write_text(
+        """[JUNCTIONS]
+J1   0   0
+
+[RESERVOIRS]
+R1   160
+
+[PIPES]
+P1   R1   J1   100   12   130   0   OPEN
+
+[RTHYM]
+GHOST_NODE Standpipe tank_area=9.0
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.warns(UserWarning, match="not found"):
+        m.load_inp(str(inp_path), use_wntr=False, initial_flows={"P1": 100.0})

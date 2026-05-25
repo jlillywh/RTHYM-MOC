@@ -251,6 +251,9 @@ For `"Tank"`, prefer setting `head` directly. The `level` field is retained for
 compatibility with older code paths and is derived from `head` and `max_level`
 when EPANET networks are imported.
 | `"Valve"` | Quadratic loss, $K = (100/s)^2 - 1$ | `current_setting`, `diameter` |
+| `"PRV"` | Pressure reducing — holds downstream `head` setpoint (ft HGL) when regulating | `head`, `diameter` |
+| `"PSV"` | Pressure sustaining — holds upstream `head` setpoint (ft HGL) when regulating | `head`, `diameter` |
+| `"PBV"` | Pressure breaker — maintains differential head `head` (ft) across the valve | `head`, `diameter` |
 | `"Turbine"` | Quadratic loss (design-curve K) | `current_setting`, `design_velocity`, `diameter` |
 | `"Pump"` | Three-coefficient affinity curve | `current_speed`, `design_head`, `design_flow` |
 | `"Standpipe"` | Open free-surface surge tank (level tracked each step) | `head`, `tank_area` |
@@ -738,7 +741,7 @@ Use these IDs when calling `set_valve_schedule()`, `set_pump_speed()`, or access
 
 ### Limitations
 
-- **PRV / PSV / PBV** pressure setpoints cannot be converted to a % open without system-wide hydraulic information; these valves are initialised fully open with a `UserWarning`.
+- **PRV / PSV / PBV** are modeled as active pressure-control valves during transients (`NodeInput.head` stores the setpoint in ft HGL, or differential ft for PBV). Imported EPANET settings are converted from pressure units to head. This is a simplified regulating model, not a full EPANET steady-state valve solve each step.
 - **FCV / GPV** valve types are not supported and are treated as fully-open valves.
 - **Minor losses** (`[PIPES]` column 7) are imported as a dimensionless local-loss coefficient `K`, included in the initial steady headloss, and then applied as distributed resistance across the pipe during the transient. This is an approximation of a truly lumped fitting loss, but dedicated regression benchmarks are included to quantify the mismatch.
 - **Demand patterns** (`[PATTERNS]`) are not applied; only base demands are used.

@@ -466,7 +466,9 @@ void MOCSolver::initGrid() {
                 auto fit2 = node_idx_map_.find(p.from_node);
                 auto tit2 = node_idx_map_.find(p.to_node);
                 auto is_device = [](NodeType t) {
-                    return t == NodeType::Valve || t == NodeType::CheckValve || t == NodeType::Pump;
+                    return t == NodeType::Valve || t == NodeType::CheckValve ||
+                           t == NodeType::Pump || t == NodeType::PRV ||
+                           t == NodeType::PSV || t == NodeType::PBV;
                 };
                 bool from_is_device = (fit2 != node_idx_map_.end()) &&
                                        is_device(nodes_[fit2->second].input.type);
@@ -997,6 +999,72 @@ void MOCSolver::stepMOC() {
             break;
         }
 
+        // ── Pressure-control valves (PRV / PSV / PBV) ─────────────────────
+        // NodeInput::head stores the control target in ft HGL:
+        //   PRV → downstream piezometric head setpoint
+        //   PSV → upstream piezometric head setpoint
+        //   PBV → required head drop across the valve (ft)
+        case NodeType::PRV:
+        case NodeType::PSV:
+        case NodeType::PBV: {
+            if (in_pipes.size() == 1 && out_pipes.size() == 1) {
+                const int bIn  = in_pipes[0];
+                const int bOut = out_pipes[0];
+                const double Bi  = bndry[bIn].B  / bndry[bIn].area;
+                const double Bo  = bndry[bOut].B / bndry[bOut].area;
+                const double B_eq = Bi + Bo;
+                const double C_eq = bndry[bIn].C_P - bndry[bOut].C_M;
+
+                double Q_open = (B_eq > 1e-12) ? (C_eq / B_eq) : 0.0;
+                double H_up_open = bndry[bIn].C_P - Bi * Q_open;
+                double H_dn_open = bndry[bOut].C_M + Bo * Q_open;
+
+                double Q    = Q_open;
+                double H_up = H_up_open;
+                double H_dn = H_dn_open;
+                const double H_set = n.head;
+                constexpr double reg_tol = 1e-4;
+
+                if (n.type == NodeType::PRV) {
+                    if (H_dn_open > H_set + reg_tol) {
+                        H_dn = std::max(H_vap, H_set);
+                        Q    = (bndry[bIn].C_P - H_dn) / std::max(Bi, 1e-12);
+                        H_up = bndry[bIn].C_P - Bi * Q;
+                    }
+                } else if (n.type == NodeType::PSV) {
+                    if (H_up_open < H_set - reg_tol) {
+                        H_up = std::max(H_vap, H_set);
+                        Q    = (bndry[bIn].C_P - H_up) / std::max(Bi, 1e-12);
+                        H_dn = bndry[bOut].C_M + Bo * Q;
+                    }
+                } else {
+                    const double delta = H_set;
+                    Q    = (C_eq - delta) / std::max(B_eq, 1e-12);
+                    H_up = bndry[bIn].C_P - Bi * Q;
+                    H_dn = H_up - delta;
+                }
+
+                if (H_dn < H_vap) {
+                    H_dn = H_vap;
+                    Q    = (bndry[bIn].C_P - H_dn) / std::max(Bi, 1e-12);
+                    H_up = bndry[bIn].C_P - Bi * Q;
+                }
+                if (H_up < H_vap) {
+                    H_up = H_vap;
+                    Q    = (bndry[bIn].C_P - H_up) / std::max(Bi, 1e-12);
+                    H_dn = bndry[bOut].C_M + Bo * Q;
+                }
+
+                set_downstream(bIn,  H_up);
+                set_upstream  (bOut, H_dn);
+            } else {
+                const double H_f = std::max(H_vap, getInitialHead(ns));
+                for (int pi : in_pipes)  set_downstream(pi, H_f);
+                for (int pi : out_pipes) set_upstream  (pi, H_f);
+            }
+            break;
+        }
+
         // ── Valve / Turbine ────────────────────────────────────────────────
         // Head loss: ΔH = K_eq · Q²   (K_eq = K / (2g·A_v²))
         // Combined with C± gives a quadratic in Q.
@@ -1222,15 +1290,27 @@ void MOCSolver::recordStep(SimResults& results) const {
         const auto& ns = nodes_[ni];
         const auto& n  = ns.input;
 
-        // Head: prefer downstream end of inflow pipe, else upstream end of outflow pipe
+        // Head telemetry: default to downstream inflow end, else outflow upstream end.
+        // Pressure-control valves report the regulated face (PRV/PSV/PBV).
         double H = getInitialHead(ns);
         const auto& in_p  = node_inflow_pipes_ .at(n.id);   // guaranteed to exist after init
         const auto& out_p = node_outflow_pipes_.at(n.id);
 
-        if (!in_p.empty())
+        if (n.type == NodeType::PRV || n.type == NodeType::PBV) {
+            if (!out_p.empty())
+                H = pipes_[out_p[0]].H.front();
+            else if (!in_p.empty())
+                H = pipes_[in_p[0]].H.back();
+        } else if (n.type == NodeType::PSV) {
+            if (!in_p.empty())
+                H = pipes_[in_p[0]].H.back();
+            else if (!out_p.empty())
+                H = pipes_[out_p[0]].H.front();
+        } else if (!in_p.empty()) {
             H = pipes_[in_p[0]].H.back();
-        else if (!out_p.empty())
+        } else if (!out_p.empty()) {
             H = pipes_[out_p[0]].H.front();
+        }
 
         const double P_psi   = (H - n.elevation) / PSI_TO_FT;
         const double P_vapor = p_vapor_ / PSI_TO_FT;
