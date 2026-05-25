@@ -1,15 +1,18 @@
 # Performance Benchmarking Guide
 
-This document describes how RTHYM-MOC is **benchmarked for speed** against
-[TSNet](https://github.com/glorialulu/TSNet), the pure-Python MOC library that
-motivated this project. Solver **correctness** is documented separately in
-[docs/validation.md](validation.md).
+This document describes how RTHYM-MOC reports **runtime performance** alongside
+[TSNet](https://github.com/glorialulu/TSNet), a widely used open-source MOC
+library in Python. The same benchmark networks are run on both solvers so you
+can compare wall-clock time on equivalent physics. Solver **correctness** is
+documented separately in [docs/validation.md](validation.md).
 
 ## Purpose
 
-RTHYM-MOC targets the same 1-D MOC transient class as TSNet, but implements the
-time-stepping loop in C++17 behind a thin Python API. The primary performance
-claim is:
+RTHYM-MOC was developed for interactive transient simulation—including the
+R-THYM web application—where responsiveness in the browser matters. The
+time-stepping loop is implemented in C++17 behind a thin Python API. TSNet is a
+natural comparison point because it solves the same 1-D MOC problem class. A
+representative timing result on developer hardware is:
 
 > On an equivalent Joukowsky instant-closure case, RTHYM-MOC completes the same
 > time history in roughly **200–400× less wall-clock time** than TSNet on typical

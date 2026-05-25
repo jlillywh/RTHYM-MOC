@@ -41,7 +41,7 @@ RTHYM-MOC solves the 1-D water-hammer equations using the Method of Characterist
 - **Network-capable**: arbitrary topologies of pipes, junctions, reservoirs, air valves, valves, pumps, standpipe surge tanks, hydropneumatic tanks, and turbines.
 - **Time-varying events**: valve schedules, pump trip/start, demand changes — specified either as discrete step changes between `run()` calls or as continuous piecewise-linear schedules registered before `run()`.
 - **Cavitation detection**: integrates a column-separation flag (pressure < vapour pressure) at each node.
-- **Fast**: on the standard Joukowsky case, the C++ core is roughly **200–400× faster** than [TSNet](https://github.com/glorialulu/TSNet) (pure Python) on typical hardware — see [Benchmarking](#benchmarking).
+- **Responsive**: built for interactive simulation (including browser-based use); on the standard Joukowsky case, local timing studies show the C++ core running roughly **200–400× faster** than [TSNet](https://github.com/glorialulu/TSNet) (pure Python) — see [Benchmarking](#benchmarking).
 - **Validated**: automated regressions against R-THYM exports, EPANET/wntr steady state, and analytical checks — Joukowsky first-step error < 0.05 %, wave period error < 0.2 % — see [Validation](#validation).
 
 ---
@@ -827,8 +827,13 @@ Long-form cross-engine narratives:
 
 ## Benchmarking
 
-Benchmarking answers: **how much faster is the C++ core than TSNet?** TSNet is
-the pure-Python MOC reference this project was built to outperform.
+Benchmarking documents **runtime performance** on the same Joukowsky networks
+used for validation. RTHYM-MOC powers interactive, browser-based transient
+simulation in the [R-THYM](https://lillywhitewater.com/products/r-thym/) web
+app, where short wall-clock times matter for a responsive user experience. We
+report side-by-side timings against [TSNet](https://github.com/glorialulu/TSNet)
+as a familiar open-source MOC baseline implemented in Python—not as a verdict
+on TSNet, but to show what the C++ core delivers on equivalent cases.
 
 Reproduce timing on your hardware:
 
