@@ -163,7 +163,7 @@ def _get_option(sec: dict, key: str, default: str) -> str:
 # ── [RTHYM] section parser ────────────────────────────────────────────────────
 
 # NodeType strings that map to surge-control components
-_RTHYM_SURGE_TYPES = {"Standpipe", "HydropneumaticTank", "AirValve"}
+_RTHYM_SURGE_TYPES = {"Standpipe", "HydropneumaticTank", "AirValve", "CheckValve"}
 
 def _parse_rthym_overrides(
     sec: dict,
@@ -807,6 +807,11 @@ def load_inp(
                 n.loss_coeff_in = params["loss_coeff_in"]
             if "loss_coeff_out" in params:
                 n.loss_coeff_out = params["loss_coeff_out"]
+        elif ntype == "CheckValve":
+            if "closure_time" in params:
+                n.closure_time = params["closure_time"]
+            if "flipped" in params:
+                n.flipped = bool(params["flipped"])
 
     # ── Assemble solver ────────────────────────────────────────────────────────
     solver = MOCSolver()

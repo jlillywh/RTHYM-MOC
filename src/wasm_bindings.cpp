@@ -110,6 +110,12 @@ emscripten::val MOCSolver::get_step_results() const {
             node_res.set("tankFlowGPM", emscripten::val::undefined());
         }
 
+        if (n.type == NodeType::CheckValve) {
+            node_res.set("valvePosition", ns.valve_position);
+        } else {
+            node_res.set("valvePosition", emscripten::val::undefined());
+        }
+
         nodes_obj.set(n.id, node_res);
     }
 
@@ -170,9 +176,10 @@ EMSCRIPTEN_BINDINGS(rthym_moc) {
         .property("gas_volume", &NodeInput::gas_volume)
         .property("tank_volume", &NodeInput::tank_volume)
         .property("polytropic_n", &NodeInput::polytropic_n)
-        .property("loss_coeff_in", &NodeInput::loss_coeff_in)
-        .property("loss_coeff_out", &NodeInput::loss_coeff_out)
-        .property("flipped", &NodeInput::flipped);
+        .property("loss_coeff_in",    &NodeInput::loss_coeff_in)
+        .property("loss_coeff_out",   &NodeInput::loss_coeff_out)
+        .property("closure_time",     &NodeInput::closure_time)
+        .property("flipped",          &NodeInput::flipped);
 
     class_<PipeInput>("PipeInput")
         .constructor<>()

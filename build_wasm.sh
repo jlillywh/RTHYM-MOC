@@ -40,9 +40,13 @@ emcc -O3 -std=c++17 \
      --bind
 
 echo "Copying compiled output to web app directory..."
-TARGET_DIR="/home/jason/Lillywhite_Consulting/lillywhite_web/digital_twin/static/digital_twin/js/simulation"
-mkdir -p "$TARGET_DIR"
-cp src/rthym_moc.js "$TARGET_DIR/"
-cp src/rthym_moc.wasm "$TARGET_DIR/"
+TARGET_DIR1="/home/jason/Lillywhite_Consulting/lillywhite_web/digital_twin/static/digital_twin/js/simulation"
+TARGET_DIR2="/home/jason/Lillywhite_Consulting/lillywhite_web/rthym/static/rthym/js/simulation"
+mkdir -p "$TARGET_DIR1"
+mkdir -p "$TARGET_DIR2"
+cp src/rthym_moc.js "$TARGET_DIR1/"
+cp src/rthym_moc.wasm "$TARGET_DIR1/"
+cp src/rthym_moc.js "$TARGET_DIR2/"
+cp src/rthym_moc.wasm "$TARGET_DIR2/"
 
 echo "WASM compilation and copy complete!"
