@@ -2,6 +2,7 @@
 
 [![Tests](https://github.com/jlillywh/RTHYM-MOC/actions/workflows/tests.yml/badge.svg)](https://github.com/jlillywh/RTHYM-MOC/actions/workflows/tests.yml)
 [![Coverage](https://codecov.io/gh/jlillywh/RTHYM-MOC/branch/main/graph/badge.svg)](https://codecov.io/gh/jlillywh/RTHYM-MOC)
+[![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fquickstart_notebook.ipynb)
 
 A high-performance 1-D Method of Characteristics (MOC) transient hydraulic solver with a C++17 core and a Python API via PyBind11.  Originally developed as the engine behind the [R-THYM](https://lillywhitewater.com/products/r-thym/) web application, it is released here as a standalone, open-source library suitable for research scripting, parametric studies, and automated validation pipelines.
 
@@ -77,6 +78,10 @@ cmake --build build
 ---
 
 ## Quickstart
+
+> [!TIP]
+> You can run the quickstart and visual valve-closure verification interactively in your browser via Binder:
+> [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fquickstart_notebook.ipynb)
 
 ```python
 import numpy as np
@@ -709,8 +714,8 @@ The benchmark structure follows these rules:
 - cross-engine comparisons are used where a trusted engine or export exists
 - checked-in JSON, CSV, and INP artifacts are used for regression tracking
 
-See [docs/benchmarking.md](/home/jason/RTHYM-MOC/docs/benchmarking.md) for the
-benchmark map and [docs/appendix_b_verification.md](/home/jason/RTHYM-MOC/docs/appendix_b_verification.md)
+See [docs/benchmarking.md](docs/benchmarking.md) for the
+benchmark map and [docs/appendix_b_verification.md](docs/appendix_b_verification.md)
 for the long-form write-up of the main cross-engine studies.
 
 Representative automated benchmarks include:
@@ -818,7 +823,7 @@ The project now tracks its package version from a single source of truth in
 `rthym_moc.__version__`, and both the Python packaging metadata and CMake
 project version read from the same source.
 
-Release-level changes are tracked in [CHANGELOG.md](/home/jason/RTHYM-MOC/CHANGELOG.md).
+Release-level changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
 The repository still includes supporting example-level validation scripts under
 `examples/`, including `benchmark_vs_tsnet.py`, `test_wave_reflections.py`, and
@@ -829,7 +834,7 @@ modules under `tests/`.
 
 ## Benchmark Guide
 
-See [docs/benchmarking.md](/home/jason/RTHYM-MOC/docs/benchmarking.md) for the
+See [docs/benchmarking.md](docs/benchmarking.md) for the
 benchmark matrix, reference assets, tolerance metrics, and coverage notes.
 
 ---
