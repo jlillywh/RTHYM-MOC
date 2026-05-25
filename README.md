@@ -26,7 +26,7 @@ A high-performance 1-D Method of Characteristics (MOC) transient hydraulic solve
 - [Loading from EPANET (.inp)](#loading-from-epanet-inp)
 - [Numerical method](#numerical-method)
 - [Validation](#validation)
-- [Benchmark Guide](#benchmark-guide)
+- [Benchmarking](#benchmarking)
 - [Repository layout](#repository-layout)
 - [Dependencies](#dependencies)
 
@@ -41,8 +41,8 @@ RTHYM-MOC solves the 1-D water-hammer equations using the Method of Characterist
 - **Network-capable**: arbitrary topologies of pipes, junctions, reservoirs, air valves, valves, pumps, standpipe surge tanks, hydropneumatic tanks, and turbines.
 - **Time-varying events**: valve schedules, pump trip/start, demand changes — specified either as discrete step changes between `run()` calls or as continuous piecewise-linear schedules registered before `run()`.
 - **Cavitation detection**: integrates a column-separation flag (pressure < vapour pressure) at each node.
-- **Speed**: the C++ core solves a 900-step, 75-segment single-pipe case in under 1 ms; roughly **370× faster** than the equivalent [TSNet](https://github.com/glorialulu/TSNet) (pure Python) simulation on the same hardware.
-- **Validated**: Joukowsky first-step error < 0.02 % against the analytical formula $\Delta H = aV_0/g$; wave oscillation period error < 0.2 % against $T_0 = 4L/a$.
+- **Fast**: on the standard Joukowsky case, the C++ core is roughly **200–400× faster** than [TSNet](https://github.com/glorialulu/TSNet) (pure Python) on typical hardware — see [Benchmarking](#benchmarking).
+- **Validated**: automated regressions against R-THYM exports, EPANET/wntr steady state, and analytical checks — Joukowsky first-step error < 0.05 %, wave period error < 0.2 % — see [Validation](#validation).
 
 ---
 
@@ -176,7 +176,8 @@ pre-commit run --all-files
 ## Examples
 
 The repository includes runnable script examples under `examples/`, including
-`basic_example.py`, `load_from_inp.py`, and `benchmark_vs_tsnet.py`.
+`basic_example.py`, `load_from_inp.py`, and `benchmark_vs_tsnet.py` (TSNet
+speed comparison; see [Benchmarking](#benchmarking)).
 
 For an interactive walkthrough focused on reproducibility and deterministic
 solver behavior, see `examples/quickstart_notebook.ipynb`.
@@ -192,8 +193,8 @@ JupyterLab.
 
 ## Contributing
 
-Contributions are welcome for solver behavior, benchmark coverage,
-documentation, examples, and packaging improvements.
+Contributions are welcome for solver behavior, validation coverage,
+performance benchmarks, documentation, examples, and packaging improvements.
 
 If you want to contribute, start with `CONTRIBUTING.md` for local setup,
 validation commands, and pull request expectations. `MAINTENANCE.md` documents
@@ -781,141 +782,84 @@ where $B = a/g$ (ft·s²/ft = s²) is the pipe impedance and $R = f \Delta x / (
 
 ## Validation
 
-The repository now keeps its validation and benchmark suite primarily under
-`tests/`, with supporting narrative documentation under `docs/`.
+Validation answers: **is the MOC solver producing the right physics?** The
+automated suite under `tests/` uses explicit numeric tolerances, checked-in
+reference artifacts, and module docstrings — not visual inspection.
 
-The benchmark structure follows these rules:
+Run the full regression suite:
 
-- each benchmark names its reference solution or reference artifact explicitly
-- each benchmark defines quantitative tolerances rather than visual checks
-- each benchmark includes a scenario description in the module docstring
-- parameter sweeps are automated where the governing behavior depends on an
-    input such as closure time
-- cross-engine comparisons are used where a trusted engine or export exists
-- checked-in JSON, CSV, and INP artifacts are used for regression tracking
+```bash
+pytest -q
+```
 
-See [docs/benchmarking.md](docs/benchmarking.md) for the
-benchmark map and [docs/appendix_b_verification.md](docs/appendix_b_verification.md)
-for the long-form write-up of the main cross-engine studies.
+Run the headline cross-engine checks:
 
-Representative automated benchmarks include:
+```bash
+pytest tests/test_joukowsky_rthym.py tests/test_long_pipe_valve.py -q
+```
 
-### 1. R-THYM web-app cross-engine benchmarks (`tests/test_long_pipe_valve.py`, `tests/test_joukowsky_rthym.py`)
+The [quickstart notebook](examples/quickstart_notebook.ipynb) overlays the
+checked-in R-THYM Joukowsky trace with the same RMS/peak tolerances used in CI.
 
-These compare RTHYM-MOC against stored R-THYM web-app exports using checked-in
-JSON and CSV reference outputs.
+### Validation at a glance
 
-| Study | Reference assets | Example metrics |
-|-------|------------------|-----------------|
-| Long Pipe Valve | `tests/R-THYM_MOC_Verification.json`, `tests/R-THYM_MOC_Traces.csv` | wave speed, steady heads, peak pressures, RMS traces |
-| Joukowsky with stub-pipe resonance | `tests/R-THYM_Joukowsky_Verification.json`, `tests/R-THYM_Joukowsky_Traces.csv` | first-step surge, pressure extrema, trace RMS |
+| Category | What it proves | Key tests |
+|---|---|---|
+| Cross-engine (R-THYM) | Heads, peaks, and traces match the production web-app engine | `test_joukowsky_rthym.py`, `test_long_pipe_valve.py` |
+| Cross-engine (EPANET) | Imported steady state and trip directionality | `test_complex_topology_from_inp.py` |
+| Analytical / regime | Joukowsky and slow-closure behavior | `test_gradual_closure_benchmark.py` |
+| Surge-device physics | Sizing, placement, and mixed-device trends | `test_tank_size_benchmark.py`, `test_hydropneumatic_size_benchmark.py`, `test_device_placement_benchmark.py`, `test_air_valve_dominant_*.py`, and related modules |
+| Broader regression | Cavitation, controls, INP import, materials, losses | remaining modules under `tests/` |
 
-### 2. EPANET / wntr import benchmark (`tests/test_complex_topology_from_inp.py`)
+Headline automated results:
 
-An imported multi-branch network is checked against EPANET/wntr for the full
-pre-trip operating point using parameterized node-head and pipe-flow checks.
+- Joukowsky first-step surge vs analytical: **< 0.05 %** (`test_joukowsky_rthym.py`)
+- R-THYM pressure trace RMS (early post-closure window): **≤ 4 psi** (`test_joukowsky_rthym.py`)
+- Wave oscillation period vs $T_0 = 4L/a$: **< 0.2 %** (see `examples/test_wave_reflections.py`)
 
-### 3. Closure-time parameter sweep (`tests/test_gradual_closure_benchmark.py`)
+Full test map, tolerance policy, and reference-artifact inventory:
+[docs/validation.md](docs/validation.md).
 
-The benchmark suite now includes an automated closure-time sweep over `0.5 s`,
-`3.0 s`, and `150 s` closures. This verifies both the rapid-closure Joukowsky
-regime and the slow-closure suppression regime using explicit quantitative peak
-bands.
+Long-form cross-engine narratives:
+[docs/appendix_b_verification.md](docs/appendix_b_verification.md).
 
-### 4. Tank-size parameter sweep (`tests/test_tank_size_benchmark.py`)
+---
 
-The benchmark suite now also starts the surge-device sizing sweeps with a
-standpipe-area benchmark over `1`, `2`, `5`, `10`, and `20 ft²`. It verifies
-that larger standpipe size monotonically reduces the protected-node closure peak
-and keeps the node free of cavitation across the sweep.
+## Benchmarking
 
-### 5. Hydropneumatic sizing sweep (`tests/test_hydropneumatic_size_benchmark.py`)
+Benchmarking answers: **how much faster is the C++ core than TSNet?** TSNet is
+the pure-Python MOC reference this project was built to outperform.
 
-The benchmark suite also includes a hydropneumatic vessel-size sweep over `2`,
-`4`, `6`, `10`, and `20 ft³`, while holding the precharge ratio fixed at
-`gas_volume / tank_volume = 0.4`. This verifies that larger vessels improve
-pump-trip head recovery monotonically and reduce negative-head exposure during
-the trip window.
+Reproduce timing on your hardware:
 
-### 6. Device-placement sweep (`tests/test_device_placement_benchmark.py`)
+```bash
+pip install tsnet==0.3.1
+python examples/benchmark_vs_tsnet.py      # single standard case
+python examples/benchmark_matrix.py        # grid-size performance matrix
+```
 
-The benchmark suite also includes a hydropneumatic placement sweep over `40`,
-`120`, `300`, and `600 ft` from pump discharge. This verifies that moving the
-same protection vessel farther from the disturbance source weakens protection,
-reduces trip-window recovery head, and increases negative-head exposure.
+The script reports wall-clock time for both engines on the same 300-step,
+instant-closure case, plus a physics cross-check (RMS head difference over the
+first wave cycle). Typical results on developer hardware are **< 1 ms** for
+RTHYM-MOC vs **~50–70 ms** for TSNet — roughly **200–400×** speedup. Re-run the
+script on your machine before citing a ratio.
 
-### 7. Pipe-length sweep (`tests/test_pipe_length_benchmark.py`)
+| Topic | Documentation |
+|---|---|
+| How to run and interpret the comparison | [docs/benchmarking.md](docs/benchmarking.md), `examples/benchmark_matrix.py` |
+| Tabulated physics + timing results | [docs/appendix_b_verification.md](docs/appendix_b_verification.md) §B.6 |
+| Automated correctness regressions | [Validation](#validation) (TSNet is not a default pytest dependency) |
 
-The benchmark suite also includes a protected pipe-length sweep over `500`,
-`1000`, `2000`, `4000`, and `8000 ft` with a fixed near-pump hydropneumatic
-vessel. This verifies the calibrated system-scale trend in this geometry:
-shorter mains allow deeper low-pressure collapse after a trip, while longer
-protected mains improve trip-window recovery and eliminate negative-head
-exposure.
-
-### 8. Multi-device placement sweep (`tests/test_multi_device_placement_benchmark.py`)
-
-The benchmark suite also includes a split-vessel placement sweep that divides a
-fixed hydropneumatic capacity across two vessels and varies their locations
-along the discharge main. This verifies the key interaction rule in this
-geometry: two smaller vessels still protect the pump trip well if one remains
-near pump discharge, but moving both vessels away from the disturbance source
-causes low-pressure collapse to return.
-
-### 9. Mixed-device interaction benchmark (`tests/test_mixed_device_interaction_benchmark.py`)
-
-The benchmark suite also includes a mixed-device pump-trip benchmark that
-combines a small near-pump hydropneumatic vessel with a nearby air valve. It
-uses aggregate trip-window negative-head exposure across the discharge node and
-vent node as a shared acceptance metric, and verifies that the combined layout
-outperforms either single-device layout on the same protected region.
-
-### 10. Air-valve-dominant mixed layout (`tests/test_air_valve_dominant_mixed_layout_benchmark.py`)
-
-The benchmark suite also includes an alternative mixed-device layout where the
-air valve is the primary protection element and a tiny downstream vessel only
-adds secondary damping. It verifies that the air-only layout beats the
-vessel-only layout on protected-region mean trip head, while the combined
-layout improves that same regional metric further without losing the air valve's
-vacuum protection.
-
-### 11. Air-dominant layout sensitivity sweep (`tests/test_air_valve_dominant_layout_sensitivity_benchmark.py`)
-
-The benchmark suite also includes a downstream-vessel distance sweep within the
-air-valve-dominant regime. The air valve stays fixed near pump discharge while a
-tiny downstream vessel moves from `300` to `3000 ft`, verifying that the air
-valve remains the primary protection element while the vessel's placement changes
-the amount of secondary damping recovered across the protected region.
-
-### 12. Air-dominant size sweep (`tests/test_air_valve_dominant_size_sweep_benchmark.py`)
-
-The benchmark suite also includes the complementary downstream-vessel size sweep
-within the same air-valve-dominant regime. The air valve stays fixed near pump
-discharge and the downstream vessel location stays fixed while the tiny vessel
-grows from `0.3` to `4.8 ft³`, verifying that larger secondary vessels recover
-more protected-region mean trip head even though the air valve remains the
-dominant protection element.
+---
 
 ## Versioning
 
-The project now tracks its package version from a single source of truth in
+The project tracks its package version from a single source of truth in
 `rthym_moc/_version.py`. The Python API exposes that value as
 `rthym_moc.__version__`, and both the Python packaging metadata and CMake
 project version read from the same source.
 
 Release-level changes are tracked in [CHANGELOG.md](CHANGELOG.md).
-
-The repository still includes supporting example-level validation scripts under
-`examples/`, including `benchmark_vs_tsnet.py`, `test_wave_reflections.py`, and
-`test_gradual_closure.py`. TSNet-based comparisons live there and in the
-verification appendix as documented benchmarks rather than default pytest
-dependencies. The primary regression-grade benchmarks are the automated pytest
-modules under `tests/`.
-
-## Benchmark Guide
-
-See [docs/benchmarking.md](docs/benchmarking.md) for the
-benchmark matrix, reference assets, tolerance metrics, and coverage notes.
 
 ---
 
@@ -933,7 +877,8 @@ RTHYM-MOC/
 │   └── _rthym_moc*.so     # Compiled extension (generated by build)
 ├── examples/
 │   ├── basic_example.py            # Minimal Joukowsky quickstart
-│   ├── benchmark_vs_tsnet.py       # Side-by-side comparison with TSNet
+│   ├── benchmark_vs_tsnet.py       # Single-case TSNet timing comparison
+│   ├── benchmark_matrix.py         # Multi grid-size TSNet performance matrix
 │   ├── test_wave_reflections.py    # Wave period & damping verification
 │   ├── test_gradual_closure.py     # Joukowsky criterion, K-model valve
 │   ├── test_surge_tank.py          # Standpipe mass-oscillation & pressure mitigation
@@ -957,7 +902,8 @@ RTHYM-MOC/
 │   └── test_waterhammer.cpp                    # Standalone C++ unit test (BUILD_TESTS=ON)
 ├── docs/
 │   ├── appendix_b_verification.md  # Long-form cross-engine verification appendix
-│   ├── benchmarking.md             # Benchmark structure and asset map
+│   ├── validation.md               # Correctness test map, tolerances, reference assets
+│   ├── benchmarking.md             # TSNet performance comparison guide
 │   └── appendix_hydraulic_reference.md
 ├── CMakeLists.txt
 └── pyproject.toml

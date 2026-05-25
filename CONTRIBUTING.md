@@ -68,7 +68,9 @@ pre-commit run --all-files
 - Prefer fixing the root cause instead of layering on narrow patches.
 - Keep public API and solver-scope changes explicit in docs.
 - Do not add new mandatory runtime dependencies without a clear need.
-- Treat TSNet as benchmark/documentation surface, not a default test dependency.
+- Treat TSNet as an optional performance-benchmark dependency, not a default
+  pytest dependency. Correctness regressions live under `tests/`; see
+  `docs/validation.md` and `docs/benchmarking.md`.
 
 ## Pull Requests
 
@@ -78,8 +80,9 @@ When opening a pull request, include:
 - the commands you ran for validation
 - any benchmark, tolerance, or scope changes that reviewers should notice
 
-If a change affects numerical behavior, update the relevant benchmark or
-validation documentation under `docs/` and keep assertion tolerances explicit.
+If a change affects numerical behavior, update the relevant validation
+documentation under `docs/validation.md` (and `docs/benchmarking.md` if timing
+methodology changes) and keep assertion tolerances explicit.
 
 ## Reporting Issues
 
