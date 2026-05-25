@@ -47,6 +47,15 @@ from ._rthym_moc import (
     PSI_TO_FT,
 )
 from .epanet import load_inp
+from .report import (
+    cavitation_summary,
+    export_study_csv,
+    export_study_json,
+    format_study_table,
+    head_to_pressure_psi,
+    series_extrema,
+    summarize_study,
+)
 from ._version import __version__
 
 __all__ = [
@@ -59,5 +68,12 @@ __all__ = [
     "GPM_TO_CFS",
     "PSI_TO_FT",
     "load_inp",
+    "summarize_study",
+    "series_extrema",
+    "cavitation_summary",
+    "format_study_table",
+    "export_study_json",
+    "export_study_csv",
+    "head_to_pressure_psi",
     "__version__",
 ]

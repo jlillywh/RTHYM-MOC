@@ -17,10 +17,13 @@ A high-performance 1-D Method of Characteristics (MOC) transient hydraulic solve
   - [NodeInput](#nodeinput)
   - [PipeInput](#pipeinput)
   - [MOCSolver](#mocsolver)
+  - [ControlRuleInput](#controlruleinput)
   - [Results dictionary](#results-dictionary)
+  - [Post-processing & study reports](#post-processing--study-reports)
 - [Unit conventions](#unit-conventions)
 - [Valve model](#valve-model)
 - [Valve closure types](#valve-closure-types)
+- [Operational Controls & Event Logic](#operational-controls--event-logic)
 - [Surge control components](#surge-control-components)
 - [Scripted multi-event transients](#scripted-multi-event-transients)
 - [Loading from EPANET (.inp)](#loading-from-epanet-inp)
@@ -41,7 +44,8 @@ RTHYM-MOC solves the 1-D water-hammer equations using the Method of Characterist
 - **Network-capable**: arbitrary topologies of pipes, junctions, reservoirs, air valves, valves, pumps, standpipe surge tanks, hydropneumatic tanks, and turbines.
 - **Time-varying events**: valve schedules, pump trip/start, demand changes — specified either as discrete step changes between `run()` calls or as continuous piecewise-linear schedules registered before `run()`.
 - **Cavitation detection**: integrates a column-separation flag (pressure < vapour pressure) at each node.
-- **Responsive**: built for interactive simulation (including browser-based use); on the standard Joukowsky case, local timing studies show the C++ core running roughly **200–400× faster** than [TSNet](https://github.com/glorialulu/TSNet) (pure Python) — see [Benchmarking](#benchmarking).
+- **Study summaries**: built-in helpers turn raw time series into node/pipe envelopes, cavitation duration, and CSV/JSON exports — see [Post-processing & study reports](#post-processing--study-reports).
+- **Fast**: on the standard Joukowsky case, the C++ core is roughly **200–400× faster** than [TSNet](https://github.com/glorialulu/TSNet) (pure Python) on typical hardware — see [Benchmarking](#benchmarking).
 - **Validated**: automated regressions against R-THYM exports, EPANET/wntr steady state, and analytical checks — Joukowsky first-step error < 0.05 %, wave period error < 0.2 % — see [Validation](#validation).
 
 ---
@@ -175,9 +179,20 @@ pre-commit run --all-files
 
 ## Examples
 
-The repository includes runnable script examples under `examples/`, including
-`basic_example.py`, `load_from_inp.py`, and `benchmark_vs_tsnet.py` (TSNet
-speed comparison; see [Benchmarking](#benchmarking)).
+The repository includes runnable scripts and a notebook under `examples/`:
+
+| Script / notebook | Purpose |
+|---|---|
+| `basic_example.py` | Minimal Joukowsky quickstart with optional plotting |
+| `quickstart_notebook.ipynb` | Interactive reproducibility walkthrough (Binder-ready) |
+| `load_from_inp.py` | EPANET `.inp` import and transient event |
+| `transient_study_report.py` | Run a transient and export study summaries (CSV/JSON) |
+| `benchmark_vs_tsnet.py` | Single-case TSNet timing comparison |
+| `benchmark_matrix.py` | Multi grid-size TSNet performance matrix |
+| `test_wave_reflections.py` | Wave period and damping verification |
+| `test_gradual_closure.py` | Joukowsky criterion and K-model valve closure |
+| `test_surge_tank.py` | Standpipe mass oscillation and pressure mitigation |
+| `verify_rthym_webapp.py` | Cross-check against R-THYM web-app export artifacts |
 
 For an interactive walkthrough focused on reproducibility and deterministic
 solver behavior, see `examples/quickstart_notebook.ipynb`.
@@ -222,9 +237,13 @@ node.demand           = 0.0           # GPM withdrawal (Junction, OutflowNode)
 node.current_setting  = 100.0         # % open (Valve, Turbine; 100 = fully open)
 node.diameter         = 8.0           # inches (Valve orifice / Turbine runner)
 node.current_speed    = 100.0         # % rated speed (Pump)
+node.has_power        = True          # electrical power available (Pump; PCV logic)
 node.design_head      = 50.0          # ft at BEP (Pump)
 node.design_flow      = 100.0         # GPM at BEP (Pump)
 node.design_velocity  = 0.0           # ft/s (Turbine; derived from design_flow if 0)
+node.closure_time     = 0.03          # s — CheckValve exponential close time (default 0.03)
+node.closure_damping  = 0.0           # dimensionless CheckValve damping (optional)
+node.flipped          = False         # CheckValve: reverse installed direction
 node.air_release_head = 0.0           # ft vent reference above elevation (AirValve)
 node.air_release_diameter = 0.25      # inches (AirValve small-orifice release port)
 node.tank_area        = 10.0          # ft² cross-sectional area (Standpipe)
@@ -244,20 +263,20 @@ node.loss_coeff_out   = 0.7           # C_d orifice coefficient for outflow / ai
 | `"InflowNode"` | Injects flow (demand treated as negative) | `demand` |
 | `"PressureBoundary"` | Fixed total head at all times | `head` |
 | `"Tank"` | Fixed HGL; `head` is authoritative, `level` is compatibility state | `head`, `level`, `max_level` |
-| `"CheckValve"` | Ideal inline one-way valve; forward flow only, reverse flow clamps shut | `diameter` |
-| "AirValve" | Air-pocket valve with large admission port and small release port | `elevation`, `head`, `diameter`, `air_release_diameter`, `gas_volume`, `tank_volume`, `loss_coeff_in`, `loss_coeff_out`, `air_release_head` |
-
-For `"Tank"`, prefer setting `head` directly. The `level` field is retained for
-compatibility with older code paths and is derived from `head` and `max_level`
-when EPANET networks are imported.
+| `"CheckValve"` | Inline one-way valve with optional exponential slam dynamics | `diameter`, `closure_time`, `closure_damping`, `flipped` |
+| `"AirValve"` | Air-pocket valve with large admission port and small release port | `elevation`, `head`, `diameter`, `air_release_diameter`, `gas_volume`, `tank_volume`, `loss_coeff_in`, `loss_coeff_out`, `air_release_head` |
 | `"Valve"` | Quadratic loss, $K = (100/s)^2 - 1$ | `current_setting`, `diameter` |
 | `"PRV"` | Pressure reducing — holds downstream `head` setpoint (ft HGL) when regulating | `head`, `diameter` |
 | `"PSV"` | Pressure sustaining — holds upstream `head` setpoint (ft HGL) when regulating | `head`, `diameter` |
 | `"PBV"` | Pressure breaker — maintains differential head `head` (ft) across the valve | `head`, `diameter` |
 | `"Turbine"` | Quadratic loss (design-curve K) | `current_setting`, `design_velocity`, `diameter` |
-| `"Pump"` | Three-coefficient affinity curve | `current_speed`, `design_head`, `design_flow` |
+| `"Pump"` | Three-coefficient affinity curve | `current_speed`, `has_power`, `design_head`, `design_flow` |
 | `"Standpipe"` | Open free-surface surge tank (level tracked each step) | `head`, `tank_area` |
 | `"HydropneumaticTank"` | Closed pressurised vessel; gas follows polytropic law | `head`, `diameter`, `gas_volume`, `tank_volume`, `polytropic_n`, `loss_coeff_in`, `loss_coeff_out` |
+
+For `"Tank"`, prefer setting `head` directly. The `level` field is retained for
+compatibility with older code paths and is derived from `head` and `max_level`
+when EPANET networks are imported.
 
 A dead-end boundary — equivalent to an instantaneously closed valve — is modelled as a `"Junction"` with `demand = 0` and no outflow pipe attached.  The MOC boundary condition then enforces $Q = 0$ exactly, giving $H = C^+$.
 
@@ -319,11 +338,12 @@ solver = rthym_moc.MOCSolver()
 | `solver.set_pump_speed(id, pct_speed)` | Change a pump speed immediately. |
 | `solver.set_pump_power(id, has_power)` | Set pump electrical power (PCV shutdown vs outage). |
 | `solver.set_node_demand(id, demand_gpm)` | Change a junction demand immediately. |
+| `solver.set_node_head(id, head_ft)` | Change a fixed-head boundary's stored head between `run()` calls. |
 | `solver.set_valve_schedule(id, schedule)` | Register a time-varying valve schedule (see below). |
 | `solver.set_pump_schedule(id, schedule)` | Register a time-varying pump-speed schedule. |
 | `solver.set_demand_schedule(id, schedule)` | Register a time-varying junction demand schedule. |
 | `solver.set_head_schedule(id, schedule)` | Register a time-varying fixed-head schedule for a `PressureBoundary` or `Tank`. |
-| `solver.run(total_time, dt, p_vapor, usf_tau)` | Execute the transient and return results. |
+| `solver.run(total_time, dt, p_vapor, usf_tau, k_bru)` | Execute the transient and return results. |
 
 #### `run()` parameters
 
@@ -334,10 +354,41 @@ results = solver.run(
     p_vapor    = -14.0,   # float, psi     — vapour pressure (negative = subatmospheric)
     usf_tau    = 0.5,     # float, seconds — unsteady-friction IIR time constant
                           #   set to dt to disable unsteady friction entirely
+    k_bru      = -1.0,    # float — Brunone USF coefficient (see below)
 )
 ```
 
+**`k_bru` (Brunone unsteady friction).**
+
+| Value | Behavior |
+|---|---|
+| `-1` (default) | Dynamic Vardy–Brown: coefficient computed each step from local Reynolds number |
+| `0` | Steady friction only (no unsteady-friction correction) |
+| `> 0` | User-supplied static coefficient (typical turbulent range: 0.02–0.15) |
+
 Each call to `run()` rebuilds the MOC grid from the steady-state initial conditions stored in the `NodeInput` / `PipeInput` objects.  Node and pipe inputs persist across calls; call `set_valve_setting()` etc. *before* the next `run()` to change initial conditions for the next segment.
+
+### ControlRuleInput
+
+Operational control rules are configured with `ControlRuleInput` and registered via `solver.add_control_rule()`. See [Operational Controls & Event Logic](#operational-controls--event-logic) for worked examples.
+
+```python
+rule = rthym_moc.ControlRuleInput()
+rule.id                  = "rule_id"       # str — unique rule identifier
+rule.type                = rthym_moc.ControlType.Threshold  # Threshold | Deadband | PID | PCV
+rule.monitored_node      = "J1"            # node whose quantity is observed
+rule.controlled_node     = "V1"            # pump or valve node to actuate
+rule.monitored_quantity  = "pressure"      # "pressure" | "head" | "level" | "flow"
+rule.monitored_pipe      = "P1"            # required when monitored_quantity == "flow"
+rule.condition           = "gt"            # Threshold: "lt" or "gt"
+rule.threshold           = 45.0            # Threshold/Deadband/PCV trigger or ramp time (s)
+rule.target              = 0.0             # Threshold/PID setpoint
+rule.deadband            = 15.0            # Deadband width or PCV close-ramp time (s)
+rule.action              = "fill"          # Deadband: "fill" or "drain"
+rule.kp                  = 2.0             # PID proportional gain
+rule.ki                  = 1.0             # PID integral gain
+rule.kd                  = 0.1             # PID derivative gain
+```
 
 ### Results dictionary
 
@@ -349,9 +400,48 @@ H_node      = np.array(results["node_head"]["NODE_ID"])     # (N,) float64, ft
 P_node      = np.array(results["node_pressure"]["NODE_ID"]) # (N,) float64, psi
 Q_pipe      = np.array(results["pipe_flow_gpm"]["PIPE_ID"]) # (N,) float64, GPM
 cav_flag    = np.array(results["node_cavitation"]["NODE_ID"])# (N,) int32, 0 or 1
+valve_pct   = np.array(results["valve_setting"]["V1"])      # (N,) float64, % open (Valve/Turbine)
+valve_pos   = np.array(results["valve_position"]["CV1"])    # (N,) float64, 0–1 (CheckValve position)
+valve_vel   = np.array(results["valve_velocity"]["CV1"])   # (N,) float64, ft/s (CheckValve disc velocity)
 ```
 
 Every node and every pipe that was added to the solver has a corresponding key in the respective sub-dictionary.  `node_head` records the hydraulic grade line (HGL) at each node.  `node_cavitation` is 1 for any time step at which the computed pressure fell below `p_vapor`.
+
+`valve_setting` is recorded for `Valve` and `Turbine` nodes.  `valve_position` and `valve_velocity` are recorded for `CheckValve` nodes during slam dynamics.
+
+### Post-processing & study reports
+
+After `run()`, use the helpers in `rthym_moc.report` (re-exported at package root) to build engineering summaries without custom analysis code:
+
+```python
+summary = rthym_moc.summarize_study(results)
+print(rthym_moc.format_study_table(summary))
+
+rthym_moc.export_study_json("study_summary.json", summary)
+rthym_moc.export_study_csv("study_output", summary)  # node_envelopes.csv, pipe_flow_envelopes.csv, study_meta.json
+```
+
+| Function | Description |
+|---|---|
+| `summarize_study(results, dt_s=None)` | Build a `StudySummary` dict with node head/pressure envelopes, pipe flow envelopes, cavitation duration, and run metadata |
+| `series_extrema(time_s, values)` | Min/max of any scalar series plus the times at which they occur |
+| `cavitation_summary(time_s, flags, dt_s=None)` | First occurrence, step count, and estimated duration from cavitation flags |
+| `format_study_table(summary)` | Plain-text table for logs or reports |
+| `export_study_json(path, summary)` | Write the full summary dict to JSON |
+| `export_study_csv(directory, summary)` | Write node and pipe envelope CSVs plus metadata JSON |
+| `head_to_pressure_psi(head_ft, elevation_ft)` | Convert piezometric head to gauge pressure (psi) |
+
+A `StudySummary` has three top-level keys:
+
+- `meta` — `duration_s`, `num_steps`, `dt_s`
+- `nodes[id]` — `head_ft`, `pressure_psi` (each an extrema dict with `min`, `min_time_s`, `max`, `max_time_s`), and optional `cavitation` (`occurred`, `first_time_s`, `steps`, `duration_s`)
+- `pipes[id]` — `flow_gpm` extrema and times
+
+See `examples/transient_study_report.py` for a complete CLI workflow:
+
+```bash
+python examples/transient_study_report.py --out study_output
+```
 
 ---
 
@@ -374,6 +464,7 @@ Two conversion constants are exported for convenience:
 ```python
 rthym_moc.GPM_TO_CFS   # = 0.002228  (multiply GPM to get ft³/s)
 rthym_moc.G_FT_S2      # = 32.2      (ft/s²)
+rthym_moc.PSI_TO_FT    # = 2.307692… (multiply psi to get ft of head)
 ```
 
 ---
@@ -477,7 +568,7 @@ Control rules are registered using `ControlRuleInput` and added via `solver.add_
 
 The solver supports four control strategies (`rthym_moc.ControlType`):
 
-1. **Threshold**: Switches a pump's speed or a valve's opening to a `target` value when a monitored quantity (pressure, head, level, or flow) crosses a `threshold` (with `"lt"` or `"gt"` conditions).
+1. **Threshold**: Switches a pump's speed or a valve's opening to a `target` value when a monitored quantity (pressure, head, level, or flow) crosses a `threshold` (with `"lt"` or `"gt"` conditions). Use `monitored_pipe` when `monitored_quantity == "flow"`.
 2. **Deadband**: Maintains a level or pressure within a range (`[threshold, threshold + deadband]`) using `"fill"` or `"drain"` logic, switching a controlled pump/valve ON ($100\%$) or OFF ($0\%$).
 3. **PID**: Continuously modulates a pump's speed or valve's open percentage using a proportional-integral-derivative feedback loop. Includes bumpless transfer initialization and anti-windup clamping.
 4. **PCV (Pump Control Valve)**: Interlocks a pump and its discharge control valve (ramping the valve open over `threshold` seconds when the pump starts and has power; ramping the valve closed over `deadband` seconds when the pump command stops. With `has_power=True` (default), the pump stays at command speed until the valve is closed; with `has_power=False`, physical speed drops to 0 immediately for a power-outage trip).
@@ -671,7 +762,7 @@ solver.set_demand_schedule("J1", list(zip(demand_times, demand_vals)))
 results = solver.run(total_time=5.0, dt=0.01)
 ```
 
-To step a pump or boundary condition between separate `run()` calls, continue using `set_pump_speed()`, `set_node_demand()`, or direct `NodeInput.head` changes before the next `run()`. Each new `run()` call re-initialises from the stored steady-state values rather than the final state of the previous transient.
+To step a pump, boundary head, or demand between separate `run()` calls, use `set_pump_speed()`, `set_node_head()`, `set_node_demand()`, or direct `NodeInput.head` changes before the next `run()`. Each new `run()` call re-initialises from the stored steady-state values rather than the final state of the previous transient.
 
 ---
 
@@ -715,8 +806,12 @@ solver = rthym_moc.load_inp(
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `path` | `str` | — | Path to the EPANET `.inp` file |
-| `use_wntr` | `bool` | `True` | Run wntr hydraulics for initial flows |
-| `initial_flows` | `dict[str, float]` | `None` | Explicit `{pipe_id: GPM}` overrides (applied after wntr, if any) |
+| `use_wntr` | `bool` | `True` | Run wntr hydraulics for initial flows and junction heads |
+| `initial_flows` | `dict[str, float]` | `None` | Explicit `{link_id: GPM}` overrides (applied after wntr, if any) |
+| `initial_heads` | `dict[str, float]` | `None` | Explicit `{node_id: head_ft}` overrides for junction and inline element heads |
+| `stub_length_ft` | `float` | `40.0` | Length (ft) of fictitious stub pipes on each side of pumps and valves; must satisfy the Courant grid constraint |
+
+For `initial_flows`, use the original EPANET link ID for pumps and valves (e.g. `"V1"`), not the generated stub pipe IDs. For `initial_heads`, use EPANET junction IDs and generated `_VALVE_<id>` / `_PUMP_<id>` IDs for inline elements.
 
 ### Supported EPANET sections
 
@@ -728,13 +823,18 @@ solver = rthym_moc.load_inp(
 | `[PIPES]` | `PipeInput` (H-W, D-W, and C-M roughness converted to H-W C; `CV` pipes become generated `CheckValve` nodes plus split pipes) |
 | `[PUMPS]` | `Pump` node + two stub pipes; design point read from `[CURVES]` |
 | `[VALVES]` | `Valve` node + two stub pipes (TCV, PRV, PSV, PBV) |
+| `[PATTERNS]` | Demand multipliers (see limitations) |
+| `[DEMANDS]` | Junction demand with pattern multiplier at index 0 |
+| `[CONTROLS]` | Simple `LINK … STATUS OPEN\|CLOSED AT TIME …` rows → pump/valve schedules |
+| `[TIMES]` | Pattern timestep (hours → seconds) |
+| `[CURVES]` | Pump design points |
 | `[OPTIONS]` | `Units`, `Headloss` formula |
 
 All US customary unit variants (GPM, CFS, MGD, IMGD, AFD) and SI metric variants (LPS, LPM, MLD, CMH, CMD) are supported.
 
 ### Pump, valve, and check-valve generated IDs
 
-Because EPANET treats pumps and valves as *links* (not nodes), `load_inp()` injects an intermediate node and two 50 ft stub pipes for each one.  The generated IDs follow a predictable pattern:
+Because EPANET treats pumps and valves as *links* (not nodes), `load_inp()` injects an intermediate node and two stub pipes (default 40 ft each; override with `stub_length_ft`) for each one.  The generated IDs follow a predictable pattern:
 
 | EPANET link `V1` | Generated node | Generated pipes |
 |---|---|---|
@@ -751,9 +851,9 @@ Use these IDs when calling `set_valve_schedule()`, `set_pump_speed()`, or access
 - **Minor losses** (`[PIPES]` column 7) are imported as a dimensionless local-loss coefficient `K`, included in the initial steady headloss, and then applied as distributed resistance across the pipe during the transient. This is an approximation of a truly lumped fitting loss, but dedicated regression benchmarks are included to quantify the mismatch.
 - **Demand patterns** — `[PATTERNS]` with `[JUNCTIONS]` / `[DEMANDS]` apply multiplier at index 0 to initial demand; multi-point patterns become `set_demand_schedule()`. Pattern timestep comes from `[TIMES]` (hours → seconds). See [`docs/import_fidelity.md`](docs/import_fidelity.md).
 - **Simple controls** — `[CONTROLS]` rows of the form `LINK <id> STATUS OPEN|CLOSED AT TIME <hours>` map to pump/valve schedules on `_PUMP_<id>` / `_VALVE_<id>`. `[RULES]` and NODE-based controls are not imported.
-- **Check valves** (`CV` status on a pipe) are imported as generated inline `CheckValve` nodes with split pipes. Phase 1 models them as ideal one-way devices: forward flow is allowed, while reverse-flow tendency closes the valve without detailed slam dynamics.
+- **Check valves** (`CV` status on a pipe) are imported as generated inline `CheckValve` nodes with split pipes. The model supports exponential slam dynamics via `closure_time` (default 0.03 s) and optional `flipped` orientation.
 
-See `examples/load_from_inp.py` for a complete worked example.
+See `examples/load_from_inp.py` for a complete worked example. Import fidelity details and roadmap status: [`docs/import_fidelity.md`](docs/import_fidelity.md).
 
 ---
 
@@ -780,12 +880,15 @@ where $B = a/g$ (ft·s²/ft = s²) is the pipe impedance and $R = f \Delta x / (
 - *PressureBoundary / Tank*: $H$ fixed; $V$ solved from the appropriate $C^\pm$.
 - *Junction*: Kirchhoff continuity; $H$ solved from the combined $C^\pm$ of all incident pipes.
 - *Dead-end (Junction, demand = 0, no outflow pipe)*: $H = C^+$ (zero-flow reflection).
-- *Valve*: $K = (100/s)^2 - 1$ loss; combined with $C^\pm$ to solve $H$ and $V$.
-- *Pump*: affinity-curve head-flow relationship combined with $C^\pm$.
+- *Valve / Turbine*: $K = (100/s)^2 - 1$ loss; combined with $C^\pm$ to solve $H$ and $V$.
+- *CheckValve*: one-way flow with optional exponential disc closure; position and velocity are recorded in results.
+- *PRV / PSV / PBV*: simplified regulating pressure-control valves using the setpoint stored in `NodeInput.head`.
+- *Pump*: affinity-curve head-flow relationship combined with $C^\pm$; `has_power` affects PCV interlock behavior.
+- *AirValve*: finite admission/release orifices with trapped-air compression and delayed venting.
 - *Standpipe*: $H$ updated from the standpipe continuity equation each step.
 - *HydropneumaticTank*: $H$ updated from the polytropic gas law combined with the orifice flow equation each step.
 
-**Unsteady friction.**  An optional IIR low-pass filter on pipe velocity (time constant `usf_tau`) approximates the Brunone–Vítkovský unsteady friction correction.  Set `usf_tau = dt` to disable (quasi-steady friction only).
+**Unsteady friction.**  An optional IIR low-pass filter on pipe velocity (time constant `usf_tau`) approximates the Brunone–Vítkovský unsteady friction correction, with `k_bru` selecting dynamic Vardy–Brown (default), steady-only, or a user coefficient.  Set `usf_tau = dt` to disable the filter entirely (quasi-steady friction only).
 
 ---
 
@@ -836,13 +939,8 @@ Long-form cross-engine narratives:
 
 ## Benchmarking
 
-Benchmarking documents **runtime performance** on the same Joukowsky networks
-used for validation. RTHYM-MOC powers interactive, browser-based transient
-simulation in the [R-THYM](https://lillywhitewater.com/products/r-thym/) web
-app, where short wall-clock times matter for a responsive user experience. We
-report side-by-side timings against [TSNet](https://github.com/glorialulu/TSNet)
-as a familiar open-source MOC baseline implemented in Python—not as a verdict
-on TSNet, but to show what the C++ core delivers on equivalent cases.
+Benchmarking answers: **how much faster is the C++ core than TSNet?** TSNet is
+the pure-Python MOC reference this project was built to outperform.
 
 Reproduce timing on your hardware:
 
@@ -886,21 +984,27 @@ RTHYM-MOC/
 │   ├── moc_solver.cpp     # Full MOC physics implementation (C++17)
 │   └── bindings.cpp       # PyBind11 bindings → _rthym_moc extension module
 ├── rthym_moc/
-│   ├── __init__.py        # Re-exports public API from _rthym_moc
+│   ├── __init__.py        # Public API re-exports
 │   ├── _version.py        # Single source of truth for project version
+│   ├── epanet.py          # load_inp() EPANET importer
+│   ├── report.py          # Study summaries and CSV/JSON export
 │   └── _rthym_moc*.so     # Compiled extension (generated by build)
 ├── examples/
 │   ├── basic_example.py            # Minimal Joukowsky quickstart
 │   ├── benchmark_vs_tsnet.py       # Single-case TSNet timing comparison
 │   ├── benchmark_matrix.py         # Multi grid-size TSNet performance matrix
+│   ├── transient_study_report.py   # Post-processing export workflow
 │   ├── test_wave_reflections.py    # Wave period & damping verification
 │   ├── test_gradual_closure.py     # Joukowsky criterion, K-model valve
 │   ├── test_surge_tank.py          # Standpipe mass-oscillation & pressure mitigation
-│   └── load_from_inp.py            # EPANET .inp import example
+│   ├── load_from_inp.py            # EPANET .inp import example
+│   └── verify_rthym_webapp.py      # R-THYM web-app cross-check
 ├── tests/
 │   ├── test_joukowsky_rthym.py                 # R-THYM web-app vs solver benchmark
 │   ├── test_long_pipe_valve.py                 # Cross-engine valve-closure benchmark
 │   ├── test_complex_topology_from_inp.py       # EPANET/wntr import benchmark
+│   ├── test_inp_import_fidelity.py             # Patterns, demands, simple controls
+│   ├── test_report.py                          # Study summary and export helpers
 │   ├── test_gradual_closure_benchmark.py       # Parameterized closure-time benchmark
 │   ├── test_tank_size_benchmark.py             # Parameterized standpipe-size benchmark
 │   ├── test_hydropneumatic_size_benchmark.py   # Fixed-ratio vessel-size benchmark
@@ -918,6 +1022,7 @@ RTHYM-MOC/
 │   ├── appendix_b_verification.md  # Long-form cross-engine verification appendix
 │   ├── validation.md               # Correctness test map, tolerances, reference assets
 │   ├── benchmarking.md             # TSNet performance comparison guide
+│   ├── import_fidelity.md          # EPANET import scope and limitations
 │   └── appendix_hydraulic_reference.md
 ├── CMakeLists.txt
 └── pyproject.toml

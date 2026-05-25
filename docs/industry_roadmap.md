@@ -108,7 +108,7 @@ much more usable for engineering studies and client-facing work.
 ### 5. Engineering post-processing and report outputs
 
 - Priority: `P1`
-- Status: `Not started`
+- Status: `In progress`
 - Why it matters: engineers need envelopes, maxima/minima, event summaries, and
   study-ready outputs, not only raw time-series arrays.
 - Deliverables:
@@ -120,6 +120,10 @@ much more usable for engineering studies and client-facing work.
 - Exit criteria:
   - common engineering summary plots/tables can be produced without bespoke
     one-off analysis code in every study
+- Progress (2026-05):
+  - `rthym_moc.report`: `summarize_study`, envelopes, cavitation duration, CSV/JSON export
+  - `examples/transient_study_report.py` + `tests/test_report.py`
+  - Remaining: plotting helpers, multi-event segmentation, richer study packages
 
 ### 6. Scenario comparison workflow
 
