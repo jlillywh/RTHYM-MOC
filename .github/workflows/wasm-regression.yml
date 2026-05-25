@@ -1,0 +1,45 @@
+# This workflow builds the WASM artifacts using Emscripten and runs the WASM-facing regression test.
+# It is intended to run only on Ubuntu with Emscripten preinstalled (emsdk install latest && emsdk activate latest).
+
+name: wasm-regression
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  wasm-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Upgrade packaging tools
+        run: python -m pip install --upgrade pip setuptools wheel
+
+      - name: Install package and test dependencies
+        run: python -m pip install -e ".[dev,inp]"
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+
+      - name: Build WASM artifacts
+        run: |
+          cd src
+          em++ -std=c++17 wasm_bindings.cpp moc_solver.cpp -o rthym_moc.js -s MODULARIZE=1 -s EXPORT_ES6=0 -s ENVIRONMENT=node,web -s WASM=1 -O3 --bind
+
+      - name: Run WASM-facing regression test
+        env:
+          RTHYM_ENABLE_WASM_RUNTIME_TESTS: '1'
+        run: pytest -q tests/test_wasm_check_valve.py

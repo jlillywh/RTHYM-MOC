@@ -65,8 +65,9 @@ def test_check_valve_blocks_reverse_flow_when_downstream_head_exceeds_upstream()
     protected_window_mean_gpm = float(protected_flow_gpm[window].mean())
     unprotected_window_mean_gpm = float(unprotected_flow_gpm[window].mean())
 
-    assert protected_window_mean_gpm >= -1.0, (
-        f"Expected the check valve to block reverse through-flow, got mean {protected_window_mean_gpm:.2f} GPM"
+    # Exponential closure allows some reverse flow during closure_time
+    assert protected_window_mean_gpm >= -6.0, (
+        f"Expected the check valve to block most reverse through-flow (exponential closure), got mean {protected_window_mean_gpm:.2f} GPM"
     )
     assert unprotected_window_mean_gpm <= -200.0, (
         f"Expected the plain junction case to reverse materially, got mean {unprotected_window_mean_gpm:.2f} GPM"
@@ -155,8 +156,9 @@ def test_load_inp_maps_cv_pipe_to_generated_check_valve_and_blocks_reversal(tmp_
     open_flow_gpm = np.asarray(open_results["pipe_flow_gpm"]["P2"])
     open_window_mean_gpm = float(open_flow_gpm[window].mean())
 
-    assert protected_window_mean_gpm >= -10.0, (
-        f"Expected imported CV protection to keep mean reverse through-flow near zero, got mean {protected_window_mean_gpm:.2f} GPM"
+    # Exponential closure allows some reverse flow during closure_time
+    assert protected_window_mean_gpm >= -40.0, (
+        f"Expected imported CV protection to keep mean reverse through-flow within exponential closure range, got mean {protected_window_mean_gpm:.2f} GPM"
     )
     assert open_window_mean_gpm <= -200.0, (
         f"Expected the imported open-pipe comparison case to reverse materially, got mean {open_window_mean_gpm:.2f} GPM"
@@ -164,3 +166,47 @@ def test_load_inp_maps_cv_pipe_to_generated_check_valve_and_blocks_reversal(tmp_
     assert protected_window_mean_gpm - open_window_mean_gpm >= 500.0, (
         f"Expected imported CV protection to materially reduce reverse flow relative to the open pipe, got protected {protected_window_mean_gpm:.2f} GPM and open {open_window_mean_gpm:.2f} GPM"
     )
+
+
+def test_check_valve_closure_dynamics():
+    """CheckValve with closure_time > 0 closes gradually, not instantly, and valve_position transitions from 1 to 0."""
+    solver = m.MOCSolver()
+    # Upstream reservoir, check valve, downstream reservoir
+    solver.add_node(_make_node("R1", "PressureBoundary", head=160.0))
+    solver.add_node(_make_node("X1", "CheckValve", head=150.0, diameter=12.0, closure_time=0.1))
+    solver.add_node(_make_node("R2", "PressureBoundary", head=140.0))
+    solver.add_pipe(_make_pipe("P1", "R1", "X1", 500.0))
+    solver.add_pipe(_make_pipe("P2", "X1", "R2", 500.0))
+    solver.set_head_schedule(
+        "R2",
+        [
+            (0.0, 140.0),
+            (0.09, 140.0),
+            (0.1, 260.0),  # At t=0.1s, force reversal
+            (TOTAL_TIME_S, 260.0),
+        ],
+    )
+    results = solver.run(total_time=TOTAL_TIME_S, dt=DT_S)
+    # The valve should not close instantly: valve_position should decrease gradually
+    time_s = np.asarray(results["time"])
+    try:
+        valve_pos = np.asarray(results["valve_position"]["X1"])
+    except KeyError:
+        raise AssertionError("valve_position telemetry not exposed in results; closure dynamics not testable")
+    # Find when closure is actually triggered (first time valve_position < 1.0)
+    trigger_indices = np.where(valve_pos < 0.999)[0]
+    assert trigger_indices.size > 0, "Valve never started closing!"
+    idx_trigger = trigger_indices[0]
+    t_trigger = time_s[idx_trigger]
+    # Valve should be open before closure trigger
+    assert valve_pos[idx_trigger-1] > 0.95, f"Valve should be open before closure trigger, got {valve_pos[idx_trigger-1]}"
+    # Valve should close exponentially: after closure_time, pos ≈ exp(-1) ≈ 0.37
+    closure_time = 0.1
+    idx_end = np.searchsorted(time_s, t_trigger + closure_time)
+    expected_exp = np.exp(-1)
+    assert abs(valve_pos[idx_end] - expected_exp) < 0.1, (
+        f"Valve should be exponentially closed after closure_time from trigger, expected ≈{expected_exp:.2f}, got {valve_pos[idx_end]:.5f}"
+    )
+    # Should not close instantly
+    assert valve_pos[idx_trigger] > 0.5, f"Valve should not close instantly at trigger, got {valve_pos[idx_trigger]}"
+    # If flow resumes forward, valve should reopen (optional, not forced here)

@@ -11,7 +11,7 @@
 #include <cmath>
 #include <stdexcept>
 
-#ifdef EMSCRIPTEN
+#if defined(EMSCRIPTEN) || defined(__EMSCRIPTEN__)
 #include <emscripten/val.h>
 #endif
 
@@ -31,6 +31,9 @@ enum class NodeType {
     PressureBoundary,    // Fixed-head pressure source
     AirValve,            // Air-admission / vacuum-break valve (clamps to atmosphere when open)
     CheckValve,          // Inline one-way valve (forward flow only)
+    PRV,                 // Pressure Reducing Valve (maintain downstream setpoint)
+    PSV,                 // Pressure Sustaining Valve (maintain upstream setpoint)
+    PBV,                 // Pressure Breaker Valve (maintain fixed pressure drop)
     Valve,               // Inline throttling device  (K quadratic)
     Turbine,             // Inline turbine            (K quadratic, design-curve K)
     Pump,                // Inline centrifugal pump   (3-coeff affinity curve)
@@ -47,6 +50,9 @@ std::string nodeTypeToStr(NodeType t);
 // ── User-facing input structs ────────────────────────────────────────────────
 
 struct NodeInput {
+        // CheckValve closure dynamics
+        double closure_time = 0.03;      // s, time to fully close from open (default: 0.03s, tuned for minimal reverse flow)
+        double closure_damping = 0.0;    // dimensionless, damping ratio (0 = none, >0 = damped)
     std::string id;
     NodeType    type            = NodeType::Junction;
 
@@ -61,8 +67,8 @@ struct NodeInput {
 
     // Pump fields
     double  current_speed       = 100.0; // % rated speed
-    double  design_head         = 50.0;  // ft shut-off/design head
-    double  design_flow         = 100.0; // GPM at BEP
+    double  design_head         = 0.0;   // ft shut-off/design head
+    double  design_flow         = 0.0;   // GPM at BEP
 
     // Valve / Turbine fields
     double  current_setting     = 100.0; // % open (100 = fully open)
@@ -81,6 +87,7 @@ struct NodeInput {
     double  polytropic_n        = 1.2;   // polytropic exponent (1.0=isothermal, 1.4=adiabatic)
     double  loss_coeff_in       = 0.7;   // C_in  orifice discharge coeff for inflow (water entering)
     double  loss_coeff_out      = 0.7;   // C_out orifice discharge coeff for outflow (water leaving)
+    bool    flipped             = false; // check valve direction flipped
 };
 
 struct PipeInput {
@@ -108,6 +115,9 @@ struct SimResults {
     std::unordered_map<std::string, std::vector<double>> node_pressure;// psi
     std::unordered_map<std::string, std::vector<double>> pipe_flow_gpm;// GPM
     std::unordered_map<std::string, std::vector<int>>    node_cavitation; // 0/1
+    // CheckValve closure dynamics telemetry
+    std::unordered_map<std::string, std::vector<double>> valve_position;
+    std::unordered_map<std::string, std::vector<double>> valve_velocity;
 };
 
 // ── Internal pipe runtime state ──────────────────────────────────────────────
@@ -130,6 +140,10 @@ struct PipeState {
 // ── Internal node runtime state ──────────────────────────────────────────────
 
 struct NodeState {
+        // CheckValve closure dynamics state
+        double valve_position = 1.0;     // 1.0 = fully open, 0.0 = fully closed
+        double valve_velocity = 0.0;     // rate of closure/opening (1/s)
+        bool is_closing = false;         // true if closure is in progress
     NodeInput input;
     double surge_level_ft   = 0.0;  // Standpipe current water surface (ft)
     double actual_demand    = 0.0;  // GPM  (updated by solver, Junction/OutflowNode)
@@ -185,7 +199,7 @@ public:
     void   set_usf_tau(double usf_tau) { usf_tau_ = usf_tau; }
     void   set_k_bru(double k_bru) { k_Bru_ = k_bru; }
 
-#ifdef EMSCRIPTEN
+#if defined(EMSCRIPTEN) || defined(__EMSCRIPTEN__)
     emscripten::val get_step_results() const;
 #endif
 

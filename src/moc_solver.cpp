@@ -35,6 +35,9 @@ NodeType parseNodeType(const std::string& s) {
     if (s == "PressureBoundary")    return NodeType::PressureBoundary;
     if (s == "AirValve")            return NodeType::AirValve;
     if (s == "CheckValve")          return NodeType::CheckValve;
+    if (s == "PRV")                 return NodeType::PRV;
+    if (s == "PSV")                 return NodeType::PSV;
+    if (s == "PBV")                 return NodeType::PBV;
     if (s == "Valve")               return NodeType::Valve;
     if (s == "Turbine")             return NodeType::Turbine;
     if (s == "Pump")                return NodeType::Pump;
@@ -51,6 +54,9 @@ std::string nodeTypeToStr(NodeType t) {
         case NodeType::PressureBoundary:    return "PressureBoundary";
         case NodeType::AirValve:            return "AirValve";
         case NodeType::CheckValve:          return "CheckValve";
+        case NodeType::PRV:                 return "PRV";
+        case NodeType::PSV:                 return "PSV";
+        case NodeType::PBV:                 return "PBV";
         case NodeType::Valve:               return "Valve";
         case NodeType::Turbine:             return "Turbine";
         case NodeType::Pump:                return "Pump";
@@ -276,6 +282,11 @@ void MOCSolver::initGrid() {
     for (int i = 0; i < static_cast<int>(node_inputs_.size()); ++i) {
         NodeState ns;
         ns.input = node_inputs_[i];
+        if ((ns.input.type == NodeType::Pump || ns.input.type == NodeType::Turbine) &&
+            ns.input.design_head <= 0.0 && ns.input.design_flow <= 0.0) {
+            ns.input.design_head = 50.0;
+            ns.input.design_flow = 100.0;
+        }
         ns.air_loss_rate_gpm = 0.0;
         ns.air_cumulative_loss_gal = 0.0;
         ns.gas_pressure_psi = 0.0;
@@ -567,6 +578,15 @@ void MOCSolver::stepMOC() {
             newV[pi][0] = (H_P - bndry[pi].C_M) / bndry[pi].B;
         };
 
+        // Quadratic solve helper: K_eq·Q² + B_eq·Q − C_eq = 0
+        auto quadratic_Q = [&](double Keq, double Beq, double Ceq) -> double {
+            if (Keq < 1e-4) return Ceq / Beq;
+            if (Ceq >= 0.0)
+                return (-Beq + std::sqrt(std::max(0.0, Beq*Beq + 4.0*Keq*Ceq))) / (2.0*Keq);
+            else
+                return ( Beq - std::sqrt(std::max(0.0, Beq*Beq - 4.0*Keq*Ceq))) / (2.0*Keq);
+        };
+
         switch (n.type) {
 
         // ── Fixed-head boundaries ──────────────────────────────────────────
@@ -790,19 +810,90 @@ void MOCSolver::stepMOC() {
         // Reverse-flow tendency closes the device and enforces Q = 0 while
         // allowing a head discontinuity across the valve.
         case NodeType::CheckValve: {
+            // Closure dynamics implementation
             if (in_pipes.size() == 1 && out_pipes.size() == 1) {
                 const int bIn  = in_pipes[0];
                 const int bOut = out_pipes[0];
                 const double B_eq = (bndry[bIn].B  / bndry[bIn].area)
                                   + (bndry[bOut].B / bndry[bOut].area);
-                const double C_eq = bndry[bIn].C_P - bndry[bOut].C_M;
-                const double Q = (B_eq > 1e-12) ? std::max(0.0, C_eq / B_eq) : 0.0;
 
-                const double H_up = bndry[bIn].C_P  - (bndry[bIn].B  / bndry[bIn].area)  * Q;
-                const double H_dn = bndry[bOut].C_M + (bndry[bOut].B / bndry[bOut].area) * Q;
+                // Compute flow tendency (positive = forward, negative = reverse)
+                double C_eq = n.flipped ? (bndry[bOut].C_M - bndry[bIn].C_P)
+                                       : (bndry[bIn].C_P - bndry[bOut].C_M);
+                double Q_tendency = (B_eq > 1e-12) ? (C_eq / B_eq) : 0.0;
 
-                set_downstream(bIn,  std::max(H_vap, H_up));
-                set_upstream  (bOut, std::max(H_vap, H_dn));
+                // Closure dynamics integration (simple first-order, can extend to 2nd order)
+                double closure_time = std::max(1e-6, n.closure_time);
+                double pos = ns.valve_position;
+                double vel = ns.valve_velocity;
+                bool closing = ns.is_closing;
+
+                // Detect closure/opening trigger
+                if (Q_tendency < -1e-8) {
+                    closing = true;
+                } else if (Q_tendency > 1e-8) {
+                    closing = false;
+                }
+
+                // Integrate position (exact exponential update)
+                if (closing) {
+                    // Exponential decay toward 0
+                    pos = pos * std::exp(-dt_ / closure_time);
+                    vel = (pos - ns.valve_position) / dt_;
+                } else {
+                    // Exponential rise toward 1
+                    pos = 1.0 - (1.0 - pos) * std::exp(-dt_ / closure_time);
+                    vel = (pos - ns.valve_position) / dt_;
+                }
+                pos = std::clamp(pos, 0.0, 1.0);
+
+                ns.valve_position = pos;
+                ns.valve_velocity = vel;
+                ns.is_closing = closing;
+
+                // Effective loss coefficient (quadratic)
+                // K_eff = (1/pos)^2 - 1. When pos = 1, K = 0. When pos -> 0, K -> 1e12
+                double K = (pos > 1e-3) ? (1.0 / (pos * pos) - 1.0) : 1e12;
+                const double diam_ft = n.diameter / 12.0;
+                const double A_v     = M_PI_ * (diam_ft / 2.0) * (diam_ft / 2.0);
+                const double K_eq    = K / (2.0 * g * A_v * A_v);
+
+                // Solve for Q using the quadratic solver
+                // Since pipe flows are solved in the physical direction (A to B),
+                // we use the physical C_eq = bIn.C_P - bOut.C_M
+                double C_eq_phys = bndry[bIn].C_P - bndry[bOut].C_M;
+                double Q = quadratic_Q(K_eq, B_eq, C_eq_phys);
+
+                // Enforce one-way check valve blocking
+                if (n.flipped) {
+                    Q = std::min(0.0, Q); // Only allow flow from B to A (negative flow)
+                } else {
+                    Q = std::max(0.0, Q); // Only allow flow from A to B (positive flow)
+                }
+
+                double H_up = bndry[bIn].C_P  - (bndry[bIn].B  / bndry[bIn].area)  * Q;
+                double H_dn = bndry[bOut].C_M + (bndry[bOut].B / bndry[bOut].area) * Q;
+
+                // Cavitation checks...
+                if (H_dn < H_vap) {
+                    H_dn = H_vap;
+                    const double Bc  = bndry[bIn].B / bndry[bIn].area;
+                    Q    = quadratic_Q(K_eq, Bc, bndry[bIn].C_P - H_vap);
+                    if (n.flipped) Q = std::min(0.0, Q);
+                    else           Q = std::max(0.0, Q);
+                    H_up = bndry[bIn].C_P - Bc * Q;
+                }
+                if (H_up < H_vap) {
+                    H_up = H_vap;
+                    const double Bc  = bndry[bOut].B / bndry[bOut].area;
+                    Q    = quadratic_Q(K_eq, Bc, H_vap - bndry[bOut].C_M);
+                    if (n.flipped) Q = std::min(0.0, Q);
+                    else           Q = std::max(0.0, Q);
+                    H_dn = bndry[bOut].C_M + Bc * Q;
+                }
+
+                set_downstream(bIn,  H_up);
+                set_upstream  (bOut, H_dn);
             } else {
                 const double H_f = std::max(H_vap, getInitialHead(ns));
                 for (int pi : in_pipes)  set_downstream(pi, H_f);
@@ -819,11 +910,11 @@ void MOCSolver::stepMOC() {
             const double setting = std::max(1e-6, n.current_setting);
 
             double K; // dimensionless loss coefficient
-            if (n.type == NodeType::Valve) {
+            if (n.type == NodeType::Valve && !(n.design_head > 0.0 && n.design_flow > 0.0)) {
                 // K = (100/setting)² − 1   (K→∞ when fully closed)
                 K = std::pow(100.0 / setting, 2.0) - 1.0;
             } else {
-                // Turbine modeled as a variable-K orifice from its design point.
+                // Turbine or Valve with design curve modeled as variable-K orifice from design point.
                 const double A_t  = M_PI_ * std::pow(n.diameter / 24.0, 2.0); // ft²
                 const double V_d  = (n.design_velocity > 1e-6)
                     ? n.design_velocity
@@ -836,15 +927,6 @@ void MOCSolver::stepMOC() {
             const double diam_ft = n.diameter / 12.0;
             const double A_v     = M_PI_ * (diam_ft / 2.0) * (diam_ft / 2.0);
             const double K_eq    = K / (2.0 * g * A_v * A_v);
-
-            // Quadratic solve helper: K_eq·Q² + B_eq·Q − C_eq = 0
-            auto quadratic_Q = [&](double Keq, double Beq, double Ceq) -> double {
-                if (Keq < 1e-4) return Ceq / Beq;
-                if (Ceq >= 0.0)
-                    return (-Beq + std::sqrt(std::max(0.0, Beq*Beq + 4.0*Keq*Ceq))) / (2.0*Keq);
-                else
-                    return ( Beq - std::sqrt(std::max(0.0, Beq*Beq - 4.0*Keq*Ceq))) / (2.0*Keq);
-            };
 
             if (in_pipes.size() == 1 && out_pipes.size() == 1) {
                 const int bIn  = in_pipes[0];
@@ -1059,6 +1141,10 @@ void MOCSolver::recordStep(SimResults& results) const {
         results.node_head    [n.id].push_back(H);
         results.node_pressure[n.id].push_back(P_psi);
         results.node_cavitation[n.id].push_back(P_psi <= P_vapor ? 1 : 0);
+
+        // CheckValve closure dynamics telemetry
+        results.valve_position[n.id].push_back(ns.valve_position);
+        results.valve_velocity[n.id].push_back(ns.valve_velocity);
     }
 
     for (int i = 0; i < static_cast<int>(pipes_.size()); ++i) {
