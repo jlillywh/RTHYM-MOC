@@ -195,6 +195,18 @@ def _run_tank_head_step_case():
     return solver.run(total_time=HEAD_TOTAL_TIME_S, dt=DT_S)
 
 
+def _run_persisted_head_case():
+    solver = m.MOCSolver()
+    solver.add_node(_make_node("T1", "Tank", head=160.0))
+    solver.add_node(_make_node("J1", "Junction", head=150.0, demand=500.0))
+    solver.add_pipe(_make_pipe("P1", "T1", "J1", 3000.0, 500.0))
+
+    baseline = solver.run(total_time=HEAD_TOTAL_TIME_S, dt=DT_S)
+    solver.set_node_head("T1", 140.0)
+    updated = solver.run(total_time=HEAD_TOTAL_TIME_S, dt=DT_S)
+    return baseline, updated
+
+
 def _run_clear_case():
     solver = m.MOCSolver()
     solver.add_node(_make_node("R1", "PressureBoundary", head=150.0))
@@ -361,6 +373,24 @@ def test_set_node_demand_persists_across_separate_run_calls():
     )
     assert baseline_head_ft - updated_head_ft >= 100.0, (
         f"Expected set_node_demand() to lower the next run's junction head by at least 100 ft, got {baseline_head_ft - updated_head_ft:.2f} ft"
+    )
+
+
+def test_set_node_head_persists_across_separate_run_calls():
+    """set_node_head() should update the stored initial condition used by the next run()."""
+    baseline, updated = _run_persisted_head_case()
+    time_s = np.asarray(baseline["time"])
+
+    baseline_head_ft = _mean_over_window(time_s, baseline["node_head"]["J1"], 0.5, 1.5)
+    updated_head_ft = _mean_over_window(time_s, updated["node_head"]["J1"], 0.5, 1.5)
+    baseline_tank_head_ft = _mean_over_window(time_s, baseline["node_head"]["T1"], 0.5, 1.5)
+    updated_tank_head_ft = _mean_over_window(time_s, updated["node_head"]["T1"], 0.5, 1.5)
+
+    assert baseline_tank_head_ft - updated_tank_head_ft >= 19.0, (
+        f"Expected set_node_head() to lower the next run's tank head by about 20 ft, got {baseline_tank_head_ft - updated_tank_head_ft:.2f} ft"
+    )
+    assert baseline_head_ft - updated_head_ft >= 15.0, (
+        f"Expected set_node_head() to lower the next run's junction head by at least 15 ft, got {baseline_head_ft - updated_head_ft:.2f} ft"
     )
 
 

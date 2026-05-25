@@ -531,6 +531,9 @@ def load_inp(
 
     # ── Pipes ─────────────────────────────────────────────────────────────────
     pipes: list[PipeInput] = []
+    check_valve_nodes: list[NodeInput] = []
+    check_valve_stubs: list[PipeInput] = []
+    check_valve_link_ids: list[str] = []
 
     for row in sec.get("PIPES", []):
         if len(row) < 6:
@@ -554,12 +557,6 @@ def load_inp(
                 "Remove it from the solver after load_inp() if unintended.",
                 UserWarning, stacklevel=2,
             )
-        elif eff_st == "CV":
-            warnings.warn(
-                f"Pipe '{pid}' is a check valve (CV). "
-                "Treated as a regular pipe; reverse-flow prevention not enforced.",
-                UserWarning, stacklevel=2,
-            )
 
         # Convert roughness to H-W C
         if hloss == "D-W":
@@ -569,6 +566,35 @@ def load_inp(
             hw_c = _hw_from_manning(rough, diam)
         else:
             hw_c = rough    # already H-W C
+
+        if eff_st == "CV":
+            nid = f"_CHECKVALVE_{pid}"
+            cn = NodeInput()
+            cn.id = nid
+            cn.type = "CheckValve"
+            cn.elevation = nodes[frm].elevation if frm in nodes else 0.0
+            cn.head = nodes[frm].head if frm in nodes else 100.0
+            cn.diameter = diam
+            check_valve_nodes.append(cn)
+            check_valve_link_ids.append(pid)
+
+            split_length = max(L / 2.0, 1.0)
+            split_minor_loss = max(0.0, minor_loss) / 2.0
+
+            up = PipeInput()
+            up.id = f"_CV_{pid}_up"; up.from_node = frm; up.to_node = nid
+            up.length = split_length; up.diameter = diam; up.roughness = hw_c
+            up.minor_loss = split_minor_loss
+            up.flow_gpm = 0.0
+
+            dn = PipeInput()
+            dn.id = f"_CV_{pid}_dn"; dn.from_node = nid; dn.to_node = to_
+            dn.length = split_length; dn.diameter = diam; dn.roughness = hw_c
+            dn.minor_loss = split_minor_loss
+            dn.flow_gpm = 0.0
+
+            check_valve_stubs.extend([up, dn])
+            continue
 
         p = PipeInput()
         p.id = pid;  p.from_node = frm;  p.to_node = to_
@@ -710,6 +736,13 @@ def load_inp(
         frm_nid = row[1]
         pn.head = init_heads.get(pn.id, init_heads.get(frm_nid, pn.head))
 
+    for lid, cn in zip(check_valve_link_ids, check_valve_nodes):
+        row = next(
+            r for r in sec.get("PIPES", []) if len(r) >= 2 and r[0] == lid
+        )
+        frm_nid = row[1]
+        cn.head = init_heads.get(cn.id, init_heads.get(frm_nid, cn.head))
+
     for p in pipes:
         p.flow_gpm = init_flows.get(p.id, p.flow_gpm)
 
@@ -723,6 +756,11 @@ def load_inp(
         q = init_flows.get(lid, 0.0)
         valve_stubs[2 * i].flow_gpm     = q
         valve_stubs[2 * i + 1].flow_gpm = q
+
+    for i, lid in enumerate(check_valve_link_ids):
+        q = init_flows.get(lid, 0.0)
+        check_valve_stubs[2 * i].flow_gpm     = q
+        check_valve_stubs[2 * i + 1].flow_gpm = q
 
     # ── Apply [RTHYM] section overrides (Standpipe / HydropneumaticTank / AirValve) ──
     # These node types are exported to EPANET as plain Junctions for steady-state
@@ -773,10 +811,10 @@ def load_inp(
     # ── Assemble solver ────────────────────────────────────────────────────────
     solver = MOCSolver()
 
-    for n in list(nodes.values()) + pump_nodes + valve_nodes:
+    for n in list(nodes.values()) + pump_nodes + valve_nodes + check_valve_nodes:
         solver.add_node(n)
 
-    for p in pipes + pump_stubs + valve_stubs:
+    for p in pipes + pump_stubs + valve_stubs + check_valve_stubs:
         solver.add_pipe(p)
 
     return solver

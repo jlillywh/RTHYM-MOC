@@ -34,6 +34,7 @@ NodeType parseNodeType(const std::string& s) {
     if (s == "Tank")                return NodeType::Tank;
     if (s == "PressureBoundary")    return NodeType::PressureBoundary;
     if (s == "AirValve")            return NodeType::AirValve;
+    if (s == "CheckValve")          return NodeType::CheckValve;
     if (s == "Valve")               return NodeType::Valve;
     if (s == "Turbine")             return NodeType::Turbine;
     if (s == "Pump")                return NodeType::Pump;
@@ -49,6 +50,7 @@ std::string nodeTypeToStr(NodeType t) {
         case NodeType::Tank:                return "Tank";
         case NodeType::PressureBoundary:    return "PressureBoundary";
         case NodeType::AirValve:            return "AirValve";
+        case NodeType::CheckValve:          return "CheckValve";
         case NodeType::Valve:               return "Valve";
         case NodeType::Turbine:             return "Turbine";
         case NodeType::Pump:                return "Pump";
@@ -167,6 +169,15 @@ void MOCSolver::set_node_demand(const std::string& id, double demand_gpm) {
         nodes_[it->second].input.demand = demand_gpm;
 }
 
+void MOCSolver::set_node_head(const std::string& id, double head_ft) {
+    auto& node_input = requireNodeInputMutable(node_inputs_, id, "set_node_head()");
+    requireNodeType(node_input, id, "set_node_head()", {NodeType::Tank, NodeType::PressureBoundary}, "Tank or PressureBoundary");
+    node_input.head = head_ft;
+    auto it = node_idx_map_.find(id);
+    if (it != node_idx_map_.end())
+        nodes_[it->second].input.head = head_ft;
+}
+
 void MOCSolver::set_valve_schedule(const std::string& id,
                                    const std::vector<std::pair<double,double>>& schedule) {
     const auto& node_input = requireNodeInput(node_inputs_, id, "set_valve_schedule()");
@@ -265,6 +276,10 @@ void MOCSolver::initGrid() {
     for (int i = 0; i < static_cast<int>(node_inputs_.size()); ++i) {
         NodeState ns;
         ns.input = node_inputs_[i];
+        ns.air_loss_rate_gpm = 0.0;
+        ns.air_cumulative_loss_gal = 0.0;
+        ns.gas_pressure_psi = 0.0;
+        ns.tank_flow_gpm = 0.0;
         if (ns.input.type == NodeType::Standpipe)
             ns.surge_level_ft = ns.input.head; // initial water-surface elevation (ft HGL)
         if (ns.input.type == NodeType::HydropneumaticTank) {
@@ -399,7 +414,7 @@ void MOCSolver::initGrid() {
                 auto fit2 = node_idx_map_.find(p.from_node);
                 auto tit2 = node_idx_map_.find(p.to_node);
                 auto is_device = [](NodeType t) {
-                    return t == NodeType::Valve || t == NodeType::Pump;
+                    return t == NodeType::Valve || t == NodeType::CheckValve || t == NodeType::Pump;
                 };
                 bool from_is_device = (fit2 != node_idx_map_.end()) &&
                                        is_device(nodes_[fit2->second].input.type);
@@ -658,6 +673,12 @@ void MOCSolver::stepMOC() {
             // Update gas volume:  Q_net > 0 ⟹ water enters ⟹ V_g decreases
             ns.gas_volume_ft3 = std::max(1e-9,
                 std::min(ns.gas_volume_ft3 - Q_net * dt_, n.tank_volume));
+
+            // Store transient metrics
+            const double H_g_abs_new = ns.gas_constant /
+                std::pow(std::max(ns.gas_volume_ft3, 1e-9), n.polytropic_n);
+            ns.gas_pressure_psi = (H_g_abs_new - 33.9) * 0.433;
+            ns.tank_flow_gpm = Q_net / GPM_TO_CFS;
             break;
         }
 
@@ -738,12 +759,13 @@ void MOCSolver::stepMOC() {
             const double A_release = M_PI_ * std::pow(release_d_ft / 2.0, 2.0);
 
             double M_after_air = std::max(1e-6, ns.gas_constant);
+            double Q_air_out = 0.0;
             if (H_abs < H_ref_abs - 1e-9) {
                 const double Q_air_in = std::max(n.loss_coeff_in, 1e-9) * A_admit
                     * std::sqrt(2.0 * g * (H_ref_abs - H_abs));
                 M_after_air += H_ref_abs * Q_air_in * dt_;
             } else if (H_abs > H_ref_abs + 1e-9 && V_after_water > 1e-6) {
-                const double Q_air_out = std::max(n.loss_coeff_out, 1e-9) * A_release
+                Q_air_out = std::max(n.loss_coeff_out, 1e-9) * A_release
                     * std::sqrt(2.0 * g * (H_abs - H_ref_abs));
                 M_after_air = std::max(1e-6, M_after_air - H_abs * Q_air_out * dt_);
             }
@@ -751,11 +773,41 @@ void MOCSolver::stepMOC() {
             if (V_after_water <= 5e-4 && H_junc >= H_ref) {
                 ns.gas_volume_ft3 = 0.0;
                 ns.gas_constant = 0.0;
+                ns.air_loss_rate_gpm = 0.0;
             } else {
                 ns.gas_volume_ft3 = V_after_water;
                 ns.gas_constant = M_after_air;
+                ns.air_loss_rate_gpm = Q_air_out * 448.831;
+                ns.air_cumulative_loss_gal += Q_air_out * dt_ * 7.48052;
             }
+            ns.gas_pressure_psi = (H_abs - 33.9) * 0.433;
             ns.actual_demand = n.demand;
+            break;
+        }
+
+        // ── Check valve ────────────────────────────────────────────────────
+        // Ideal one-way inline device: forward flow only, zero loss when open.
+        // Reverse-flow tendency closes the device and enforces Q = 0 while
+        // allowing a head discontinuity across the valve.
+        case NodeType::CheckValve: {
+            if (in_pipes.size() == 1 && out_pipes.size() == 1) {
+                const int bIn  = in_pipes[0];
+                const int bOut = out_pipes[0];
+                const double B_eq = (bndry[bIn].B  / bndry[bIn].area)
+                                  + (bndry[bOut].B / bndry[bOut].area);
+                const double C_eq = bndry[bIn].C_P - bndry[bOut].C_M;
+                const double Q = (B_eq > 1e-12) ? std::max(0.0, C_eq / B_eq) : 0.0;
+
+                const double H_up = bndry[bIn].C_P  - (bndry[bIn].B  / bndry[bIn].area)  * Q;
+                const double H_dn = bndry[bOut].C_M + (bndry[bOut].B / bndry[bOut].area) * Q;
+
+                set_downstream(bIn,  std::max(H_vap, H_up));
+                set_upstream  (bOut, std::max(H_vap, H_dn));
+            } else {
+                const double H_f = std::max(H_vap, getInitialHead(ns));
+                for (int pi : in_pipes)  set_downstream(pi, H_f);
+                for (int pi : out_pipes) set_upstream  (pi, H_f);
+            }
             break;
         }
 
@@ -771,7 +823,7 @@ void MOCSolver::stepMOC() {
                 // K = (100/setting)² − 1   (K→∞ when fully closed)
                 K = std::pow(100.0 / setting, 2.0) - 1.0;
             } else {
-                // Turbine modelled as variable-K orifice
+                // Turbine modeled as a variable-K orifice from its design point.
                 const double A_t  = M_PI_ * std::pow(n.diameter / 24.0, 2.0); // ft²
                 const double V_d  = (n.design_velocity > 1e-6)
                     ? n.design_velocity

@@ -112,7 +112,7 @@ PYBIND11_MODULE(_rthym_moc, m) {
         id : str
         type : str
             One of: "Junction", "Tank", "PressureBoundary",
-                "AirValve",
+                "AirValve", "CheckValve",
                     "Valve", "Turbine", "Pump",
                     "Standpipe" (open surge tank — R-THYM SurgeControl),
                     "HydropneumaticTank" (closed pressurized vessel — R-THYM SurgeTank),
@@ -268,6 +268,9 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def("set_node_demand", &MOCSolver::set_node_demand,
             py::arg("id"), py::arg("demand_gpm"),
             "Update a junction demand mid-simulation.")
+        .def("set_node_head", &MOCSolver::set_node_head,
+            py::arg("id"), py::arg("head_ft"),
+            "Update a fixed-head boundary node's stored head between runs.")
         .def("set_valve_schedule",
             [](MOCSolver& self,
                const std::string& id,
