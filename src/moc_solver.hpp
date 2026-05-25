@@ -120,6 +120,51 @@ struct SimResults {
     std::unordered_map<std::string, std::vector<double>> valve_velocity;
 };
 
+enum class ControlType {
+    Threshold,
+    Deadband,
+    PID,
+    PCV
+};
+
+struct ControlRuleInput {
+    std::string id;
+    ControlType type = ControlType::Threshold;
+    
+    std::string monitored_node;   // Node ID (Junction, Tank, Standpipe, etc.)
+    std::string controlled_node;  // Node ID (Pump, Valve)
+    
+    std::string monitored_quantity = "pressure"; // "pressure", "level", "head", "flow"
+    std::string monitored_pipe;                  // Pipe ID (used if quantity is "flow")
+    
+    // Threshold / Deadband Parameters
+    std::string condition = "lt"; // "lt" or "gt"
+    double threshold      = 0.0;
+    double target         = 0.0;
+    double deadband       = 0.0;
+    std::string action    = "fill"; // "fill" or "drain"
+
+    // PID Parameters
+    double kp = 0.5;
+    double ki = 0.01;
+    double kd = 0.01;
+};
+
+struct ControlRuleState {
+    ControlRuleInput input;
+    // PID state
+    double integral_error = 0.0;
+    double previous_error = 0.0;
+    bool has_prev_error = false;
+    
+    // Deadband/Threshold state
+    bool last_active = false;
+    
+    // PCV state
+    double pcv_timer = -1.0;
+    std::string pcv_phase = "idle";
+};
+
 // ── Internal pipe runtime state ──────────────────────────────────────────────
 
 struct PipeState {
@@ -164,6 +209,11 @@ public:
     void add_node(const NodeInput& n);
     void add_pipe(const PipeInput& p);
     void clear();
+
+    void add_control_rule(const ControlRuleInput& rule);
+    void clear_control_rules();
+    double get_node_head(const std::string& id) const;
+    double get_node_pressure(const std::string& id) const;
 
     // Adjust boundary conditions between calls to run() for scripted transients
     void set_valve_setting(const std::string& id, double pct_open);
@@ -242,6 +292,13 @@ private:
     //   = 0  :  steady friction only (no USF damping)
     //   > 0  :  user-supplied static value (typical calibrated range: 0.02–0.15)
     double k_Bru_   = -1.0;
+
+    // Operational control rules
+    std::vector<ControlRuleInput> control_rules_;
+    std::vector<ControlRuleState> control_rule_states_;
+    double t_now_ = 0.0;
+
+    void evaluateControlRules(double t_now);
 
     double getInitialHead(const NodeState& ns) const;
     void   recordStep(SimResults& results) const;

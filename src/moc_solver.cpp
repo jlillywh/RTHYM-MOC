@@ -141,6 +141,47 @@ void MOCSolver::clear() {
     pump_schedules_.clear();
     demand_schedules_.clear();
     head_schedules_.clear();
+    control_rules_.clear();
+    control_rule_states_.clear();
+}
+
+void MOCSolver::add_control_rule(const ControlRuleInput& rule) {
+    control_rules_.push_back(rule);
+}
+
+void MOCSolver::clear_control_rules() {
+    control_rules_.clear();
+    control_rule_states_.clear();
+}
+
+double MOCSolver::get_node_head(const std::string& id) const {
+    auto it = node_idx_map_.find(id);
+    if (it == node_idx_map_.end()) {
+        throw std::invalid_argument("Node not found: " + id);
+    }
+    const auto& ns = nodes_[it->second];
+    const auto& n = ns.input;
+
+    const auto& in_p_it = node_inflow_pipes_.find(n.id);
+    const auto& out_p_it = node_outflow_pipes_.find(n.id);
+    const auto& in_p = (in_p_it != node_inflow_pipes_.end()) ? in_p_it->second : std::vector<int>{};
+    const auto& out_p = (out_p_it != node_outflow_pipes_.end()) ? out_p_it->second : std::vector<int>{};
+
+    if (!in_p.empty()) {
+        return pipes_[in_p[0]].H.back();
+    } else if (!out_p.empty()) {
+        return pipes_[out_p[0]].H.front();
+    }
+    return getInitialHead(ns);
+}
+
+double MOCSolver::get_node_pressure(const std::string& id) const {
+    auto it = node_idx_map_.find(id);
+    if (it == node_idx_map_.end()) {
+        throw std::invalid_argument("Node not found: " + id);
+    }
+    const auto& ns = nodes_[it->second];
+    return (get_node_head(id) - ns.input.elevation) / PSI_TO_FT;
 }
 
 void MOCSolver::set_valve_setting(const std::string& id, double pct) {
@@ -459,12 +500,66 @@ void MOCSolver::initGrid() {
         node_outflow_pipes_[pipes_[i].from_id].push_back(i); // pipe leaves from_node
         node_inflow_pipes_ [pipes_[i].to_id  ].push_back(i); // pipe arrives at to_node
     }
+
+    // Initialize control rule states
+    control_rule_states_.clear();
+    control_rule_states_.reserve(control_rules_.size());
+    t_now_ = 0.0;
+
+    for (const auto& rule : control_rules_) {
+        ControlRuleState state;
+        state.input = rule;
+        state.integral_error = 0.0;
+        state.previous_error = 0.0;
+        state.has_prev_error = false;
+
+        auto p_it = node_idx_map_.find(rule.monitored_node);
+        auto v_it = node_idx_map_.find(rule.controlled_node);
+
+        if (rule.type == ControlType::PCV) {
+            bool pump_on = false;
+            if (p_it != node_idx_map_.end() && nodes_[p_it->second].input.type == NodeType::Pump) {
+                pump_on = nodes_[p_it->second].input.current_speed > 0.0;
+            }
+            bool valve_open = false;
+            if (v_it != node_idx_map_.end()) {
+                valve_open = nodes_[v_it->second].input.current_setting > 0.0;
+            }
+            if (pump_on && valve_open) {
+                state.pcv_phase = "running";
+            } else if (!pump_on && !valve_open) {
+                state.pcv_phase = "idle";
+            } else if (pump_on && !valve_open) {
+                state.pcv_phase = "opening";
+                state.pcv_timer = 0.0;
+            } else {
+                state.pcv_phase = "closing";
+                state.pcv_timer = 0.0;
+            }
+        }
+
+        if (rule.type == ControlType::PID && rule.ki != 0.0) {
+            double initial_val = 0.0;
+            if (v_it != node_idx_map_.end()) {
+                if (nodes_[v_it->second].input.type == NodeType::Pump) {
+                    initial_val = nodes_[v_it->second].input.current_speed;
+                } else {
+                    initial_val = nodes_[v_it->second].input.current_setting;
+                }
+            }
+            state.integral_error = initial_val / rule.ki;
+        }
+
+        control_rule_states_.push_back(state);
+    }
 }
 
 // ── Single MOC time step ──────────────────────────────────────────────────────
 // Mirrors transientWorker.js :: stepMOC()
 
 void MOCSolver::stepMOC() {
+    evaluateControlRules(t_now_);
+
     const double g          = G_FT_S2;
     const double alpha_filt = dt_ / usf_tau_; // IIR coefficient: dt / τ_BL
 
@@ -1116,6 +1211,8 @@ void MOCSolver::stepMOC() {
         pipes_[i].H = std::move(newH[i]);
         pipes_[i].V = std::move(newV[i]);
     }
+
+    t_now_ += dt_;
 }
 
 // ── Record current state into results vectors ─────────────────────────────────
@@ -1234,6 +1331,195 @@ SimResults MOCSolver::run(double total_time_s, double dt,
     }
 
     return results;
+}
+
+void MOCSolver::evaluateControlRules(double t_now) {
+    if (control_rule_states_.empty()) return;
+
+    for (auto& state : control_rule_states_) {
+        const auto& rule = state.input;
+        
+        // 1. Get the monitored value
+        double monitored_val = 0.0;
+        if (rule.monitored_quantity == "flow") {
+            auto it = pipe_idx_map_.find(rule.monitored_pipe);
+            if (it != pipe_idx_map_.end()) {
+                const auto& ps = pipes_[it->second];
+                double avg_V = 0.0;
+                for (double v : ps.V) avg_V += v;
+                avg_V /= ps.num_nodes;
+                monitored_val = avg_V * ps.area / GPM_TO_CFS; // GPM (signed)
+            }
+        } else {
+            auto it = node_idx_map_.find(rule.monitored_node);
+            if (it != node_idx_map_.end()) {
+                const auto& ns = nodes_[it->second];
+                const auto& n = ns.input;
+                if (rule.monitored_quantity == "pressure") {
+                    monitored_val = get_node_pressure(n.id);
+                } else if (rule.monitored_quantity == "head") {
+                    monitored_val = get_node_head(n.id);
+                } else if (rule.monitored_quantity == "level") {
+                    double H = get_node_head(n.id);
+                    monitored_val = (n.max_level > 1e-6) 
+                        ? 100.0 * (H - n.elevation) / n.max_level 
+                        : 0.0;
+                }
+            }
+        }
+        
+        // 2. Evaluate control type logic
+        if (rule.type == ControlType::Threshold) {
+            bool condition_met = false;
+            if (rule.condition == "lt") {
+                condition_met = (monitored_val < rule.threshold);
+            } else if (rule.condition == "gt") {
+                condition_met = (monitored_val > rule.threshold);
+            }
+            
+            if (condition_met) {
+                auto it = node_idx_map_.find(rule.controlled_node);
+                if (it != node_idx_map_.end()) {
+                    auto& ns = nodes_[it->second];
+                    if (ns.input.type == NodeType::Pump) {
+                        ns.input.current_speed = std::clamp(rule.target, 0.0, 100.0);
+                    } else if (ns.input.type == NodeType::Valve || ns.input.type == NodeType::Turbine) {
+                        ns.input.current_setting = std::clamp(rule.target, 0.0, 100.0);
+                    }
+                }
+                state.last_active = true;
+            } else {
+                state.last_active = false;
+            }
+        } 
+        else if (rule.type == ControlType::Deadband) {
+            double low_limit = rule.threshold;
+            double high_limit = rule.threshold + rule.deadband;
+            
+            bool turn_on = false;
+            bool turn_off = false;
+            
+            if (rule.action == "fill") {
+                if (monitored_val < low_limit) {
+                    turn_on = true;
+                } else if (monitored_val > high_limit) {
+                    turn_off = true;
+                }
+            } else if (rule.action == "drain") {
+                if (monitored_val > high_limit) {
+                    turn_on = true;
+                } else if (monitored_val < low_limit) {
+                    turn_off = true;
+                }
+            }
+            
+            bool active = state.last_active;
+            if (turn_on) active = true;
+            if (turn_off) active = false;
+            state.last_active = active;
+            
+            auto it = node_idx_map_.find(rule.controlled_node);
+            if (it != node_idx_map_.end()) {
+                auto& ns = nodes_[it->second];
+                double target_val = active ? 100.0 : 0.0;
+                if (ns.input.type == NodeType::Pump) {
+                    ns.input.current_speed = target_val;
+                } else if (ns.input.type == NodeType::Valve || ns.input.type == NodeType::Turbine) {
+                    ns.input.current_setting = target_val;
+                }
+            }
+        } 
+        else if (rule.type == ControlType::PID) {
+            double error = rule.target - monitored_val;
+            double P = rule.kp * error;
+            state.integral_error += error * dt_;
+            
+            double D = 0.0;
+            if (state.has_prev_error) {
+                D = rule.kd * (error - state.previous_error) / dt_;
+            }
+            state.previous_error = error;
+            state.has_prev_error = true;
+            
+            double I = rule.ki * state.integral_error;
+            double output = P + I + D;
+            double clamped_output = std::clamp(output, 0.0, 100.0);
+            
+            if (rule.ki != 0.0) {
+                double min_i = 0.0;
+                double max_i = 100.0;
+                if (rule.ki > 0.0) {
+                    state.integral_error = std::clamp(state.integral_error, min_i / rule.ki, max_i / rule.ki);
+                } else {
+                    state.integral_error = std::clamp(state.integral_error, max_i / rule.ki, min_i / rule.ki);
+                }
+            }
+            
+            auto it = node_idx_map_.find(rule.controlled_node);
+            if (it != node_idx_map_.end()) {
+                auto& ns = nodes_[it->second];
+                if (ns.input.type == NodeType::Pump) {
+                    ns.input.current_speed = clamped_output;
+                } else if (ns.input.type == NodeType::Valve || ns.input.type == NodeType::Turbine) {
+                    ns.input.current_setting = clamped_output;
+                }
+            }
+        } 
+        else if (rule.type == ControlType::PCV) {
+            auto p_it = node_idx_map_.find(rule.monitored_node);
+            auto v_it = node_idx_map_.find(rule.controlled_node);
+            
+            if (p_it != node_idx_map_.end() && v_it != node_idx_map_.end()) {
+                auto& pump = nodes_[p_it->second];
+                auto& valve = nodes_[v_it->second];
+                
+                double cmd_speed = pump.input.current_speed;
+                double ramp_open = std::max(1e-6, rule.threshold);
+                double ramp_close = std::max(1e-6, rule.deadband);
+                
+                if (cmd_speed > 0.0) {
+                    if (state.pcv_phase == "idle" || state.pcv_phase == "closing" || state.pcv_phase == "off") {
+                        state.pcv_phase = "opening";
+                        state.pcv_timer = 0.0;
+                    }
+                    
+                    if (state.pcv_phase == "opening") {
+                        state.pcv_timer += dt_;
+                        double frac = state.pcv_timer / ramp_open;
+                        valve.input.current_setting = std::clamp(frac * 100.0, 0.0, 100.0);
+                        if (state.pcv_timer >= ramp_open) {
+                            valve.input.current_setting = 100.0;
+                            state.pcv_phase = "running";
+                        }
+                    } else if (state.pcv_phase == "running") {
+                        valve.input.current_setting = 100.0;
+                    }
+                    pump.input.current_speed = cmd_speed;
+                } else {
+                    if (state.pcv_phase == "running" || state.pcv_phase == "opening") {
+                        state.pcv_phase = "closing";
+                        state.pcv_timer = 0.0;
+                    }
+                    
+                    if (state.pcv_phase == "closing") {
+                        state.pcv_timer += dt_;
+                        double frac = 1.0 - (state.pcv_timer / ramp_close);
+                        valve.input.current_setting = std::clamp(frac * 100.0, 0.0, 100.0);
+                        if (state.pcv_timer >= ramp_close || valve.input.current_setting <= 0.0) {
+                            valve.input.current_setting = 0.0;
+                            state.pcv_phase = "idle";
+                            pump.input.current_speed = 0.0;
+                        } else {
+                            pump.input.current_speed = 100.0;
+                        }
+                    } else if (state.pcv_phase == "idle" || state.pcv_phase == "off") {
+                        valve.input.current_setting = 0.0;
+                        pump.input.current_speed = 0.0;
+                    }
+                }
+            }
+        }
+    }
 }
 
 } // namespace rthym

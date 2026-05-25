@@ -244,6 +244,32 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def_readwrite("youngs_modulus", &PipeInput::youngs_modulus)
         .def_readwrite("poissons_ratio", &PipeInput::poissons_ratio);
 
+    // ── ControlType Enum ───────────────────────────────────────────────────
+    py::enum_<ControlType>(m, "ControlType")
+        .value("Threshold", ControlType::Threshold)
+        .value("Deadband", ControlType::Deadband)
+        .value("PID", ControlType::PID)
+        .value("PCV", ControlType::PCV)
+        .export_values();
+
+    // ── ControlRuleInput ───────────────────────────────────────────────────
+    py::class_<ControlRuleInput>(m, "ControlRuleInput")
+        .def(py::init<>())
+        .def_readwrite("id", &ControlRuleInput::id)
+        .def_readwrite("type", &ControlRuleInput::type)
+        .def_readwrite("monitored_node", &ControlRuleInput::monitored_node)
+        .def_readwrite("controlled_node", &ControlRuleInput::controlled_node)
+        .def_readwrite("monitored_quantity", &ControlRuleInput::monitored_quantity)
+        .def_readwrite("monitored_pipe", &ControlRuleInput::monitored_pipe)
+        .def_readwrite("condition", &ControlRuleInput::condition)
+        .def_readwrite("threshold", &ControlRuleInput::threshold)
+        .def_readwrite("target", &ControlRuleInput::target)
+        .def_readwrite("deadband", &ControlRuleInput::deadband)
+        .def_readwrite("action", &ControlRuleInput::action)
+        .def_readwrite("kp", &ControlRuleInput::kp)
+        .def_readwrite("ki", &ControlRuleInput::ki)
+        .def_readwrite("kd", &ControlRuleInput::kd);
+
     // ── MOCSolver ──────────────────────────────────────────────────────────
     py::class_<MOCSolver>(m, "MOCSolver",
         R"pbdoc(
@@ -273,6 +299,17 @@ PYBIND11_MODULE(_rthym_moc, m) {
             "Append a pipe to the network topology.")
         .def("clear", &MOCSolver::clear,
             "Remove all nodes and pipes from the solver.")
+        .def("add_control_rule", &MOCSolver::add_control_rule,
+            py::arg("rule"),
+            "Register an operational control rule.")
+        .def("clear_control_rules", &MOCSolver::clear_control_rules,
+            "Clear all registered operational control rules.")
+        .def("get_node_head", &MOCSolver::get_node_head,
+            py::arg("id"),
+            "Query the current piezometric HGL head (ft) of a node.")
+        .def("get_node_pressure", &MOCSolver::get_node_pressure,
+            py::arg("id"),
+            "Query the current gauge pressure (psi) of a node.")
         .def("set_valve_setting", &MOCSolver::set_valve_setting,
             py::arg("id"), py::arg("pct_open"),
             "Update a valve's opening (0=closed, 100=fully open) mid-simulation.")
