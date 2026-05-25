@@ -236,6 +236,52 @@ def test_pcv_sequencing():
     assert res["pipe_flow_gpm"]["P1"][-1] < 1.0
 
 
+def test_pcv_shutdown_does_not_reopen_valve_after_pump_off_command():
+    """PCV must read command_speed, not transient current_speed, during valve ramp-down.
+
+    Regression for oscillation when shutdown sets pump command to 0% while PCV
+    temporarily holds physical speed at 100% during the closing ramp.
+    """
+    solver = rthym_moc.MOCSolver()
+    solver.add_node(_make_node("R1", "PressureBoundary", head=100.0))
+    solver.add_node(_make_node("Pmp1", "Pump", design_head=50.0, design_flow=100.0, current_speed=100.0))
+    solver.add_node(_make_node("V1", "Valve", diameter=12.0, current_setting=100.0))
+    solver.add_node(_make_node("R2", "PressureBoundary", head=50.0))
+
+    solver.add_pipe(_make_pipe("P1", "R1", "Pmp1", length=50.0, diameter=12.0, flow_gpm=100.0))
+    solver.add_pipe(_make_pipe("P2", "Pmp1", "V1", length=50.0, diameter=12.0, flow_gpm=100.0))
+    solver.add_pipe(_make_pipe("P3", "V1", "R2", length=50.0, diameter=12.0, flow_gpm=100.0))
+
+    rule = rthym_moc.ControlRuleInput()
+    rule.id = "pcv_rule"
+    rule.type = rthym_moc.ControlType.PCV
+    rule.monitored_node = "Pmp1"
+    rule.controlled_node = "V1"
+    rule.threshold = 0.2
+    rule.deadband = 0.2
+    solver.add_control_rule(rule)
+
+    solver.set_pump_schedule("Pmp1", [(0.0, 100.0), (0.09, 100.0), (0.1, 0.0)])
+    res = solver.run(total_time=0.4, dt=0.01)
+
+    time_s = res["time"]
+    flow_gpm = res["pipe_flow_gpm"]["P1"]
+    valve_pct = res["valve_setting"]["V1"]
+    off_idx = next(i for i, t in enumerate(time_s) if t >= 0.11)
+    after_off = valve_pct[off_idx:]
+
+    assert flow_gpm[-1] < 1.0, "Pump line flow should end near zero after shutdown"
+    assert after_off[-1] < 5.0, (
+        f"PCV valve should finish closed after shutdown, got {after_off[-1]:.2f}%"
+    )
+    # Buggy PCV reads transient pump speed and re-enters "opening", increasing % open.
+    for i in range(1, len(after_off)):
+        assert after_off[i] <= after_off[i - 1] + 0.5, (
+            f"Valve reopened during shutdown ramp at t={time_s[off_idx + i]:.3f}s: "
+            f"{after_off[i - 1]:.2f}% -> {after_off[i]:.2f}%"
+        )
+
+
 def test_flow_monitoring_and_exceptions():
     """Verify pipe flow monitoring and solver exceptions."""
     solver = rthym_moc.MOCSolver()

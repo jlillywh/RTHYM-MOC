@@ -96,6 +96,11 @@ static py::dict results_to_dict(SimResults&& r) {
     for (auto& [k, v] : r.valve_velocity) vv[k.c_str()] = to_numpy(std::move(v));
     out["valve_velocity"] = vv;
 
+    // valve_setting dict (% open for Valve / Turbine)
+    py::dict vs;
+    for (auto& [k, v] : r.valve_setting) vs[k.c_str()] = to_numpy(std::move(v));
+    out["valve_setting"] = vs;
+
     return out;
 }
 
