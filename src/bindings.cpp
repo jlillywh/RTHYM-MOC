@@ -197,6 +197,7 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def_readwrite("max_level",        &NodeInput::max_level)
         .def_readwrite("demand",           &NodeInput::demand)
         .def_readwrite("current_speed",    &NodeInput::current_speed)
+        .def_readwrite("has_power",        &NodeInput::has_power)
         .def_readwrite("current_setting",  &NodeInput::current_setting)
         .def_readwrite("design_head",      &NodeInput::design_head)
         .def_readwrite("design_flow",      &NodeInput::design_flow)
@@ -321,6 +322,9 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def("set_pump_speed", &MOCSolver::set_pump_speed,
             py::arg("id"), py::arg("pct_speed"),
             "Update a pump's speed (0=off, 100=rated speed) mid-simulation.")
+        .def("set_pump_power", &MOCSolver::set_pump_power,
+            py::arg("id"), py::arg("has_power"),
+            "Set whether a pump has electrical power (affects PCV shutdown hold logic).")
         .def("set_node_demand", &MOCSolver::set_node_demand,
             py::arg("id"), py::arg("demand_gpm"),
             "Update a junction demand mid-simulation.")

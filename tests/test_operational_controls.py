@@ -282,6 +282,68 @@ def test_pcv_shutdown_does_not_reopen_valve_after_pump_off_command():
         )
 
 
+def _pcv_shutdown_fixture(has_power: bool):
+    """Pump + PCV network with commanded shutdown at t=0.1 s."""
+    solver = rthym_moc.MOCSolver()
+    solver.add_node(_make_node("R1", "PressureBoundary", head=100.0))
+    solver.add_node(
+        _make_node(
+            "Pmp1",
+            "Pump",
+            design_head=50.0,
+            design_flow=100.0,
+            current_speed=100.0,
+            has_power=has_power,
+        )
+    )
+    solver.add_node(_make_node("V1", "Valve", diameter=12.0, current_setting=100.0))
+    solver.add_node(_make_node("R2", "PressureBoundary", head=50.0))
+
+    solver.add_pipe(_make_pipe("P1", "R1", "Pmp1", length=50.0, diameter=12.0, flow_gpm=100.0))
+    solver.add_pipe(_make_pipe("P2", "Pmp1", "V1", length=50.0, diameter=12.0, flow_gpm=100.0))
+    solver.add_pipe(_make_pipe("P3", "V1", "R2", length=50.0, diameter=12.0, flow_gpm=100.0))
+
+    rule = rthym_moc.ControlRuleInput()
+    rule.id = "pcv_rule"
+    rule.type = rthym_moc.ControlType.PCV
+    rule.monitored_node = "Pmp1"
+    rule.controlled_node = "V1"
+    rule.threshold = 0.2
+    rule.deadband = 0.2
+    solver.add_control_rule(rule)
+    solver.set_pump_schedule("Pmp1", [(0.0, 100.0), (0.09, 100.0), (0.1, 0.0)])
+    return solver.run(total_time=0.35, dt=0.01)
+
+
+def test_pcv_power_outage_drops_pump_speed_during_valve_close():
+    """Without electrical power, PCV closing must not hold pump speed at 100%."""
+    powered = _pcv_shutdown_fixture(has_power=True)
+    outage = _pcv_shutdown_fixture(has_power=False)
+
+    def mean_suction_flow_during_close(res):
+        time_s = res["time"]
+        flow = res["pipe_flow_gpm"]["P1"]
+        mask = (time_s >= 0.11) & (time_s <= 0.28)
+        return float(abs(flow[mask]).mean())
+
+    powered_mean = mean_suction_flow_during_close(powered)
+    outage_mean = mean_suction_flow_during_close(outage)
+
+    assert powered_mean > 30.0, f"Expected sustained flow during powered PCV close, got {powered_mean:.1f} GPM"
+    assert outage_mean < powered_mean * 0.35, (
+        f"Power outage should collapse pump delivery during valve ramp "
+        f"(powered={powered_mean:.1f} GPM, outage={outage_mean:.1f} GPM)"
+    )
+    assert outage["pipe_flow_gpm"]["P1"][-1] < 1.0
+
+
+def test_set_pump_power_rejects_non_pump_nodes():
+    solver = rthym_moc.MOCSolver()
+    solver.add_node(_make_node("V1", "Valve", diameter=12.0))
+    with pytest.raises(ValueError, match="Pump"):
+        solver.set_pump_power("V1", False)
+
+
 def test_flow_monitoring_and_exceptions():
     """Verify pipe flow monitoring and solver exceptions."""
     solver = rthym_moc.MOCSolver()

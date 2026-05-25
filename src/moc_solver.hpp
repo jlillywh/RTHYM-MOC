@@ -69,6 +69,7 @@ struct NodeInput {
     double  current_speed       = 100.0; // % rated speed
     double  design_head         = 0.0;   // ft shut-off/design head
     double  design_flow         = 0.0;   // GPM at BEP
+    bool    has_power           = true;  // electrical power (PCV shutdown vs outage)
 
     // Valve / Turbine fields
     double  current_setting     = 100.0; // % open (100 = fully open)
@@ -223,6 +224,7 @@ public:
     // Adjust boundary conditions between calls to run() for scripted transients
     void set_valve_setting(const std::string& id, double pct_open);
     void set_pump_speed   (const std::string& id, double pct_speed);
+    void set_pump_power   (const std::string& id, bool has_power);
     void set_node_demand  (const std::string& id, double demand_gpm);
     void set_node_head    (const std::string& id, double head_ft);
 
