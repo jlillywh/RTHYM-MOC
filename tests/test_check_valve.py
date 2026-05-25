@@ -210,3 +210,50 @@ def test_check_valve_closure_dynamics():
     # Should not close instantly
     assert valve_pos[idx_trigger] > 0.5, f"Valve should not close instantly at trigger, got {valve_pos[idx_trigger]}"
     # If flow resumes forward, valve should reopen (optional, not forced here)
+
+def test_load_inp_with_rthym_check_valve_overrides(tmp_path: Path):
+    """It should parse closure_time and flipped parameters from [RTHYM] for CheckValves."""
+    inp_path = tmp_path / "rthym_cv.inp"
+    inp_path.write_text(
+        """[TITLE]
+Check valve override test
+
+[JUNCTIONS]
+J1   0          0
+
+[RESERVOIRS]
+R1   160
+R2   140
+
+[PIPES]
+P1   R1     J1     40      12        130        0          OPEN
+P2   J1     R2     40      12        130        0          CV
+
+[RTHYM]
+_CHECKVALVE_P2 CheckValve closure_time=2.5 flipped=1
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+
+[END]
+""",
+        encoding="utf-8",
+    )
+
+    solver = m.load_inp(
+        str(inp_path),
+        use_wntr=False,
+        initial_flows={"P1": 500.0, "P2": 500.0},
+        initial_heads={"J1": 150.0},
+    )
+
+    results = solver.run(total_time=TOTAL_TIME_S, dt=DT_S)
+
+    assert "_CHECKVALVE_P2" in results["valve_position"], "Expected check valve node in valve_position telemetry"
+    valve_pos = np.asarray(results["valve_position"]["_CHECKVALVE_P2"])
+
+    # Since flipped=True and we have positive initial flow, it will immediately experience
+    # a reverse-flow tendency and begin closing from t=0.
+    # At the end of the simulation (0.4s), position should be roughly exp(-0.4/2.5) ≈ 0.852.
+    assert 0.80 < valve_pos[-1] < 0.90, f"Expected final position around 0.85, got {valve_pos[-1]:.4f}"

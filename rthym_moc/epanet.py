@@ -767,14 +767,29 @@ def load_inp(
     # compatibility.  The [RTHYM] section records their actual type and the
     # physical parameters the MOC solver needs.
     for nid, params in rthym_overrides.items():
-        if nid not in nodes:
+        n = nodes.get(nid)
+        if not n:
+            for cvn in check_valve_nodes:
+                if cvn.id == nid:
+                    n = cvn
+                    break
+            if not n:
+                for pn in pump_nodes:
+                    if pn.id == nid:
+                        n = pn
+                        break
+            if not n:
+                for vn in valve_nodes:
+                    if vn.id == nid:
+                        n = vn
+                        break
+        if not n:
             warnings.warn(
                 f"[RTHYM] section references node '{nid}' which is not found in "
                 "[JUNCTIONS] or other node sections; skipped.",
                 UserWarning, stacklevel=2,
             )
             continue
-        n = nodes[nid]
         ntype = params["node_type"]
         n.type = ntype
 
