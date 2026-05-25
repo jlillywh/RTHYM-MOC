@@ -220,17 +220,26 @@ Check valve override test
 
 [JUNCTIONS]
 J1   0          0
+J2   0          0
 
 [RESERVOIRS]
 R1   160
 R2   140
 
+[PUMPS]
+PU1  R1  J1  100
+
+[VALVES]
+VA1  J1  J2  12  TCV  10
+
 [PIPES]
-P1   R1     J1     40      12        130        0          OPEN
-P2   J1     R2     40      12        130        0          CV
+P2   J2  R2  40      12        130        0          CV
 
 [RTHYM]
 _CHECKVALVE_P2 CheckValve closure_time=2.5 flipped=1
+_PUMP_PU1 Pump
+_VALVE_VA1 Valve
+INVALID_NODE Standpipe
 
 [OPTIONS]
 UNITS GPM
