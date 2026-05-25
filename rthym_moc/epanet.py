@@ -210,11 +210,13 @@ def _parse_rthym_overrides(
         nid   = row[0]
         ntype = row[1]
         if ntype not in _RTHYM_SURGE_TYPES:
-            warnings.warn(
-                f"[RTHYM] section: node '{nid}' has unrecognised type '{ntype}'; "
-                "row ignored.",
-                UserWarning, stacklevel=4,
-            )
+            # Type-only rows (no key=value tokens) are treated as comments/placeholders.
+            if len(row) >= 3:
+                warnings.warn(
+                    f"[RTHYM] section: node '{nid}' has unrecognised type '{ntype}'; "
+                    "row ignored.",
+                    UserWarning, stacklevel=4,
+                )
             continue
         params: dict = {"node_type": ntype}
         for tok in row[2:]:
@@ -439,9 +441,10 @@ def load_inp(
     each (see module docstring).  Generated IDs follow the pattern
     ``_PUMP_<id>``, ``_VALVE_<id>``, ``_P_<id>_up``, ``_P_<id>_dn``.
 
-    **PRV / PSV / PBV** settings are pressure setpoints; they cannot be
-    converted to a % open value without full system knowledge and are
-    initialised at 100 % open (fully open) with a ``UserWarning``.
+    **PRV / PSV / PBV** settings are imported as pressure-control valve nodes.
+    The EPANET setting is converted to a head setpoint in ``NodeInput.head`` (ft
+    HGL for PRV/PSV, differential ft for PBV). Transient control follows the
+    simplified regulating rules documented in the README.
 
     **D-W and C-M roughness** values are converted to approximate H-W C
     values using the Swamee-Jain and Manning approximations respectively.
@@ -651,12 +654,15 @@ def load_inp(
         if vtype == "TCV":
             pct = _tcv_km_to_pct(setting)
         elif vtype in _PRESSURE_VALVE_TYPES:
-            warnings.warn(
-                f"Valve '{lid}' ({vtype}): setting is a pressure setpoint "
-                f"({setting:.2f}), not a % open.  Initialised at 100 % open. "
-                "Adjust current_setting on the returned solver if needed.",
-                UserWarning, stacklevel=2,
-            )
+            frm_elev = nodes[frm].elevation if frm in nodes else 0.0
+            to_elev = nodes[to_].elevation if to_ in nodes else 0.0
+            pres_ft = float(setting) * _PRES_TO_FT[units]
+            if vtype == "PRV":
+                setpoint_head = to_elev + pres_ft
+            elif vtype == "PSV":
+                setpoint_head = frm_elev + pres_ft
+            else:
+                setpoint_head = pres_ft
             pct = 100.0
         elif vtype in _UNSUPPORTED_VALVE_TYPES:
             warnings.warn(
@@ -675,9 +681,13 @@ def load_inp(
 
         nid = f"_VALVE_{lid}"
         vn  = NodeInput()
-        vn.id = nid;  vn.type = "Valve"
+        vn.id = nid
+        vn.type = vtype if vtype in _PRESSURE_VALVE_TYPES else "Valve"
         vn.elevation = nodes[frm].elevation if frm in nodes else 0.0
-        vn.diameter = diam;  vn.current_setting = pct
+        vn.diameter = diam
+        vn.current_setting = pct
+        if vtype in _PRESSURE_VALVE_TYPES:
+            vn.head = setpoint_head
         valve_nodes.append(vn)
         valve_link_ids.append(lid)
 
@@ -727,7 +737,9 @@ def load_inp(
             r for r in sec.get("VALVES", []) if len(r) >= 2 and r[0] == lid
         )
         frm_nid = row[1]
-        vn.head = init_heads.get(vn.id, init_heads.get(frm_nid, vn.head))
+        # PRV/PSV/PBV use NodeInput.head as a control setpoint, not a user IC override.
+        if str(vn.type) not in _PRESSURE_VALVE_TYPES:
+            vn.head = init_heads.get(vn.id, init_heads.get(frm_nid, vn.head))
 
     for i, (lid, pn) in enumerate(zip(pump_link_ids, pump_nodes)):
         row = next(

@@ -90,7 +90,7 @@ HEADLOSS INVALID_HL
     assert any("HEADLOSS" in text for text in warnings_text)
     assert any("CURVE1" in text for text in warnings_text)
     assert any("POWER" in text for text in warnings_text)
-    assert any("PRESSURE SETPOINT" in text for text in warnings_text)
+    assert not any("V2" in text and "PRESSURE SETPOINT" in text for text in warnings_text)
     assert any("NOT SUPPORTED" in text for text in warnings_text)
     assert any("UNRECOGNISED TYPE" in text for text in warnings_text)
     assert solver is not None
