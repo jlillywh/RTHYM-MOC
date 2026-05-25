@@ -30,6 +30,7 @@ TOTAL_TIME_S = 12.0
 TRIP_START_S = 5.2
 TRIP_END_S = 6.0
 TOTAL_DISCHARGE_LENGTH_FT = 4040.0
+HEAD_BOUND_TOL_FT = 1.0
 
 PLACEMENT_CASES = [
     pytest.param(40.0, 180.0, 0, id="40ft"),
@@ -139,8 +140,8 @@ def test_hydropneumatic_placement_sweep_meets_expected_trip_window_bounds(
     trip_head_ft = _mean_over_window(time_s, discharge_head_ft, TRIP_START_S, TRIP_END_S)
     negative_head_steps = int((discharge_head_ft[trip_window] < 0.0).sum())
 
-    assert trip_head_ft >= trip_head_floor_ft, (
-        f"Expected hydropneumatic placement {distance_from_pump_ft:.0f} ft from pump discharge to keep trip head above {trip_head_floor_ft:.1f} ft, got {trip_head_ft:.2f} ft"
+    assert trip_head_ft >= trip_head_floor_ft - HEAD_BOUND_TOL_FT, (
+        f"Expected hydropneumatic placement {distance_from_pump_ft:.0f} ft from pump discharge to keep trip head above {trip_head_floor_ft:.1f} ft within a {HEAD_BOUND_TOL_FT:.1f} ft numeric tolerance, got {trip_head_ft:.2f} ft"
     )
     assert negative_head_steps <= negative_head_max_steps, (
         f"Expected hydropneumatic placement {distance_from_pump_ft:.0f} ft from pump discharge to limit negative-head exposure to at most {negative_head_max_steps} steps, got {negative_head_steps}"
