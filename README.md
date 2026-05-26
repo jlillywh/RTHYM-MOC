@@ -2,6 +2,7 @@
 
 [![Tests](https://github.com/jlillywh/RTHYM-MOC/actions/workflows/tests.yml/badge.svg)](https://github.com/jlillywh/RTHYM-MOC/actions/workflows/tests.yml)
 [![Coverage](https://codecov.io/gh/jlillywh/RTHYM-MOC/branch/main/graph/badge.svg)](https://codecov.io/gh/jlillywh/RTHYM-MOC)
+[![PyPI](https://img.shields.io/pypi/v/rthym-moc)](https://pypi.org/project/rthym-moc/)
 [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fquickstart_notebook.ipynb)
 
 A high-performance 1-D Method of Characteristics (MOC) transient hydraulic solver with a C++17 core and a Python API via PyBind11.  Originally developed as the engine behind the [R-THYM](https://lillywhitewater.com/products/r-thym/) web application, it is released here as a standalone, open-source library suitable for research scripting, parametric studies, and automated validation pipelines.
@@ -52,24 +53,61 @@ RTHYM-MOC solves the 1-D water-hammer equations using the Method of Characterist
 
 ## Installation
 
-### Requirements
-
-| Component | Minimum version |
-|-----------|----------------|
-| Python    | 3.9            |
-| NumPy     | 1.21           |
-| pybind11  | 2.11           |
-| C++ compiler | C++17 (GCC 9+, Clang 10+, MSVC 2019+) |
-| CMake     | 3.15           |
-
-### Build and install
+### Install from PyPI
 
 ```bash
-pip install pybind11          # provides CMake integration
-pip install --no-build-isolation -e .
+pip install rthym-moc
 ```
 
-This compiles the C++ extension `_rthym_moc` and installs the `rthym_moc` Python package in editable mode.  No additional runtime dependencies are needed beyond NumPy.
+Optional extras:
+
+```bash
+pip install 'rthym-moc[inp]'   # EPANET .inp import via wntr
+pip install 'rthym-moc[dev]'    # pytest, ruff, mypy, etc.
+```
+
+Verify:
+
+```bash
+python -c "import rthym_moc; print(rthym_moc.__version__)"
+```
+
+**Platforms:** Linux, macOS, and **Windows** are supported (Python 3.9–3.12; see CI). PyPI currently ships a **source distribution** — `pip` compiles the C++ extension on your machine during install. You need a **C++17 compiler** available to the build:
+
+| OS | Compiler |
+|----|----------|
+| Linux | GCC 9+ or Clang 10+ (`build-essential` on Debian/Ubuntu) |
+| macOS | Xcode Command Line Tools (Clang) |
+| Windows | [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the **“Desktop development with C++”** workload (MSVC 2019 or newer). Use a normal **x64** Command Prompt or PowerShell, not WSL, when installing into Windows Python. |
+
+On Windows, if `pip install rthym-moc` fails with a compiler error, install the Build Tools, open a new terminal, and retry. Prebuilt wheels are not published yet; a future release may add them via CI.
+
+### Requirements
+
+| Component | Minimum version | Notes |
+|-----------|----------------|-------|
+| Python    | 3.9            | |
+| NumPy     | 1.21           | Installed automatically with `rthym-moc` |
+| C++ compiler | C++17 (GCC 9+, Clang 10+, MSVC 2019+) | Required for PyPI install (compile step) |
+| CMake     | 3.15           | Only for the standalone C++ test binary below |
+| pybind11  | 2.11           | Pulled automatically when building from PyPI or source |
+
+### Install from source (development)
+
+Clone the repository, then install in editable mode:
+
+```bash
+pip install pybind11
+pip install --no-build-isolation -e .
+# or with extras:
+pip install --no-build-isolation -e '.[dev,inp]'
+```
+
+This compiles the C++ extension `_rthym_moc` and installs the `rthym_moc` package from your working tree. Rebuild after changing `src/`:
+
+```bash
+python3 setup.py build_ext --inplace
+```
 
 To build the standalone C++ unit-test binary:
 
