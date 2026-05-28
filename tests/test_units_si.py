@@ -239,6 +239,118 @@ def test_control_rule_si_pcv_uses_seconds():
     assert rule.deadband == pytest.approx(15.0)
 
 
+def test_control_rule_si_threshold_head_and_flow():
+    head_rule = m.control_rule_si(
+        "head_rule",
+        m.ControlType.Threshold,
+        monitored_node="J1",
+        controlled_node="V1",
+        monitored_quantity="head",
+        threshold_m=15.24,
+        target_pct=0.0,
+    )
+    assert head_rule.threshold == pytest.approx(50.0)
+
+    flow_rule = m.control_rule_si(
+        "flow_rule",
+        m.ControlType.Threshold,
+        monitored_node="J1",
+        controlled_node="V1",
+        monitored_quantity="flow",
+        monitored_pipe="P1",
+        threshold_m3s=m.flow_gpm_to_m3s(100.0),
+        target_pct=50.0,
+    )
+    assert flow_rule.threshold == pytest.approx(100.0)
+    assert flow_rule.target == pytest.approx(50.0)
+
+
+def test_control_rule_si_deadband_and_setpoint_si_quantities():
+    deadband_rule = m.control_rule_si(
+        "db_pressure",
+        m.ControlType.Deadband,
+        monitored_node="J1",
+        controlled_node="Pmp1",
+        monitored_quantity="pressure",
+        threshold_kpa=m.pressure_psi_to_kpa(40.0),
+        deadband_kpa=m.pressure_psi_to_kpa(5.0),
+        action="fill",
+    )
+    assert deadband_rule.threshold == pytest.approx(40.0)
+    assert deadband_rule.deadband == pytest.approx(5.0)
+
+    head_deadband = m.control_rule_si(
+        "db_head",
+        m.ControlType.Deadband,
+        monitored_node="T1",
+        controlled_node="Pmp1",
+        monitored_quantity="head",
+        threshold_m=30.48,
+        deadband_m=1.524,
+        action="fill",
+    )
+    assert head_deadband.deadband == pytest.approx(5.0)
+
+    flow_deadband = m.control_rule_si(
+        "db_flow",
+        m.ControlType.Deadband,
+        monitored_node="J1",
+        controlled_node="Pmp1",
+        monitored_quantity="flow",
+        monitored_pipe="P1",
+        threshold_m3s=m.flow_gpm_to_m3s(100.0),
+        deadband_m3s=m.flow_gpm_to_m3s(10.0),
+        action="fill",
+    )
+    assert flow_deadband.deadband == pytest.approx(10.0)
+
+    pid_rule = m.control_rule_si(
+        "pid_head",
+        m.ControlType.PID,
+        monitored_node="J1",
+        controlled_node="Pmp1",
+        monitored_quantity="head",
+        setpoint_m=30.48,
+        kp=1.0,
+    )
+    assert pid_rule.target == pytest.approx(100.0)
+
+    pid_flow = m.control_rule_si(
+        "pid_flow",
+        m.ControlType.PID,
+        monitored_node="J1",
+        controlled_node="Pmp1",
+        monitored_quantity="flow",
+        monitored_pipe="P1",
+        setpoint_m3s=m.flow_gpm_to_m3s(200.0),
+        kp=1.0,
+    )
+    assert pid_flow.target == pytest.approx(200.0)
+
+    pid_level = m.control_rule_si(
+        "pid_level",
+        m.ControlType.PID,
+        monitored_node="T1",
+        controlled_node="Pmp1",
+        monitored_quantity="level",
+        setpoint_pct=75.0,
+        kp=1.0,
+    )
+    assert pid_level.target == pytest.approx(75.0)
+
+
+def test_apply_si_helpers_reject_unsupported_quantity():
+    from rthym_moc.units import ControlRuleInput, _apply_si_deadband, _apply_si_setpoint, _apply_si_threshold
+
+    rule = ControlRuleInput()
+    with pytest.raises(ValueError, match="unsupported monitored_quantity for SI threshold"):
+        _apply_si_threshold(rule, "temperature", 1.0)
+    with pytest.raises(ValueError, match="unsupported monitored_quantity for SI deadband"):
+        _apply_si_deadband(rule, "temperature", 1.0)
+    with pytest.raises(ValueError, match="unsupported monitored_quantity for SI setpoint"):
+        _apply_si_setpoint(rule, "temperature", 1.0)
+
+
 def test_control_rule_si_threshold_pressure_triggers_like_us_rule():
     """SI threshold rule should behave like an equivalent US-customary rule."""
 

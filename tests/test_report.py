@@ -34,6 +34,32 @@ def test_series_extrema_finds_times():
     assert ext["max_time_s"] == pytest.approx(2.0)
 
 
+def test_series_extrema_empty_series():
+    ext = series_extrema(np.array([]), np.array([]))
+    assert np.isnan(ext["min"])
+    assert np.isnan(ext["max"])
+
+
+def test_summarize_study_infers_dt_edge_cases():
+    single_step = summarize_study(
+        {
+            "time": np.array([0.0]),
+            "node_head": {"J1": np.array([100.0])},
+            "pipe_flow_gpm": {"P1": np.array([50.0])},
+        }
+    )
+    assert single_step["meta"]["dt_s"] == pytest.approx(0.0)
+
+    flat_time = summarize_study(
+        {
+            "time": np.array([0.0, 0.0, 0.0]),
+            "node_head": {"J1": np.array([100.0, 90.0, 95.0])},
+            "pipe_flow_gpm": {"P1": np.array([50.0, 40.0, 45.0])},
+        }
+    )
+    assert flat_time["meta"]["dt_s"] == pytest.approx(0.0)
+
+
 def test_cavitation_summary_duration():
     t = np.linspace(0.0, 0.09, 10)
     flags = np.array([0, 0, 1, 1, 1, 0, 0, 0, 0, 0])
