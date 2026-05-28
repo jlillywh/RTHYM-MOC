@@ -27,6 +27,16 @@ inp  = [
 ]
 dev  = ["pytest", "pytest-cov", "ruff", "mypy", "pre-commit", "numpy", "matplotlib"]
 docs = ["sphinx", "numpydoc"]
+benchmark = [
+    "tsnet==0.3.1",
+    "ptsnet==0.1.10",
+    "mpi4py",
+    "h5py",
+    "tqdm",
+    "numba",
+    "numpy<2",
+    "setuptools>=64,<81",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
