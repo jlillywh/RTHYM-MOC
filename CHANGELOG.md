@@ -9,6 +9,8 @@ versioning for package releases.
 ## [Unreleased]
 
 ### Added
+- documented maintainer/internal Emscripten/WASM binding build path
+  (`build_wasm.sh`) and CI smoke-test coverage
 - `examples/benchmark_matrix.py` performance matrix sweeping time step and
   duration on the standard Joukowsky case (median timings vs TSNet)
 
