@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=64", "pybind11>=2.11", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["scikit-build-core>=0.10", "pybind11>=2.11"]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "rthym-moc"
@@ -38,12 +38,21 @@ benchmark = [
     "setuptools>=64,<81",
 ]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["rthym_moc*"]
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+wheel.packages = ["rthym_moc"]
+sdist.include = [
+    "CMakeLists.txt",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md",
+    "src",
+    "rthym_moc",
+]
 
-[tool.setuptools.dynamic]
-version = { attr = "rthym_moc._version.__version__" }
+[tool.scikit-build.metadata.version]
+provider = "scikit_build_core.metadata.regex"
+input = "rthym_moc/_version.py"
 
 [tool.ruff]
 target-version = "py39"
