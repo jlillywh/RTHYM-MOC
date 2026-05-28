@@ -72,7 +72,20 @@ Verify:
 python -c "import rthym_moc; print(rthym_moc.__version__)"
 ```
 
-**Platforms:** Linux, macOS, and **Windows** are supported (Python 3.9–3.12; see CI). PyPI currently ships a **source distribution** — `pip` compiles the C++ extension on your machine during install. You need a **C++17 compiler** available to the build:
+**Platforms:** Linux, macOS, and **Windows** are supported (Python 3.9–3.12; see CI).
+Starting with releases built by the wheel-publishing workflow, prebuilt wheels are
+published for the most common platforms so most users do not need a local C++
+compiler:
+
+| OS | Wheel architecture | Python |
+|----|--------------------|--------|
+| Linux | x86_64 (`manylinux`) | CPython 3.9–3.12 |
+| macOS | x86_64, arm64 | CPython 3.9–3.12 |
+| Windows | AMD64 | CPython 3.9–3.12 |
+
+If no wheel is available for your platform, `pip` falls back to the source
+distribution and compiles the C++ extension locally. Source builds require a
+**C++17 compiler**:
 
 | OS | Compiler |
 |----|----------|
@@ -80,7 +93,8 @@ python -c "import rthym_moc; print(rthym_moc.__version__)"
 | macOS | Xcode Command Line Tools (Clang) |
 | Windows | [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the **“Desktop development with C++”** workload (MSVC 2019 or newer). Use a normal **x64** Command Prompt or PowerShell, not WSL, when installing into Windows Python. |
 
-On Windows, if `pip install rthym-moc` fails with a compiler error, install the Build Tools, open a new terminal, and retry. Prebuilt wheels are not published yet; a future release may add them via CI.
+On Windows, if `pip install rthym-moc` falls back to a source build and fails with
+a compiler error, install the Build Tools, open a new terminal, and retry.
 
 ### Requirements
 
@@ -88,7 +102,7 @@ On Windows, if `pip install rthym-moc` fails with a compiler error, install the 
 |-----------|----------------|-------|
 | Python    | 3.9            | |
 | NumPy     | 1.21           | Installed automatically with `rthym-moc` |
-| C++ compiler | C++17 (GCC 9+, Clang 10+, MSVC 2019+) | Required for PyPI install (compile step) |
+| C++ compiler | C++17 (GCC 9+, Clang 10+, MSVC 2019+) | Only required when installing from source or when no wheel is available |
 | CMake     | 3.15           | Only for the standalone C++ test binary below |
 | pybind11  | 2.11           | Pulled automatically when building from PyPI or source |
 
@@ -227,6 +241,7 @@ The repository includes runnable scripts and a notebook under `examples/`:
 | `transient_study_report.py` | Run a transient and export study summaries (CSV/JSON) |
 | `benchmark_vs_tsnet.py` | Single-case TSNet timing comparison |
 | `benchmark_matrix.py` | Multi grid-size TSNet performance matrix |
+| `benchmark_ptsnet_vs_tsnet.py` | rthym_moc vs TSNet vs PTSNet on the MPI-safe TNET3 case, with optional small surge cases |
 | `test_wave_reflections.py` | Wave period and damping verification |
 | `test_gradual_closure.py` | Joukowsky criterion and K-model valve closure |
 | `test_surge_tank.py` | Standpipe mass oscillation and pressure mitigation |
@@ -1024,26 +1039,42 @@ Long-form cross-engine narratives:
 
 ## Benchmarking
 
-Benchmarking answers: **how much faster is the C++ core than TSNet?** TSNet is
-the pure-Python MOC reference this project was built to outperform.
+Benchmarking answers: **how much faster is the C++ core than TSNet and PTSNet?**
+TSNet is the pure-Python MOC reference this project was built to outperform, and
+PTSNet is the MPI-capable parallel reference.
 
 Reproduce timing on your hardware:
 
 ```bash
 pip install tsnet==0.3.1
+pip install ptsnet==0.1.10 mpi4py h5py tqdm numba "numpy<2" "setuptools<81"
 python examples/benchmark_vs_tsnet.py      # single standard case
 python examples/benchmark_matrix.py        # grid-size performance matrix
+mpiexec -n 4 python examples/benchmark_ptsnet_vs_tsnet.py --warmup 0 --repeat 1
+# Optional rthym_moc throughput check:
+mpiexec -n 4 python examples/benchmark_ptsnet_vs_tsnet.py --warmup 0 --repeat 1 --rthym-concurrency 4
 ```
 
-The script reports wall-clock time for both engines on the same 300-step,
-instant-closure case, plus a physics cross-check (RMS head difference over the
-first wave cycle). Typical results on developer hardware are **< 1 ms** for
-RTHYM-MOC vs **~50–70 ms** for TSNet — roughly **200–400×** speedup. Re-run the
-script on your machine before citing a ratio.
+Install `ptsnet==0.1.10`, `mpi4py`, `h5py`, `tqdm`, `numba`, `numpy<2`, and
+`setuptools<81` before running `benchmark_ptsnet_vs_tsnet.py`.
+
+`benchmark_vs_tsnet.py` reports wall-clock time on the same 300-step instant-closure
+case for RTHYM-MOC vs TSNet, plus an RMS physics cross-check. Typical developer
+hardware: **under 1 ms** for RTHYM-MOC vs **about 50–70 ms** for TSNet (order of
+**200–400×** faster). Re-run before citing ratios.
+
+`benchmark_ptsnet_vs_tsnet.py` adds PTSNet and prints **one table**: median ms for
+each tool to **complete** a full run from a fresh model. The default is PTSNet's
+TNET3 valve-closure network because it completes reliably under `mpiexec -n 4`;
+the Joukowsky and standpipe microbenchmarks remain available with `--models 1,2`
+or `--models all`. Add `--rthym-concurrency 4` to show batch throughput for four
+independent rthym_moc runs in separate Python processes. See
+[docs/benchmarking.md](docs/benchmarking.md).
 
 | Topic | Documentation |
 |---|---|
-| How to run and interpret the comparison | [docs/benchmarking.md](docs/benchmarking.md), `examples/benchmark_matrix.py` |
+| How to run / interpret RTHYM vs TSNet | [docs/benchmarking.md](docs/benchmarking.md), `examples/benchmark_matrix.py` |
+| All three tools (time to complete the full run) | `examples/benchmark_ptsnet_vs_tsnet.py` |
 | Tabulated physics + timing results | [docs/appendix_b_verification.md](docs/appendix_b_verification.md) §B.6 |
 | Automated correctness regressions | [Validation](#validation) (TSNet is not a default pytest dependency) |
 
@@ -1078,6 +1109,7 @@ RTHYM-MOC/
 │   ├── basic_example.py            # Minimal Joukowsky quickstart
 │   ├── benchmark_vs_tsnet.py       # Single-case TSNet timing comparison
 │   ├── benchmark_matrix.py         # Multi grid-size TSNet performance matrix
+│   ├── benchmark_ptsnet_vs_tsnet.py # rthym vs TSNet vs PTSNet surge timing
 │   ├── transient_study_report.py   # Post-processing export workflow
 │   ├── test_wave_reflections.py    # Wave period & damping verification
 │   ├── test_gradual_closure.py     # Joukowsky criterion, K-model valve
