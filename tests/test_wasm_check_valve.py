@@ -1,4 +1,4 @@
-"""WASM-facing regression coverage for CheckValve bindings."""
+"""Regression coverage for maintainer/internal Emscripten bindings."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ WASM_BIN = WASM_OUT_DIR / "rthym_moc.wasm"
 
 
 def test_wasm_bindings_expose_check_valve_runtime_contract():
-    """The frontend-facing WASM payload should explicitly expose CheckValve state."""
+    """The WASM bindings should explicitly expose CheckValve runtime state."""
     source = WASM_BINDINGS_CPP.read_text(encoding="utf-8")
 
     assert 'n.type == NodeType::CheckValve' in source

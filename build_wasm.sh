@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # build_wasm.sh
-# Experimental Emscripten build for browser/node WASM integration.
+# Maintainer/internal Emscripten build for WASM binding validation.
 #
 # Outputs:
 #   build/wasm/rthym_moc.js
 #   build/wasm/rthym_moc.wasm
 #
 # Environment:
-#   EMSDK_DIR            Optional path to an emsdk checkout (sources emsdk_env.sh)
-#   RTHYM_WASM_OUT_DIR   Output directory (default: build/wasm)
-#   RTHYM_WASM_COPY_DIR  Optional extra directory to copy artifacts into
+#   EMSDK_DIR          Optional path to an emsdk checkout (sources emsdk_env.sh)
+#   RTHYM_WASM_OUT_DIR Output directory (default: build/wasm)
+#   RTHYM_WASM_COPY_DIR Optional local-only copy target for maintainer workflows
 
 set -euo pipefail
 

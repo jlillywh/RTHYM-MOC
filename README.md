@@ -11,7 +11,7 @@ A high-performance 1-D Method of Characteristics (MOC) transient hydraulic solve
 
 - [Overview](#overview)
 - [Installation](#installation)
-- [Experimental WASM build](#experimental-wasm-build)
+- [Maintainer WASM integration (internal)](#maintainer-wasm-integration-internal)
 - [Quickstart](#quickstart)
 - [Testing](#testing)
 - [Examples](#examples)
@@ -133,24 +133,24 @@ cmake --build build
 
 ---
 
-## Experimental WASM build
+## Maintainer WASM integration (internal)
 
-RTHYM-MOC also ships an **experimental** Emscripten build path for browser and
-Node.js integrations. This is separate from the supported Python package API:
+The repository includes a **maintainer-only** Emscripten build path for validating
+`src/wasm_bindings.cpp`. This is separate from the supported Python package API
+and is not part of the public release workflow:
 
 - bindings live in `src/wasm_bindings.cpp`
 - the build script is `build_wasm.sh`
-- CI runs a WASM-facing regression test in `.github/workflows/wasm-regression.yml`
+- CI runs a binding smoke test in `.github/workflows/wasm-regression.yml`
 
-The WASM surface exposes a stepwise frontend-oriented API (`initGrid`,
-`stepMOC`, `get_step_results`) rather than the Python `MOCSolver.run()` batch
-workflow. Treat it as work-in-progress integration glue, not a semver-stable
-public contract.
+The WASM surface exposes a stepwise integration API (`initGrid`, `stepMOC`,
+`get_step_results`) rather than the Python `MOCSolver.run()` batch workflow.
+Treat it as internal maintainer tooling, not a semver-stable public contract.
 
 ### Build
 
-Install [Emscripten](https://emscripten.org/docs/getting_started/downloads.html)
-so `em++` is available, then run:
+Maintainers with [Emscripten](https://emscripten.org/docs/getting_started/downloads.html)
+installed can run:
 
 ```bash
 ./build_wasm.sh
@@ -169,11 +169,8 @@ Optional environment variables:
 |----------|---------|
 | `EMSDK_DIR` | Path to an emsdk checkout; the script sources `emsdk_env.sh` if `em++` is not already on `PATH` |
 | `RTHYM_WASM_OUT_DIR` | Override the output directory (default: `build/wasm`) |
-| `RTHYM_WASM_COPY_DIR` | Optional directory to copy the generated `.js` and `.wasm` files into |
 
-### Runtime smoke test
-
-The repository includes a Node.js smoke test for the generated module:
+### Maintainer smoke test
 
 ```bash
 ./build_wasm.sh
@@ -181,7 +178,7 @@ RTHYM_ENABLE_WASM_RUNTIME_TESTS=1 pytest -q tests/test_wasm_check_valve.py
 ```
 
 This checks that CheckValve runtime fields are exposed through the WASM bindings.
-It does not validate a full browser UI integration.
+It validates the binding contract only, not a downstream application integration.
 
 ---
 
@@ -1147,12 +1144,12 @@ Release-level changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
 ```
 RTHYM-MOC/
-├── build_wasm.sh          # Experimental Emscripten build script
+├── build_wasm.sh          # Maintainer/internal Emscripten build script
 ├── src/
 │   ├── moc_solver.hpp     # Type definitions, NodeInput, PipeInput, MOCSolver declaration
 │   ├── moc_solver.cpp     # Full MOC physics implementation (C++17)
 │   ├── bindings.cpp       # PyBind11 bindings → _rthym_moc extension module
-│   └── wasm_bindings.cpp  # Experimental Emscripten bindings for browser/node WASM
+│   └── wasm_bindings.cpp  # Emscripten bindings for maintainer WASM integration tests
 ├── build/
 │   └── wasm/              # Generated rthym_moc.js / rthym_moc.wasm (not committed)
 ├── rthym_moc/

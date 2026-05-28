@@ -41,14 +41,14 @@ cmake --build build
 ./build/moc_test
 ```
 
-The experimental browser/node WASM build uses Emscripten:
+The maintainer/internal WASM integration build uses Emscripten:
 
 ```bash
 ./build_wasm.sh
 RTHYM_ENABLE_WASM_RUNTIME_TESTS=1 pytest -q tests/test_wasm_check_valve.py
 ```
 
-See the README **Experimental WASM build** section for scope and limitations.
+See the README **Maintainer WASM integration (internal)** section for scope.
 
 ## Test and Quality Checks
 
