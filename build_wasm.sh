@@ -1,52 +1,79 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # build_wasm.sh
-# Portably build WASM target from C++ source code.
-# Installs Emscripten SDK locally under /home/jason/emsdk if not found on PATH.
+# Maintainer/internal Emscripten build for WASM binding validation.
+#
+# Outputs:
+#   build/wasm/rthym_moc.js
+#   build/wasm/rthym_moc.wasm
+#
+# Environment:
+#   EMSDK_DIR          Optional path to an emsdk checkout (sources emsdk_env.sh)
+#   RTHYM_WASM_OUT_DIR Output directory (default: build/wasm)
+#   RTHYM_WASM_COPY_DIR Optional local-only copy target for maintainer workflows
 
-set -e
+set -euo pipefail
 
-EMSDK_DIR="/home/jason/emsdk"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SRC_DIR="${REPO_ROOT}/src"
+OUT_DIR="${RTHYM_WASM_OUT_DIR:-${REPO_ROOT}/build/wasm}"
 
-# Check if emcc is on path
-if command -v emcc >/dev/null 2>&1; then
-    echo "Found emcc in environment."
-else
-    if [ ! -d "$EMSDK_DIR" ]; then
-        echo "Emscripten SDK not found. Installing into $EMSDK_DIR..."
-        git clone https://github.com/emscripten-core/emsdk.git "$EMSDK_DIR"
-        cd "$EMSDK_DIR"
-        ./emsdk install latest
-        ./emsdk activate latest
-        cd -
+ensure_emscripten() {
+    if command -v em++ >/dev/null 2>&1; then
+        return 0
     fi
-    echo "Sourcing emsdk environment..."
-    source "$EMSDK_DIR/emsdk_env.sh"
-fi
 
-cd /home/jason/RTHYM-MOC
+    if [[ -z "${EMSDK_DIR:-}" && -f "${HOME}/emsdk/emsdk_env.sh" ]]; then
+        EMSDK_DIR="${HOME}/emsdk"
+    fi
+
+    if [[ -n "${EMSDK_DIR:-}" && -f "${EMSDK_DIR}/emsdk_env.sh" ]]; then
+        # shellcheck source=/dev/null
+        source "${EMSDK_DIR}/emsdk_env.sh"
+    fi
+
+    if command -v em++ >/dev/null 2>&1; then
+        return 0
+    fi
+
+    cat >&2 <<'EOF'
+error: em++ not found.
+
+Install Emscripten and ensure em++ is on PATH, or set EMSDK_DIR to an emsdk
+checkout before running this script:
+
+  export EMSDK_DIR=/path/to/emsdk
+  source "$EMSDK_DIR/emsdk_env.sh"
+  ./build_wasm.sh
+
+See: https://emscripten.org/docs/getting_started/downloads.html
+EOF
+    exit 1
+}
+
+ensure_emscripten
+mkdir -p "${OUT_DIR}"
 
 echo "Compiling RTHYM-MOC to WebAssembly..."
-emcc -O3 -std=c++17 \
-     -I./src \
-     -DEMSCRIPTEN \
-     src/moc_solver.cpp \
-     src/wasm_bindings.cpp \
-     -o src/rthym_moc.js \
-     -s WASM=1 \
-     -s ALLOW_MEMORY_GROWTH=1 \
-     -s MODULARIZE=1 \
-     -s EXPORT_NAME="createRthymMOC" \
-     -s ENVIRONMENT="web,worker,node" \
-     --bind
+em++ -O3 -std=c++17 \
+    -I"${SRC_DIR}" \
+    -DEMSCRIPTEN \
+    "${SRC_DIR}/moc_solver.cpp" \
+    "${SRC_DIR}/wasm_bindings.cpp" \
+    -o "${OUT_DIR}/rthym_moc.js" \
+    -s WASM=1 \
+    -s ALLOW_MEMORY_GROWTH=1 \
+    -s MODULARIZE=1 \
+    -s EXPORT_NAME="createRthymMOC" \
+    -s EXPORT_ES6=0 \
+    -s ENVIRONMENT="web,worker,node" \
+    --bind
 
-echo "Copying compiled output to web app directory..."
-TARGET_DIR1="/home/jason/Lillywhite_Consulting/lillywhite_web/digital_twin/static/digital_twin/js/simulation"
-TARGET_DIR2="/home/jason/Lillywhite_Consulting/lillywhite_web/rthym/static/rthym/js/simulation"
-mkdir -p "$TARGET_DIR1"
-mkdir -p "$TARGET_DIR2"
-cp src/rthym_moc.js "$TARGET_DIR1/"
-cp src/rthym_moc.wasm "$TARGET_DIR1/"
-cp src/rthym_moc.js "$TARGET_DIR2/"
-cp src/rthym_moc.wasm "$TARGET_DIR2/"
+if [[ -n "${RTHYM_WASM_COPY_DIR:-}" ]]; then
+    mkdir -p "${RTHYM_WASM_COPY_DIR}"
+    cp "${OUT_DIR}/rthym_moc.js" "${OUT_DIR}/rthym_moc.wasm" "${RTHYM_WASM_COPY_DIR}/"
+    echo "Copied artifacts to ${RTHYM_WASM_COPY_DIR}"
+fi
 
-echo "WASM compilation and copy complete!"
+echo "WASM build complete:"
+echo "  ${OUT_DIR}/rthym_moc.js"
+echo "  ${OUT_DIR}/rthym_moc.wasm"

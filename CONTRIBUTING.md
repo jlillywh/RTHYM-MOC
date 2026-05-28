@@ -41,6 +41,15 @@ cmake --build build
 ./build/moc_test
 ```
 
+The maintainer/internal WASM integration build uses Emscripten:
+
+```bash
+./build_wasm.sh
+RTHYM_ENABLE_WASM_RUNTIME_TESTS=1 pytest -q tests/test_wasm_check_valve.py
+```
+
+See the README **Maintainer WASM integration (internal)** section for scope.
+
 ## Test and Quality Checks
 
 Run the main Python test suite from the repository root:

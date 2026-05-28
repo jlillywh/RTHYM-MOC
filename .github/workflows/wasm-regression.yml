@@ -1,5 +1,4 @@
-# This workflow builds the WASM artifacts using Emscripten and runs the WASM-facing regression test.
-# It is intended to run only on Ubuntu with Emscripten preinstalled (emsdk install latest && emsdk activate latest).
+# Maintainer workflow: compile wasm_bindings.cpp and run binding smoke tests.
 
 name: wasm-regression
 
@@ -15,10 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: pip
@@ -35,11 +34,9 @@ jobs:
           version: latest
 
       - name: Build WASM artifacts
-        run: |
-          cd src
-          em++ -std=c++17 wasm_bindings.cpp moc_solver.cpp -o rthym_moc.js -s MODULARIZE=1 -s EXPORT_ES6=0 -s ENVIRONMENT=node,web -s WASM=1 -O3 --bind
+        run: ./build_wasm.sh
 
-      - name: Run WASM-facing regression test
+      - name: Run WASM binding smoke test
         env:
           RTHYM_ENABLE_WASM_RUNTIME_TESTS: '1'
         run: pytest -q tests/test_wasm_check_valve.py
