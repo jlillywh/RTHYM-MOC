@@ -485,7 +485,7 @@ python examples/transient_study_report.py --out study_output
 
 ## Unit conventions
 
-All quantities at the API boundary use US customary units:
+The solver's native API boundary uses US customary units:
 
 | Quantity | Unit |
 |----------|------|
@@ -497,13 +497,60 @@ All quantities at the API boundary use US customary units:
 | Time | s |
 | Valve / pump settings | % (0 – 100) |
 
-Two conversion constants are exported for convenience:
+These native units remain the internal solver contract for backward
+compatibility and for existing EPANET-derived workflows.  SI projects can use
+the convenience helpers in `rthym_moc.units` to build models and read results in
+metric units without changing the C++ core.
+
+```python
+import rthym_moc as m
+
+solver = m.MOCSolver()
+solver.add_node(m.node_si("R1", "PressureBoundary", head_m=45.72))
+solver.add_node(m.node_si("J1", "Junction", elevation_m=0.0, head_m=30.48))
+solver.add_pipe(
+    m.pipe_si(
+        "P1",
+        "R1",
+        "J1",
+        length_m=914.4,
+        diameter_mm=304.8,
+        roughness=130.0,
+        flow_m3s=0.0315,
+    )
+)
+
+results_si = m.results_to_si(solver.run(total_time=1.0, dt=0.01))
+head_m = results_si["node_head_m"]["J1"]
+flow_m3s = results_si["pipe_flow_m3s"]["P1"]
+```
+
+SI helper inputs use:
+
+| Quantity | Helper unit |
+|----------|-------------|
+| Heads, elevations, lengths | m |
+| Pressures returned by `results_to_si()` | kPa |
+| Flows | m^3/s |
+| Pipe diameter, wall thickness | mm |
+| Wave speed / valve velocity outputs | m/s |
+| Young's modulus in `pipe_si()` | Pa |
+| Time and valve / pump settings | unchanged (`s`, `%`) |
+
+Common conversion constants and helpers are exported for convenience:
 
 ```python
 rthym_moc.GPM_TO_CFS   # = 0.002228  (multiply GPM to get ft³/s)
 rthym_moc.G_FT_S2      # = 32.2      (ft/s²)
 rthym_moc.PSI_TO_FT    # = 2.307692… (multiply psi to get ft of head)
+rthym_moc.M_TO_FT
+rthym_moc.GPM_TO_M3S
+rthym_moc.PSI_TO_KPA
+rthym_moc.length_m_to_ft(10.0)
+rthym_moc.flow_gpm_to_m3s(500.0)
 ```
+
+See `examples/si_quickstart.py` for a complete SI-first example.
 
 ---
 
