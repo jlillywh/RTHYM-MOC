@@ -9,10 +9,14 @@ versioning for package releases.
 ## [Unreleased]
 
 ### Added
+- documented experimental Emscripten/WASM build path (`build_wasm.sh`) and CI
+  regression coverage for browser-facing bindings
 - `examples/benchmark_matrix.py` performance matrix sweeping time step and
   duration on the standard Joukowsky case (median timings vs TSNet)
 
 ### Changed
+- migrated Python extension builds from legacy `setup.py` scaffolding to the
+  pyproject-native `scikit-build-core` backend
 - split correctness documentation (`docs/validation.md`) from TSNet performance
   benchmarking (`docs/benchmarking.md`) and restructured README Validation and
   Benchmarking sections accordingly

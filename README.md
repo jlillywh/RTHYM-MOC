@@ -11,6 +11,7 @@ A high-performance 1-D Method of Characteristics (MOC) transient hydraulic solve
 
 - [Overview](#overview)
 - [Installation](#installation)
+- [Experimental WASM build](#experimental-wasm-build)
 - [Quickstart](#quickstart)
 - [Testing](#testing)
 - [Examples](#examples)
@@ -111,16 +112,15 @@ a compiler error, install the Build Tools, open a new terminal, and retry.
 Clone the repository, then install in editable mode:
 
 ```bash
-pip install pybind11
-pip install --no-build-isolation -e .
+pip install -e .
 # or with extras:
-pip install --no-build-isolation -e '.[dev,inp]'
+pip install -e '.[dev,inp]'
 ```
 
 This compiles the C++ extension `_rthym_moc` and installs the `rthym_moc` package from your working tree. Rebuild after changing `src/`:
 
 ```bash
-python3 setup.py build_ext --inplace
+pip install -e .
 ```
 
 To build the standalone C++ unit-test binary:
@@ -130,6 +130,58 @@ cmake -B build -DBUILD_TESTS=ON
 cmake --build build
 ./build/moc_test
 ```
+
+---
+
+## Experimental WASM build
+
+RTHYM-MOC also ships an **experimental** Emscripten build path for browser and
+Node.js integrations. This is separate from the supported Python package API:
+
+- bindings live in `src/wasm_bindings.cpp`
+- the build script is `build_wasm.sh`
+- CI runs a WASM-facing regression test in `.github/workflows/wasm-regression.yml`
+
+The WASM surface exposes a stepwise frontend-oriented API (`initGrid`,
+`stepMOC`, `get_step_results`) rather than the Python `MOCSolver.run()` batch
+workflow. Treat it as work-in-progress integration glue, not a semver-stable
+public contract.
+
+### Build
+
+Install [Emscripten](https://emscripten.org/docs/getting_started/downloads.html)
+so `em++` is available, then run:
+
+```bash
+./build_wasm.sh
+```
+
+By default this writes:
+
+```
+build/wasm/rthym_moc.js
+build/wasm/rthym_moc.wasm
+```
+
+Optional environment variables:
+
+| Variable | Purpose |
+|----------|---------|
+| `EMSDK_DIR` | Path to an emsdk checkout; the script sources `emsdk_env.sh` if `em++` is not already on `PATH` |
+| `RTHYM_WASM_OUT_DIR` | Override the output directory (default: `build/wasm`) |
+| `RTHYM_WASM_COPY_DIR` | Optional directory to copy the generated `.js` and `.wasm` files into |
+
+### Runtime smoke test
+
+The repository includes a Node.js smoke test for the generated module:
+
+```bash
+./build_wasm.sh
+RTHYM_ENABLE_WASM_RUNTIME_TESTS=1 pytest -q tests/test_wasm_check_valve.py
+```
+
+This checks that CheckValve runtime fields are exposed through the WASM bindings.
+It does not validate a full browser UI integration.
 
 ---
 
@@ -209,7 +261,7 @@ pytest -q
 If you have changed the C++ core under `src/`, rebuild the extension before rerunning tests:
 
 ```bash
-python3 setup.py build_ext --inplace
+pip install -e .
 pytest -q
 ```
 
@@ -1095,10 +1147,14 @@ Release-level changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
 ```
 RTHYM-MOC/
+├── build_wasm.sh          # Experimental Emscripten build script
 ├── src/
 │   ├── moc_solver.hpp     # Type definitions, NodeInput, PipeInput, MOCSolver declaration
 │   ├── moc_solver.cpp     # Full MOC physics implementation (C++17)
-│   └── bindings.cpp       # PyBind11 bindings → _rthym_moc extension module
+│   ├── bindings.cpp       # PyBind11 bindings → _rthym_moc extension module
+│   └── wasm_bindings.cpp  # Experimental Emscripten bindings for browser/node WASM
+├── build/
+│   └── wasm/              # Generated rthym_moc.js / rthym_moc.wasm (not committed)
 ├── rthym_moc/
 │   ├── __init__.py        # Public API re-exports
 │   ├── _version.py        # Single source of truth for project version

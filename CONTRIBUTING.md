@@ -18,7 +18,7 @@ Use Python 3.9+ and install the package in editable mode with development
 dependencies:
 
 ```bash
-pip install --no-build-isolation -e '.[dev,inp]'
+pip install -e '.[dev,inp]'
 ```
 
 The optional `inp` extra installs `wntr`, which is used by INP-based tests and
@@ -30,7 +30,7 @@ If you change the C++ core under `src/`, rebuild the extension before running
 tests:
 
 ```bash
-python3 setup.py build_ext --inplace
+pip install -e .
 ```
 
 The standalone C++ test binary can be built with:
@@ -40,6 +40,15 @@ cmake -B build -DBUILD_TESTS=ON
 cmake --build build
 ./build/moc_test
 ```
+
+The experimental browser/node WASM build uses Emscripten:
+
+```bash
+./build_wasm.sh
+RTHYM_ENABLE_WASM_RUNTIME_TESTS=1 pytest -q tests/test_wasm_check_valve.py
+```
+
+See the README **Experimental WASM build** section for scope and limitations.
 
 ## Test and Quality Checks
 

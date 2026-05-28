@@ -35,9 +35,7 @@ jobs:
           version: latest
 
       - name: Build WASM artifacts
-        run: |
-          cd src
-          em++ -std=c++17 wasm_bindings.cpp moc_solver.cpp -o rthym_moc.js -s MODULARIZE=1 -s EXPORT_ES6=0 -s ENVIRONMENT=node,web -s WASM=1 -O3 --bind
+        run: ./build_wasm.sh
 
       - name: Run WASM-facing regression test
         env:

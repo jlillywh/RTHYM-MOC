@@ -13,8 +13,9 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WASM_BINDINGS_CPP = REPO_ROOT / "src" / "wasm_bindings.cpp"
-WASM_JS = REPO_ROOT / "src" / "rthym_moc.js"
-WASM_BIN = REPO_ROOT / "src" / "rthym_moc.wasm"
+WASM_OUT_DIR = REPO_ROOT / "build" / "wasm"
+WASM_JS = WASM_OUT_DIR / "rthym_moc.js"
+WASM_BIN = WASM_OUT_DIR / "rthym_moc.wasm"
 
 
 def test_wasm_bindings_expose_check_valve_runtime_contract():
