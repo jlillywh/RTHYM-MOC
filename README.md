@@ -315,8 +315,9 @@ performance benchmarks, documentation, examples, and packaging improvements.
 
 If you want to contribute, start with `CONTRIBUTING.md` for local setup,
 validation commands, and pull request expectations. `MAINTENANCE.md` documents
-the current review/refactor cadence. Bug reports are most useful when they
-include a minimal reproducible network or input file plus the exact commands
+the current review/refactor cadence. Report security issues privately via
+[`SECURITY.md`](SECURITY.md) (GitHub private vulnerability reporting or email).
+Bug reports are most useful when they include a minimal reproducible network or input file plus the exact commands
 and environment used to reproduce the issue.
 
 ---
@@ -532,12 +533,25 @@ rthym_moc.export_study_csv("study_output", summary)  # node_envelopes.csv, pipe_
 | `export_study_json(path, summary)` | Write the full summary dict to JSON |
 | `export_study_csv(directory, summary)` | Write node and pipe envelope CSVs plus metadata JSON |
 | `head_to_pressure_psi(head_ft, elevation_ft)` | Convert piezometric head to gauge pressure (psi) |
+| `summarize_study_si(results, dt_s=None)` | Same as `summarize_study`, with `head_m`, `pressure_kpa`, and `flow_m3s` keys |
+| `study_summary_to_si(summary)` | Convert an existing US-customary `StudySummary` to SI |
+| `format_study_table_si(summary)` | Plain-text SI table for logs or reports |
+| `export_study_csv_si(directory, summary)` | Write SI envelope CSVs plus metadata JSON |
+| `head_to_pressure_kpa(head_m, elevation_m)` | Convert piezometric head to gauge pressure (kPa) |
 
 A `StudySummary` has three top-level keys:
 
 - `meta` — `duration_s`, `num_steps`, `dt_s`
 - `nodes[id]` — `head_ft`, `pressure_psi` (each an extrema dict with `min`, `min_time_s`, `max`, `max_time_s`), and optional `cavitation` (`occurred`, `first_time_s`, `steps`, `duration_s`)
 - `pipes[id]` — `flow_gpm` extrema and times
+
+For SI summaries, use `summarize_study_si(results)` — the structure is the same but node keys are `head_m` / `pressure_kpa` and pipe keys are `flow_m3s`.  With `run_si()`, you can skip the separate `results_to_si()` step:
+
+```python
+results_si = rthym_moc.run_si(solver, total_time=10.0, dt=0.01)
+summary_si = rthym_moc.summarize_study_si(results_si)
+rthym_moc.export_study_csv_si("study_output", summary_si)
+```
 
 See `examples/transient_study_report.py` for a complete CLI workflow:
 
@@ -561,10 +575,10 @@ The solver's native API boundary uses US customary units:
 | Time | s |
 | Valve / pump settings | % (0 – 100) |
 
-These native units remain the intenal solver contract for backward
+These native units remain the internal solver contract for backward
 compatibility and for existing EPANET-derived workflows.  SI projects can use
-the convenience helpers in `rthym_moc.units` to build models and read results in
-metric units without changing the C++ core.
+the convenience helpers in `rthym_moc.units` (re-exported at package root) to
+build models and read results in metric units without changing the C++ core.
 
 ```python
 import rthym_moc as m
@@ -600,6 +614,28 @@ SI helper inputs use:
 | Wave speed / valve velocity outputs | m/s |
 | Young's modulus in `pipe_si()` | Pa |
 | Time and valve / pump settings | unchanged (`s`, `%`) |
+| Head / demand schedules | m and m³/s via `set_head_schedule_si()` / `set_demand_schedule_si()` |
+| Mid-simulation head / demand | m and m³/s via `set_node_head_si()` / `set_node_demand_si()` |
+| Cavitation threshold in `run_si()` | kPa (`DEFAULT_P_VAPOR_KPA` ≈ −14 psi) |
+| Live node queries | m / kPa via `get_node_head_si()` / `get_node_pressure_si()` |
+| EPANET override kwargs | m / m³/s via `load_inp_si()` |
+| `[RTHYM]` surge parameters | follow EPANET `Units` (m², m³, mm when `LPS`, etc.) |
+
+SI API quick reference (all exported from `rthym_moc`):
+
+| Function | Purpose |
+|---|---|
+| `node_si`, `pipe_si` | Build `NodeInput` / `PipeInput` from SI kwargs |
+| `results_to_si` | Post-process a US `run()` results dict |
+| `run_si` | Run transient and return SI results dict |
+| `control_rule_si` | Build `ControlRuleInput` from SI thresholds/setpoints |
+| `set_head_schedule_si`, `set_demand_schedule_si` | Time-varying head (m) / demand (m³/s) |
+| `set_node_head_si`, `set_node_demand_si` | Point updates between runs |
+| `get_node_head_si`, `get_node_pressure_si` | Query current head / pressure |
+| `load_inp_si` | EPANET import with SI override kwargs |
+| `summarize_study_si`, `export_study_csv_si`, … | SI study reports |
+| `convert_head_schedule_si`, `convert_demand_schedule_si` | Convert schedule lists without calling the solver |
+| `length_m_to_ft`, `flow_m3s_to_gpm`, … | Scalar conversion helpers |
 
 Common conversion constants and helpers are exported for convenience:
 
@@ -615,6 +651,36 @@ rthym_moc.flow_gpm_to_m3s(500.0)
 ```
 
 See `examples/si_quickstart.py` for a complete SI-first example.
+
+SI control rules use `control_rule_si()` with quantity-specific keywords (`threshold_kpa`, `threshold_m`, `threshold_m3s`, `threshold_pct`, `setpoint_kpa`, …).  For `ControlType.Threshold`, pass the controlled device setting as `target_pct` (0–100).  For `ControlType.PCV`, use `threshold_s` and `deadband_s` for valve ramp times.  PID gains (`kp`, `ki`, `kd`) are passed through unchanged — retune when switching from US-customary rules.
+
+SI time-varying boundaries:
+
+```python
+m.set_head_schedule_si(solver, "R1", [(0.0, 30.48), (0.4, 45.72)])      # head m
+m.set_demand_schedule_si(solver, "J1", [(0.0, 0.0), (1.0, 0.0315)])    # demand m³/s
+m.set_node_head_si(solver, "R1", 36.576)
+m.set_node_demand_si(solver, "J1", 0.0126)
+```
+
+Valve and pump schedules remain dimensionless ``(time_s, pct)`` — use ``set_valve_schedule()`` and ``set_pump_schedule()`` directly.
+
+Run, query, and EPANET overrides:
+
+```python
+results_si = m.run_si(solver, total_time=1.0, dt=0.01, p_vapor_kpa=-96.5)
+head_m = m.get_node_head_si(solver, "J1")
+pressure_kpa = m.get_node_pressure_si(solver, "J1")
+
+solver = m.load_inp_si(
+    "network.inp",
+    initial_flows_m3s={"P1": 0.0315},
+    initial_heads_m={"J1": 30.48},
+    stub_length_m=12.192,
+)
+```
+
+``run_si()`` defaults ``p_vapor_kpa`` to the same full-vacuum threshold as ``run(..., p_vapor_psi=-14.0)`` (see ``DEFAULT_P_VAPOR_KPA``).
 
 ---
 
@@ -711,7 +777,7 @@ results = solver.run(total_time=5.0, dt=0.01)
 
 In addition to static time-varying schedules, the solver supports active, state-based operational controls evaluated at each time step ($dt$) inside the core engine. This allows simulating realistic system responses to dynamic transient events (e.g., pressure-relief valve opening, tank level control, variable speed pump modulation).
 
-Control rules are registered using `ControlRuleInput` and added via `solver.add_control_rule()`.
+Control rules are registered using `ControlRuleInput` and added via `solver.add_control_rule()`.  For SI thresholds and setpoints, use `control_rule_si()` instead — see [Unit conventions](#unit-conventions).
 
 ### Control Types
 
@@ -950,6 +1016,8 @@ solver = rthym_moc.load_inp(
 )
 ```
 
+For SI override kwargs, use `load_inp_si()` with `initial_flows_m3s`, `initial_heads_m`, and `stub_length_m` — see [Unit conventions](#unit-conventions).
+
 ### `load_inp()` parameters
 
 | Parameter | Type | Default | Description |
@@ -959,6 +1027,16 @@ solver = rthym_moc.load_inp(
 | `initial_flows` | `dict[str, float]` | `None` | Explicit `{link_id: GPM}` overrides (applied after wntr, if any) |
 | `initial_heads` | `dict[str, float]` | `None` | Explicit `{node_id: head_ft}` overrides for junction and inline element heads |
 | `stub_length_ft` | `float` | `40.0` | Length (ft) of fictitious stub pipes on each side of pumps and valves; must satisfy the Courant grid constraint |
+
+### `load_inp_si()` parameters
+
+Same as `load_inp()`, except override kwargs use SI units:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `initial_flows_m3s` | `dict[str, float]` | `None` | Explicit `{link_id: m³/s}` overrides |
+| `initial_heads_m` | `dict[str, float]` | `None` | Explicit `{node_id: head_m}` overrides |
+| `stub_length_m` | `float` | `None` | Stub pipe length in metres (default 40 ft when omitted) |
 
 For `initial_flows`, use the original EPANET link ID for pumps and valves (e.g. `"V1"`), not the generated stub pipe IDs. For `initial_heads`, use EPANET junction IDs and generated `_VALVE_<id>` / `_PUMP_<id>` IDs for inline elements.
 
@@ -978,8 +1056,11 @@ For `initial_flows`, use the original EPANET link ID for pumps and valves (e.g. 
 | `[TIMES]` | Patten timestep (hours → seconds) |
 | `[CURVES]` | Pump design points |
 | `[OPTIONS]` | `Units`, `Headloss` formula |
+| `[RTHYM]` | Surge-device overrides (`Standpipe`, `HydropneumaticTank`, `AirValve`, `CheckValve`); units follow `[OPTIONS] Units` |
 
 All US customary unit variants (GPM, CFS, MGD, IMGD, AFD) and SI metric variants (LPS, LPM, MLD, CMH, CMD) are supported.
+
+The custom ``[RTHYM]`` section uses the same ``Units`` setting: with ``UNITS LPS`` (or other SI variants), write standpipe areas in m², vessel volumes in m³, diameters in mm, and vent offsets in m.  With ``UNITS GPM`` (or other US variants), use ft², ft³, inches, and ft.  No separate flag is required.
 
 ### Pump, valve, and check-valve generated IDs
 
