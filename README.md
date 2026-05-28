@@ -72,7 +72,20 @@ Verify:
 python -c "import rthym_moc; print(rthym_moc.__version__)"
 ```
 
-**Platforms:** Linux, macOS, and **Windows** are supported (Python 3.9–3.12; see CI). PyPI currently ships a **source distribution** — `pip` compiles the C++ extension on your machine during install. You need a **C++17 compiler** available to the build:
+**Platforms:** Linux, macOS, and **Windows** are supported (Python 3.9–3.12; see CI).
+Starting with releases built by the wheel-publishing workflow, prebuilt wheels are
+published for the most common platforms so most users do not need a local C++
+compiler:
+
+| OS | Wheel architecture | Python |
+|----|--------------------|--------|
+| Linux | x86_64 (`manylinux`) | CPython 3.9–3.12 |
+| macOS | x86_64, arm64 | CPython 3.9–3.12 |
+| Windows | AMD64 | CPython 3.9–3.12 |
+
+If no wheel is available for your platform, `pip` falls back to the source
+distribution and compiles the C++ extension locally. Source builds require a
+**C++17 compiler**:
 
 | OS | Compiler |
 |----|----------|
@@ -80,7 +93,8 @@ python -c "import rthym_moc; print(rthym_moc.__version__)"
 | macOS | Xcode Command Line Tools (Clang) |
 | Windows | [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the **“Desktop development with C++”** workload (MSVC 2019 or newer). Use a normal **x64** Command Prompt or PowerShell, not WSL, when installing into Windows Python. |
 
-On Windows, if `pip install rthym-moc` fails with a compiler error, install the Build Tools, open a new terminal, and retry. Prebuilt wheels are not published yet; a future release may add them via CI.
+On Windows, if `pip install rthym-moc` falls back to a source build and fails with
+a compiler error, install the Build Tools, open a new terminal, and retry.
 
 ### Requirements
 
@@ -88,7 +102,7 @@ On Windows, if `pip install rthym-moc` fails with a compiler error, install the 
 |-----------|----------------|-------|
 | Python    | 3.9            | |
 | NumPy     | 1.21           | Installed automatically with `rthym-moc` |
-| C++ compiler | C++17 (GCC 9+, Clang 10+, MSVC 2019+) | Required for PyPI install (compile step) |
+| C++ compiler | C++17 (GCC 9+, Clang 10+, MSVC 2019+) | Only required when installing from source or when no wheel is available |
 | CMake     | 3.15           | Only for the standalone C++ test binary below |
 | pybind11  | 2.11           | Pulled automatically when building from PyPI or source |
 
