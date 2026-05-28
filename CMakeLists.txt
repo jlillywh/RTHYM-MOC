@@ -10,6 +10,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
+
 # ── Find or fetch pybind11 ────────────────────────────────────────────────────
 find_package(pybind11 CONFIG QUIET)
 if(NOT pybind11_FOUND)
@@ -38,9 +40,14 @@ target_include_directories(_rthym_moc PRIVATE src)
 
 # Aggressive optimisation flags (release build)
 target_compile_options(_rthym_moc PRIVATE
-    $<$<CXX_COMPILER_ID:GNU,Clang>:-O3 -march=native -ffast-math -funroll-loops>
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-O3 -ffast-math -funroll-loops>
     $<$<CXX_COMPILER_ID:MSVC>:/O2 /fp:fast>
 )
+if("$ENV{RTHYM_MOC_NATIVE_OPT}" STREQUAL "1")
+    target_compile_options(_rthym_moc PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang>:-march=native>
+    )
+endif()
 
 # Install the extension into the Python package directory
 install(TARGETS _rthym_moc DESTINATION rthym_moc)

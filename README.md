@@ -111,16 +111,15 @@ a compiler error, install the Build Tools, open a new terminal, and retry.
 Clone the repository, then install in editable mode:
 
 ```bash
-pip install pybind11
-pip install --no-build-isolation -e .
+pip install -e .
 # or with extras:
-pip install --no-build-isolation -e '.[dev,inp]'
+pip install -e '.[dev,inp]'
 ```
 
 This compiles the C++ extension `_rthym_moc` and installs the `rthym_moc` package from your working tree. Rebuild after changing `src/`:
 
 ```bash
-python3 setup.py build_ext --inplace
+pip install -e .
 ```
 
 To build the standalone C++ unit-test binary:
@@ -209,7 +208,7 @@ pytest -q
 If you have changed the C++ core under `src/`, rebuild the extension before rerunning tests:
 
 ```bash
-python3 setup.py build_ext --inplace
+pip install -e .
 pytest -q
 ```
 

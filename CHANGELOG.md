@@ -13,6 +13,8 @@ versioning for package releases.
   duration on the standard Joukowsky case (median timings vs TSNet)
 
 ### Changed
+- migrated Python extension builds from legacy `setup.py` scaffolding to the
+  pyproject-native `scikit-build-core` backend
 - split correctness documentation (`docs/validation.md`) from TSNet performance
   benchmarking (`docs/benchmarking.md`) and restructured README Validation and
   Benchmarking sections accordingly
