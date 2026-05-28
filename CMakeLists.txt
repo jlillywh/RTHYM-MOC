@@ -31,7 +31,7 @@ if(NOT pybind11_FOUND)
 endif()
 
 # ── Build the extension module ────────────────────────────────────────────────
-pybind11_add_module(_rthym_moc
+pybind11_add_module(_rthym_moc NO_EXTRAS
     src/moc_solver.cpp
     src/bindings.cpp
 )
@@ -41,7 +41,7 @@ target_include_directories(_rthym_moc PRIVATE src)
 # Aggressive optimisation flags (release build)
 target_compile_options(_rthym_moc PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-O3 -ffast-math -funroll-loops>
-    $<$<CXX_COMPILER_ID:MSVC>:/O2 /fp:fast>
+    $<$<CXX_COMPILER_ID:MSVC>:/O2 /EHsc>
 )
 if("$ENV{RTHYM_MOC_NATIVE_OPT}" STREQUAL "1")
     target_compile_options(_rthym_moc PRIVATE
