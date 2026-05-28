@@ -45,7 +45,7 @@ RTHYM-MOC solves the 1-D water-hammer equations using the Method of Characterist
 - **Network-capable**: arbitrary topologies of pipes, junctions, reservoirs, air valves, valves, pumps, standpipe surge tanks, hydropneumatic tanks, and turbines.
 - **Time-varying events**: valve schedules, pump trip/start, demand changes — specified either as discrete step changes between `run()` calls or as continuous piecewise-linear schedules registered before `run()`.
 - **Cavitation detection**: integrates a column-separation flag (pressure < vapour pressure) at each node.
-- **Study summaries**: built-in helpers turn raw time series into node/pipe envelopes, cavitation duration, and CSV/JSON exports — see [Post-processing & study reports](#post-processing--study-reports).
+- **Study summaries**: built-in helpers tun raw time series into node/pipe envelopes, cavitation duration, and CSV/JSON exports — see [Post-processing & study reports](#post-processing--study-reports).
 - **Fast**: on the standard Joukowsky case, the C++ core is roughly **200–400× faster** than [TSNet](https://github.com/glorialulu/TSNet) (pure Python) on typical hardware — see [Benchmarking](#benchmarking).
 - **Validated**: automated regressions against R-THYM exports, EPANET/wntr steady state, and analytical checks — Joukowsky first-step error < 0.05 %, wave period error < 0.2 % — see [Validation](#validation).
 
@@ -364,7 +364,7 @@ distributed across the pipe segments. That distribution is a practical MOC
 approximation of a lumped local loss, and the test suite now includes explicit
 benchmarks against an equivalent lumped-loss case.
 
-**Wave speed** is computed internally from the Korteweg–Joukowsky elastic formula when `youngs_modulus > 0`:
+**Wave speed** is computed intenally from the Korteweg–Joukowsky elastic formula when `youngs_modulus > 0`:
 
 $$a = \sqrt{\frac{K_f/\rho}{1 + (K_f D)/(E\,e)}}$$
 
@@ -396,7 +396,7 @@ solver = rthym_moc.MOCSolver()
 | `solver.set_pump_schedule(id, schedule)` | Register a time-varying pump-speed schedule. |
 | `solver.set_demand_schedule(id, schedule)` | Register a time-varying junction demand schedule. |
 | `solver.set_head_schedule(id, schedule)` | Register a time-varying fixed-head schedule for a `PressureBoundary` or `Tank`. |
-| `solver.run(total_time, dt, p_vapor, usf_tau, k_bru)` | Execute the transient and return results. |
+| `solver.run(total_time, dt, p_vapor, usf_tau, k_bru)` | Execute the transient and retun results. |
 
 #### `run()` parameters
 
@@ -445,7 +445,7 @@ rule.kd                  = 0.1             # PID derivative gain
 
 ### Results dictionary
 
-`run()` returns a Python `dict` whose values are NumPy arrays (zero-copy where possible):
+`run()` retuns a Python `dict` whose values are NumPy arrays (zero-copy where possible):
 
 ```python
 t           = np.array(results["time"])                     # (N,) float64, seconds
@@ -500,7 +500,7 @@ python examples/transient_study_report.py --out study_output
 
 ## Unit conventions
 
-All quantities at the API boundary use US customary units:
+The solver's native API boundary uses US customary units:
 
 | Quantity | Unit |
 |----------|------|
@@ -512,13 +512,60 @@ All quantities at the API boundary use US customary units:
 | Time | s |
 | Valve / pump settings | % (0 – 100) |
 
-Two conversion constants are exported for convenience:
+These native units remain the intenal solver contract for backward
+compatibility and for existing EPANET-derived workflows.  SI projects can use
+the convenience helpers in `rthym_moc.units` to build models and read results in
+metric units without changing the C++ core.
+
+```python
+import rthym_moc as m
+
+solver = m.MOCSolver()
+solver.add_node(m.node_si("R1", "PressureBoundary", head_m=45.72))
+solver.add_node(m.node_si("J1", "Junction", elevation_m=0.0, head_m=30.48))
+solver.add_pipe(
+    m.pipe_si(
+        "P1",
+        "R1",
+        "J1",
+        length_m=914.4,
+        diameter_mm=304.8,
+        roughness=130.0,
+        flow_m3s=0.0315,
+    )
+)
+
+results_si = m.results_to_si(solver.run(total_time=1.0, dt=0.01))
+head_m = results_si["node_head_m"]["J1"]
+flow_m3s = results_si["pipe_flow_m3s"]["P1"]
+```
+
+SI helper inputs use:
+
+| Quantity | Helper unit |
+|----------|-------------|
+| Heads, elevations, lengths | m |
+| Pressures retuned by `results_to_si()` | kPa |
+| Flows | m^3/s |
+| Pipe diameter, wall thickness | mm |
+| Wave speed / valve velocity outputs | m/s |
+| Young's modulus in `pipe_si()` | Pa |
+| Time and valve / pump settings | unchanged (`s`, `%`) |
+
+Common conversion constants and helpers are exported for convenience:
 
 ```python
 rthym_moc.GPM_TO_CFS   # = 0.002228  (multiply GPM to get ft³/s)
 rthym_moc.G_FT_S2      # = 32.2      (ft/s²)
 rthym_moc.PSI_TO_FT    # = 2.307692… (multiply psi to get ft of head)
+rthym_moc.M_TO_FT
+rthym_moc.GPM_TO_M3S
+rthym_moc.PSI_TO_KPA
+rthym_moc.length_m_to_ft(10.0)
+rthym_moc.flow_gpm_to_m3s(500.0)
 ```
+
+See `examples/si_quickstart.py` for a complete SI-first example.
 
 ---
 
@@ -583,7 +630,7 @@ solver.set_valve_schedule("V1", list(zip(t_offsets, steps)))
 
 A programmed actuator changes its closure rate at a pre-set *transition opening*.  Stage 1 closes quickly from the initial opening to the transition point; Stage 2 closes slowly from the transition point to fully closed.
 
-**Key design rule**: Stage 2 time should satisfy $T_{\text{stage2}} \geq 2L/a$ so that the Joukowsky wave returns before closure completes, reducing the peak pressure rise.
+**Key design rule**: Stage 2 time should satisfy $T_{\text{stage2}} \geq 2L/a$ so that the Joukowsky wave retuns before closure completes, reducing the peak pressure rise.
 
 ```python
 s0, trans_pct = 100.0, 15.0
@@ -877,9 +924,9 @@ For `initial_flows`, use the original EPANET link ID for pumps and valves (e.g. 
 | `[PUMPS]` | `Pump` node + two stub pipes; design point read from `[CURVES]` |
 | `[VALVES]` | `Valve` node + two stub pipes (TCV, PRV, PSV, PBV) |
 | `[PATTERNS]` | Demand multipliers (see limitations) |
-| `[DEMANDS]` | Junction demand with pattern multiplier at index 0 |
+| `[DEMANDS]` | Junction demand with patten multiplier at index 0 |
 | `[CONTROLS]` | Simple `LINK … STATUS OPEN\|CLOSED AT TIME …` rows → pump/valve schedules |
-| `[TIMES]` | Pattern timestep (hours → seconds) |
+| `[TIMES]` | Patten timestep (hours → seconds) |
 | `[CURVES]` | Pump design points |
 | `[OPTIONS]` | `Units`, `Headloss` formula |
 
@@ -887,7 +934,7 @@ All US customary unit variants (GPM, CFS, MGD, IMGD, AFD) and SI metric variants
 
 ### Pump, valve, and check-valve generated IDs
 
-Because EPANET treats pumps and valves as *links* (not nodes), `load_inp()` injects an intermediate node and two stub pipes (default 40 ft each; override with `stub_length_ft`) for each one.  The generated IDs follow a predictable pattern:
+Because EPANET treats pumps and valves as *links* (not nodes), `load_inp()` injects an intermediate node and two stub pipes (default 40 ft each; override with `stub_length_ft`) for each one.  The generated IDs follow a predictable patten:
 
 | EPANET link `V1` | Generated node | Generated pipes |
 |---|---|---|
@@ -902,7 +949,7 @@ Use these IDs when calling `set_valve_schedule()`, `set_pump_speed()`, or access
 - **PRV / PSV / PBV** are modeled as active pressure-control valves during transients (`NodeInput.head` stores the setpoint in ft HGL, or differential ft for PBV). Imported EPANET settings are converted from pressure units to head. This is a simplified regulating model, not a full EPANET steady-state valve solve each step.
 - **FCV / GPV** valve types are not supported and are treated as fully-open valves.
 - **Minor losses** (`[PIPES]` column 7) are imported as a dimensionless local-loss coefficient `K`, included in the initial steady headloss, and then applied as distributed resistance across the pipe during the transient. This is an approximation of a truly lumped fitting loss, but dedicated regression benchmarks are included to quantify the mismatch.
-- **Demand patterns** — `[PATTERNS]` with `[JUNCTIONS]` / `[DEMANDS]` apply multiplier at index 0 to initial demand; multi-point patterns become `set_demand_schedule()`. Pattern timestep comes from `[TIMES]` (hours → seconds). See [`docs/import_fidelity.md`](docs/import_fidelity.md).
+- **Demand pattens** — `[PATTERNS]` with `[JUNCTIONS]` / `[DEMANDS]` apply multiplier at index 0 to initial demand; multi-point pattens become `set_demand_schedule()`. Patten timestep comes from `[TIMES]` (hours → seconds). See [`docs/import_fidelity.md`](docs/import_fidelity.md).
 - **Simple controls** — `[CONTROLS]` rows of the form `LINK <id> STATUS OPEN|CLOSED AT TIME <hours>` map to pump/valve schedules on `_PUMP_<id>` / `_VALVE_<id>`. `[RULES]` and NODE-based controls are not imported.
 - **Check valves** (`CV` status on a pipe) are imported as generated inline `CheckValve` nodes with split pipes. The model supports exponential slam dynamics via `closure_time` (default 0.03 s) and optional `flipped` orientation.
 
@@ -1073,7 +1120,7 @@ RTHYM-MOC/
 │   ├── test_joukowsky_rthym.py                 # R-THYM web-app vs solver benchmark
 │   ├── test_long_pipe_valve.py                 # Cross-engine valve-closure benchmark
 │   ├── test_complex_topology_from_inp.py       # EPANET/wntr import benchmark
-│   ├── test_inp_import_fidelity.py             # Patterns, demands, simple controls
+│   ├── test_inp_import_fidelity.py             # Pattens, demands, simple controls
 │   ├── test_report.py                          # Study summary and export helpers
 │   ├── test_gradual_closure_benchmark.py       # Parameterized closure-time benchmark
 │   ├── test_tank_size_benchmark.py             # Parameterized standpipe-size benchmark

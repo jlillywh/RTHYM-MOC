@@ -40,6 +40,7 @@ class NodeInput:
     loss_coeff_in: float
     loss_coeff_out: float
     closure_time: float
+    closure_damping: float
     flipped: bool
 
     def __init__(self) -> None: ...
