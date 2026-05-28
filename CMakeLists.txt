@@ -40,12 +40,12 @@ target_include_directories(_rthym_moc PRIVATE src)
 
 # Aggressive optimisation flags (release build)
 target_compile_options(_rthym_moc PRIVATE
-    $<$<CXX_COMPILER_ID:GNU,Clang>:-O3 -ffast-math -funroll-loops>
+    $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-O3 -ffast-math -funroll-loops>
     $<$<CXX_COMPILER_ID:MSVC>:/O2 /EHsc>
 )
 if("$ENV{RTHYM_MOC_NATIVE_OPT}" STREQUAL "1")
     target_compile_options(_rthym_moc PRIVATE
-        $<$<CXX_COMPILER_ID:GNU,Clang>:-march=native>
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-march=native>
     )
 endif()
 
