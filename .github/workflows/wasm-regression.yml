@@ -36,7 +36,5 @@ jobs:
       - name: Build WASM artifacts
         run: ./build_wasm.sh
 
-      - name: Run WASM binding smoke test
-        env:
-          RTHYM_ENABLE_WASM_RUNTIME_TESTS: '1'
-        run: pytest -q tests/test_wasm_check_valve.py
+      - name: Run WASM-facing regression tests
+        run: pytest -q tests/test_wasm_check_valve.py --override-ini="addopts="

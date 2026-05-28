@@ -66,6 +66,10 @@ files = ["rthym_moc"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "wasm_runtime: requires Emscripten-built WASM artifacts and Node.js",
+]
+addopts = "-m 'not wasm_runtime'"
 
 [tool.cibuildwheel]
 build = "cp39-* cp310-* cp311-* cp312-*"
