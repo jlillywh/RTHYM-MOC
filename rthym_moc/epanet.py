@@ -23,6 +23,10 @@ Supported sections
  [OPTIONS]     → Units, Headloss formula
  [RTHYM]       → Surge-control component overrides (Standpipe, HydropneumaticTank, AirValve)
 
+``[RTHYM]`` numeric parameters follow the file's ``[OPTIONS] Units`` setting:
+US variants (GPM, CFS, …) use ft, ft², ft³, and inches; SI variants (LPS, LPM, …)
+use m, m², m³, and mm — the same convention as the rest of the EPANET import.
+
 Ignored sections
 ----------------
 DEMANDS and multipliers from PATTERNS (subset), simple LINK [CONTROLS], RULES,
@@ -57,6 +61,13 @@ import warnings
 from typing import Optional
 
 from . import MOCSolver, NodeInput, PipeInput
+from .units import (
+    area_m2_to_ft2,
+    diameter_mm_to_in,
+    flow_m3s_to_gpm,
+    length_m_to_ft,
+    volume_m3_to_ft3,
+)
 
 # ── Physical constant ─────────────────────────────────────────────────────────
 _M3S_TO_GPM = 15_850.3   # m³/s → US GPM
@@ -166,9 +177,37 @@ def _get_option(sec: dict, key: str, default: str) -> str:
 # NodeType strings that map to surge-control components
 _RTHYM_SURGE_TYPES = {"Standpipe", "HydropneumaticTank", "AirValve", "CheckValve"}
 
+_RTHYM_LENGTH_KEYS = frozenset({"air_release_head"})
+_RTHYM_AREA_KEYS = frozenset({"tank_area"})
+_RTHYM_VOLUME_KEYS = frozenset({"gas_volume", "tank_volume"})
+_RTHYM_DIAMETER_KEYS = frozenset({"diameter", "air_release_diameter"})
+
+
+def _convert_rthym_params_to_us(params: dict, *, si_units: bool) -> dict:
+    """Convert ``[RTHYM]`` physical parameters to the solver's US-customary units."""
+
+    if not si_units:
+        return params
+
+    out = dict(params)
+    for key in _RTHYM_LENGTH_KEYS:
+        if key in out:
+            out[key] = length_m_to_ft(out[key])
+    for key in _RTHYM_AREA_KEYS:
+        if key in out:
+            out[key] = area_m2_to_ft2(out[key])
+    for key in _RTHYM_VOLUME_KEYS:
+        if key in out:
+            out[key] = volume_m3_to_ft3(out[key])
+    for key in _RTHYM_DIAMETER_KEYS:
+        if key in out:
+            out[key] = diameter_mm_to_in(out[key])
+    return out
+
+
 def _parse_rthym_overrides(
     sec: dict,
-    lf: float,
+    units: str,
 ) -> dict[str, dict]:
     """Parse the optional ``[RTHYM]`` section.
 
@@ -176,34 +215,33 @@ def _parse_rthym_overrides(
 
         NodeID   NodeType   key=value …
 
-    Supported types and their recognised ``key=value`` parameters
-    (all numeric values already in US customary units as given in the file):
+    Supported types and their recognised ``key=value`` parameters.
+    Physical values follow the EPANET ``[OPTIONS] Units`` keyword:
 
-        **Standpipe** (R-THYM ``SurgeControl``):
-            - ``tank_area`` — ft² cross-sectional area of the standpipe
+    - US units (GPM, CFS, MGD, IMGD, AFD): ft, ft², ft³, inches
+    - SI units (LPS, LPM, MLD, CMH, CMD): m, m², m³, mm
 
-        **HydropneumaticTank** (R-THYM ``SurgeTank``):
-            - ``gas_volume``    — ft³ initial trapped gas
-            - ``tank_volume``   — ft³ total vessel volume
-            - ``polytropic_n``  — polytropic exponent (default 1.2)
-            - ``loss_coeff_in`` — discharge coeff for inflow (default 0.7)
-            - ``loss_coeff_out``— discharge coeff for outflow (default 0.7)
-            - ``diameter``      — inches, orifice connection diameter
+    **Standpipe** (R-THYM ``SurgeControl``):
+        - ``tank_area`` — cross-sectional area
 
-        **AirValve** (R-THYM ``AirValve``):
-            - ``air_release_head``     — ft vent reference above node elevation
-            - ``diameter``             — inches, large-orifice air-admission diameter
-            - ``air_release_diameter`` — inches, small-orifice air-release diameter
-            - ``gas_volume``           — ft³ initial trapped air-pocket volume
-            - ``tank_volume``          — ft³ air-valve chamber volume
-            - ``loss_coeff_in``        — admission discharge coefficient
-            - ``loss_coeff_out``       — release discharge coefficient
+    **HydropneumaticTank** (R-THYM ``SurgeTank``):
+        - ``gas_volume``, ``tank_volume``, ``polytropic_n``, ``loss_coeff_in``,
+          ``loss_coeff_out``, ``diameter`` (connection orifice)
+
+    **AirValve** (R-THYM ``AirValve``):
+        - ``air_release_head``, ``diameter``, ``air_release_diameter``,
+          ``gas_volume``, ``tank_volume``, ``loss_coeff_in``, ``loss_coeff_out``
+
+    **CheckValve**:
+        - ``closure_time`` (seconds), ``flipped`` (0/1)
 
     Returns
     -------
     dict
-        ``{node_id: {"node_type": str, **params}}``
+        ``{node_id: {"node_type": str, **params}}`` with values in US customary
+        units ready for :class:`NodeInput`.
     """
+    si_units = units in _SI_UNITS
     overrides: dict[str, dict] = {}
     for row in sec.get("RTHYM", []):
         if len(row) < 2:
@@ -227,7 +265,7 @@ def _parse_rthym_overrides(
                     params[k.strip()] = float(v.strip())
                 except ValueError:
                     pass
-        overrides[nid] = params
+        overrides[nid] = _convert_rthym_params_to_us(params, si_units=si_units)
     return overrides
 
 
@@ -628,7 +666,7 @@ def load_inp(
         )
 
     curves = _parse_curves(sec)
-    rthym_overrides = _parse_rthym_overrides(sec, lf)
+    rthym_overrides = _parse_rthym_overrides(sec, units)
     patterns = _parse_patterns(sec)
     base_demands: dict[str, float] = {}
     demand_patterns: dict[str, str] = {}
@@ -1055,3 +1093,41 @@ def load_inp(
         )
 
     return solver
+
+
+def load_inp_si(
+    path: str,
+    *,
+    use_wntr: bool = True,
+    initial_flows_m3s: Optional[dict[str, float]] = None,
+    initial_heads_m: Optional[dict[str, float]] = None,
+    stub_length_m: Optional[float] = None,
+) -> MOCSolver:
+    """Read an EPANET ``.inp`` file and return a configured :class:`MOCSolver`.
+
+    Same as :func:`load_inp`, but optional override kwargs use SI units:
+
+    - ``initial_flows_m3s`` — ``{link_id: flow_m3s}``
+    - ``initial_heads_m`` — ``{node_id: head_m}``
+    - ``stub_length_m`` — stub pipe length in metres
+    """
+
+    initial_flows = (
+        {link_id: flow_m3s_to_gpm(flow_m3s) for link_id, flow_m3s in initial_flows_m3s.items()}
+        if initial_flows_m3s is not None
+        else None
+    )
+    initial_heads = (
+        {node_id: length_m_to_ft(head_m) for node_id, head_m in initial_heads_m.items()}
+        if initial_heads_m is not None
+        else None
+    )
+    stub_length_ft = length_m_to_ft(stub_length_m) if stub_length_m is not None else None
+
+    return load_inp(
+        path,
+        use_wntr=use_wntr,
+        initial_flows=initial_flows,
+        initial_heads=initial_heads,
+        stub_length_ft=stub_length_ft,
+    )

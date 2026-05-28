@@ -12,6 +12,11 @@ Project maintenance cadence is documented in `MAINTENANCE.md`, including the
 monthly review pass, pre-release checks, and the conditions that should trigger
 a focused refactor instead of another local patch.
 
+## Security
+
+Report security issues privately — see [`SECURITY.md`](SECURITY.md). Do not
+open public issues for vulnerabilities.
+
 ## Development Setup
 
 Use Python 3.9+ and install the package in editable mode with development

@@ -12,10 +12,15 @@ import rthym_moc as m
 from rthym_moc.report import (
     cavitation_summary,
     export_study_csv,
+    export_study_csv_si,
     export_study_json,
     format_study_table,
+    format_study_table_si,
+    head_to_pressure_kpa,
     series_extrema,
+    study_summary_to_si,
     summarize_study,
+    summarize_study_si,
 )
 
 
@@ -27,6 +32,32 @@ def test_series_extrema_finds_times():
     assert ext["min_time_s"] == pytest.approx(1.0)
     assert ext["max"] == pytest.approx(20.0)
     assert ext["max_time_s"] == pytest.approx(2.0)
+
+
+def test_series_extrema_empty_series():
+    ext = series_extrema(np.array([]), np.array([]))
+    assert np.isnan(ext["min"])
+    assert np.isnan(ext["max"])
+
+
+def test_summarize_study_infers_dt_edge_cases():
+    single_step = summarize_study(
+        {
+            "time": np.array([0.0]),
+            "node_head": {"J1": np.array([100.0])},
+            "pipe_flow_gpm": {"P1": np.array([50.0])},
+        }
+    )
+    assert single_step["meta"]["dt_s"] == pytest.approx(0.0)
+
+    flat_time = summarize_study(
+        {
+            "time": np.array([0.0, 0.0, 0.0]),
+            "node_head": {"J1": np.array([100.0, 90.0, 95.0])},
+            "pipe_flow_gpm": {"P1": np.array([50.0, 40.0, 45.0])},
+        }
+    )
+    assert flat_time["meta"]["dt_s"] == pytest.approx(0.0)
 
 
 def test_cavitation_summary_duration():
@@ -103,3 +134,50 @@ def test_export_study_json_and_csv(tmp_path: Path):
     assert written["nodes"].exists()
     assert written["pipes"].exists()
     assert "node_id" in written["nodes"].read_text(encoding="utf-8")
+
+
+def test_summarize_study_si_matches_us_summary():
+    time_s = np.array([0.0, 0.01, 0.02])
+    results = {
+        "time": time_s,
+        "node_head": {"J1": np.array([100.0, 90.0, 95.0])},
+        "node_pressure": {"J1": np.array([43.0, 39.0, 41.0])},
+        "node_cavitation": {"J1": np.array([0, 1, 0])},
+        "pipe_flow_gpm": {"P1": np.array([100.0, -20.0, 50.0])},
+    }
+    us = summarize_study(results, dt_s=0.01)
+    si = summarize_study_si(results, dt_s=0.01)
+    converted = study_summary_to_si(us)
+
+    assert si == converted
+    assert si["nodes"]["J1"]["head_m"]["min"] == pytest.approx(90.0 * m.FT_TO_M)
+    assert si["nodes"]["J1"]["pressure_kpa"]["max"] == pytest.approx(43.0 * m.PSI_TO_KPA)
+    assert si["pipes"]["P1"]["flow_m3s"]["min"] == pytest.approx(-20.0 * m.GPM_TO_M3S)
+
+
+def test_format_and_export_study_si(tmp_path: Path):
+    time_s = np.array([0.0, 0.01, 0.02])
+    results = {
+        "time": time_s,
+        "node_head": {"J1": np.array([100.0, 90.0, 95.0])},
+        "node_pressure": {"J1": np.array([43.0, 39.0, 41.0])},
+        "pipe_flow_gpm": {"P1": np.array([100.0, -20.0, 50.0])},
+    }
+    summary = summarize_study_si(results, dt_s=0.01)
+
+    table = format_study_table_si(summary)
+    assert "Transient study summary (SI)" in table
+    assert "m^3/s" in table
+
+    written = export_study_csv_si(tmp_path / "csv_si", summary)
+    assert written["nodes"].name == "node_envelopes_si.csv"
+    assert "head_min_m" in written["nodes"].read_text(encoding="utf-8")
+    assert written["pipes"].name == "pipe_flow_envelopes_si.csv"
+    assert "flow_min_m3s" in written["pipes"].read_text(encoding="utf-8")
+
+
+def test_head_to_pressure_kpa():
+    head_m = 30.48
+    assert head_to_pressure_kpa(head_m, 0.0) == pytest.approx(
+        m.pressure_psi_to_kpa(m.length_m_to_ft(head_m) / m.PSI_TO_FT)
+    )

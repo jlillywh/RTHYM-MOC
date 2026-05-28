@@ -10,12 +10,14 @@ conversion code.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import numpy as np
 
-from ._rthym_moc import NodeInput, PipeInput
+from ._rthym_moc import ControlRuleInput, ControlType, MOCSolver, NodeInput, PipeInput
+
+TimeSeriesSchedule = Sequence[tuple[float, float]]
 
 FT_TO_M = 0.3048
 M_TO_FT = 1.0 / FT_TO_M
@@ -64,6 +66,9 @@ def pressure_kpa_to_psi(value_kpa: float) -> float:
 
 def pressure_psi_to_kpa(value_psi: float) -> float:
     return float(value_psi) * PSI_TO_KPA
+
+
+DEFAULT_P_VAPOR_KPA = pressure_psi_to_kpa(-14.0)
 
 
 def velocity_ms_to_fts(value_m_s: float) -> float:
@@ -217,6 +222,223 @@ def pipe_si(
 
 def _convert_series_dict(series: Mapping[str, Any], factor: float) -> dict[str, np.ndarray]:
     return {str(key): np.asarray(value, dtype=float) * factor for key, value in series.items()}
+
+
+def _apply_si_threshold(rule: ControlRuleInput, monitored_quantity: str, value: float) -> None:
+    if monitored_quantity == "pressure":
+        rule.threshold = pressure_kpa_to_psi(value)
+    elif monitored_quantity == "head":
+        rule.threshold = length_m_to_ft(value)
+    elif monitored_quantity == "flow":
+        rule.threshold = flow_m3s_to_gpm(value)
+    elif monitored_quantity == "level":
+        rule.threshold = float(value)
+    else:
+        raise ValueError(f"unsupported monitored_quantity for SI threshold: {monitored_quantity!r}")
+
+
+def _apply_si_deadband(rule: ControlRuleInput, monitored_quantity: str, value: float) -> None:
+    if monitored_quantity == "level":
+        rule.deadband = float(value)
+    elif monitored_quantity == "pressure":
+        rule.deadband = pressure_kpa_to_psi(value)
+    elif monitored_quantity == "head":
+        rule.deadband = length_m_to_ft(value)
+    elif monitored_quantity == "flow":
+        rule.deadband = flow_m3s_to_gpm(value)
+    else:
+        raise ValueError(f"unsupported monitored_quantity for SI deadband: {monitored_quantity!r}")
+
+
+def _apply_si_setpoint(rule: ControlRuleInput, monitored_quantity: str, value: float) -> None:
+    if monitored_quantity == "pressure":
+        rule.target = pressure_kpa_to_psi(value)
+    elif monitored_quantity == "head":
+        rule.target = length_m_to_ft(value)
+    elif monitored_quantity == "flow":
+        rule.target = flow_m3s_to_gpm(value)
+    elif monitored_quantity == "level":
+        rule.target = float(value)
+    else:
+        raise ValueError(f"unsupported monitored_quantity for SI setpoint: {monitored_quantity!r}")
+
+
+def control_rule_si(
+    id: str,
+    rule_type: ControlType,
+    *,
+    monitored_node: str = "",
+    controlled_node: str = "",
+    monitored_quantity: str = "pressure",
+    monitored_pipe: str = "",
+    condition: str = "lt",
+    threshold_kpa: float | None = None,
+    threshold_m: float | None = None,
+    threshold_m3s: float | None = None,
+    threshold_pct: float | None = None,
+    threshold_s: float | None = None,
+    target_pct: float | None = None,
+    setpoint_kpa: float | None = None,
+    setpoint_m: float | None = None,
+    setpoint_m3s: float | None = None,
+    setpoint_pct: float | None = None,
+    deadband_kpa: float | None = None,
+    deadband_m: float | None = None,
+    deadband_m3s: float | None = None,
+    deadband_pct: float | None = None,
+    deadband_s: float | None = None,
+    action: str = "fill",
+    kp: float | None = None,
+    ki: float | None = None,
+    kd: float | None = None,
+) -> ControlRuleInput:
+    """Create a :class:`ControlRuleInput` from SI-unit keyword arguments.
+
+    Use the threshold/setpoint/deadband keyword that matches ``monitored_quantity``:
+
+    - ``pressure`` → ``*_kpa``
+    - ``head`` → ``*_m``
+    - ``flow`` → ``*_m3s`` (also set ``monitored_pipe``)
+    - ``level`` → ``*_pct``
+
+    For :class:`ControlType.Threshold`, ``target_pct`` is the controlled pump speed
+    or valve opening (0–100).  For :class:`ControlType.PID`, use ``setpoint_*`` for
+    the feedback setpoint.  For :class:`ControlType.PCV`, ``threshold_s`` and
+    ``deadband_s`` are valve ramp times in seconds.  PID gains are passed through
+    unchanged; retune them when switching from US-customary rules.
+    """
+
+    rule = ControlRuleInput()
+    rule.id = id
+    rule.type = rule_type
+    rule.monitored_node = monitored_node
+    rule.controlled_node = controlled_node
+    rule.monitored_quantity = monitored_quantity
+    rule.monitored_pipe = monitored_pipe
+    rule.condition = condition
+    rule.action = action
+
+    if rule_type == ControlType.PCV:
+        if threshold_s is not None:
+            rule.threshold = float(threshold_s)
+        if deadband_s is not None:
+            rule.deadband = float(deadband_s)
+    else:
+        threshold_si = {
+            "pressure": threshold_kpa,
+            "head": threshold_m,
+            "flow": threshold_m3s,
+            "level": threshold_pct,
+        }.get(monitored_quantity)
+        if threshold_si is not None:
+            _apply_si_threshold(rule, monitored_quantity, threshold_si)
+
+        deadband_si = {
+            "pressure": deadband_kpa,
+            "head": deadband_m,
+            "flow": deadband_m3s,
+            "level": deadband_pct,
+        }.get(monitored_quantity)
+        if deadband_si is not None:
+            _apply_si_deadband(rule, monitored_quantity, deadband_si)
+
+        if target_pct is not None:
+            rule.target = float(target_pct)
+
+        setpoint_si = {
+            "pressure": setpoint_kpa,
+            "head": setpoint_m,
+            "flow": setpoint_m3s,
+            "level": setpoint_pct,
+        }.get(monitored_quantity)
+        if setpoint_si is not None:
+            _apply_si_setpoint(rule, monitored_quantity, setpoint_si)
+
+    if kp is not None:
+        rule.kp = float(kp)
+    if ki is not None:
+        rule.ki = float(ki)
+    if kd is not None:
+        rule.kd = float(kd)
+
+    return rule
+
+
+def convert_head_schedule_si(schedule: TimeSeriesSchedule) -> list[tuple[float, float]]:
+    """Convert ``(time_s, head_m)`` breakpoints to ``(time_s, head_ft)``."""
+
+    return [(float(time_s), length_m_to_ft(head_m)) for time_s, head_m in schedule]
+
+
+def convert_demand_schedule_si(schedule: TimeSeriesSchedule) -> list[tuple[float, float]]:
+    """Convert ``(time_s, demand_m3s)`` breakpoints to ``(time_s, demand_gpm)``."""
+
+    return [(float(time_s), flow_m3s_to_gpm(demand_m3s)) for time_s, demand_m3s in schedule]
+
+
+def set_head_schedule_si(
+    solver: MOCSolver,
+    node_id: str,
+    schedule: TimeSeriesSchedule,
+) -> None:
+    """Register a time-varying head schedule using ``(time_s, head_m)`` pairs."""
+
+    solver.set_head_schedule(node_id, convert_head_schedule_si(schedule))
+
+
+def set_demand_schedule_si(
+    solver: MOCSolver,
+    node_id: str,
+    schedule: TimeSeriesSchedule,
+) -> None:
+    """Register a time-varying demand schedule using ``(time_s, demand_m3s)`` pairs."""
+
+    solver.set_demand_schedule(node_id, convert_demand_schedule_si(schedule))
+
+
+def set_node_head_si(solver: MOCSolver, node_id: str, head_m: float) -> None:
+    """Update a fixed-head boundary node's stored head in metres."""
+
+    solver.set_node_head(node_id, length_m_to_ft(head_m))
+
+
+def set_node_demand_si(solver: MOCSolver, node_id: str, demand_m3s: float) -> None:
+    """Update a junction demand in m³/s."""
+
+    solver.set_node_demand(node_id, flow_m3s_to_gpm(demand_m3s))
+
+
+def get_node_head_si(solver: MOCSolver, node_id: str) -> float:
+    """Return the current piezometric head at *node_id* in metres."""
+
+    return length_ft_to_m(solver.get_node_head(node_id))
+
+
+def get_node_pressure_si(solver: MOCSolver, node_id: str) -> float:
+    """Return the current gauge pressure at *node_id* in kPa."""
+
+    return pressure_psi_to_kpa(solver.get_node_pressure(node_id))
+
+
+def run_si(
+    solver: MOCSolver,
+    total_time: float,
+    dt: float = 0.01,
+    *,
+    p_vapor_kpa: float = DEFAULT_P_VAPOR_KPA,
+    usf_tau: float = 0.5,
+    k_bru: float = -1.0,
+) -> dict[str, Any]:
+    """Run a transient and return an SI-unit results dictionary."""
+
+    results = solver.run(
+        total_time,
+        dt,
+        pressure_kpa_to_psi(p_vapor_kpa),
+        usf_tau,
+        k_bru,
+    )
+    return results_to_si(results)
 
 
 def results_to_si(results: Mapping[str, Any]) -> dict[str, Any]:

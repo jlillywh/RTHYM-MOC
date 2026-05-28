@@ -12,6 +12,7 @@ from typing import Any, Mapping, TypedDict
 import numpy as np
 
 from . import PSI_TO_FT
+from .units import FT_TO_M, GPM_TO_M3S, PSI_TO_KPA, length_m_to_ft, pressure_psi_to_kpa
 
 
 class Extrema(TypedDict):
@@ -42,6 +43,22 @@ class StudySummary(TypedDict):
     meta: dict[str, float | int]
     nodes: dict[str, NodeStudySummary]
     pipes: dict[str, PipeStudySummary]
+
+
+class NodeStudySummarySI(TypedDict, total=False):
+    head_m: Extrema
+    pressure_kpa: Extrema
+    cavitation: CavitationSummary
+
+
+class PipeStudySummarySI(TypedDict):
+    flow_m3s: Extrema
+
+
+class StudySummarySI(TypedDict):
+    meta: dict[str, float | int]
+    nodes: dict[str, NodeStudySummarySI]
+    pipes: dict[str, PipeStudySummarySI]
 
 
 def _as_time(results: Mapping[str, Any]) -> np.ndarray:
@@ -134,6 +151,42 @@ def summarize_study(results: Mapping[str, Any], *, dt_s: float | None = None) ->
     )
 
 
+def _scale_extrema(ext: Extrema, factor: float) -> Extrema:
+    return Extrema(
+        min=ext["min"] * factor,
+        min_time_s=ext["min_time_s"],
+        max=ext["max"] * factor,
+        max_time_s=ext["max_time_s"],
+    )
+
+
+def study_summary_to_si(summary: StudySummary) -> StudySummarySI:
+    """Convert a US-customary :class:`StudySummary` to SI keys and values."""
+
+    nodes_out: dict[str, NodeStudySummarySI] = {}
+    for node_id, node_row in summary["nodes"].items():
+        entry: NodeStudySummarySI = {
+            "head_m": _scale_extrema(node_row["head_ft"], FT_TO_M),
+        }
+        if "pressure_psi" in node_row:
+            entry["pressure_kpa"] = _scale_extrema(node_row["pressure_psi"], PSI_TO_KPA)
+        if "cavitation" in node_row:
+            entry["cavitation"] = node_row["cavitation"]
+        nodes_out[str(node_id)] = entry
+
+    pipes_out: dict[str, PipeStudySummarySI] = {
+        str(pipe_id): {"flow_m3s": _scale_extrema(pipe_row["flow_gpm"], GPM_TO_M3S)}
+        for pipe_id, pipe_row in summary["pipes"].items()
+    }
+
+    return StudySummarySI(meta=dict(summary["meta"]), nodes=nodes_out, pipes=pipes_out)
+
+
+def summarize_study_si(results: Mapping[str, Any], *, dt_s: float | None = None) -> StudySummarySI:
+    """Build node/pipe envelopes and cavitation summaries in SI units."""
+    return study_summary_to_si(summarize_study(results, dt_s=dt_s))
+
+
 def format_study_table(summary: StudySummary) -> str:
     """Return a plain-text table suitable for logs or reports."""
     lines = [
@@ -169,11 +222,115 @@ def format_study_table(summary: StudySummary) -> str:
     return "\n".join(lines)
 
 
-def export_study_json(path: str | Path, summary: StudySummary) -> Path:
+def format_study_table_si(summary: StudySummarySI) -> str:
+    """Return a plain-text SI-unit table suitable for logs or reports."""
+    lines = [
+        "Transient study summary (SI)",
+        f"  steps={summary['meta']['num_steps']}  "
+        f"dt={summary['meta']['dt_s']:.4g} s  "
+        f"duration={summary['meta']['duration_s']:.4g} s",
+        "",
+        "Node envelopes:",
+        f"  {'ID':<20} {'H_min':>8} {'@t':>7} {'H_max':>8} {'@t':>7} "
+        f"{'P_min':>8} {'P_max':>8} {'Cav_s':>7}",
+        "  (head m, pressure kPa)",
+    ]
+    for node_id, node_row in sorted(summary["nodes"].items()):
+        h = node_row["head_m"]
+        p = node_row.get("pressure_kpa")
+        cav = node_row.get("cavitation")
+        p_min = p["min"] if p else float("nan")
+        p_max = p["max"] if p else float("nan")
+        cav_d = cav["duration_s"] if cav and cav["occurred"] else 0.0
+        lines.append(
+            f"  {node_id:<20} {h['min']:8.3f} {h['min_time_s']:7.2f} "
+            f"{h['max']:8.3f} {h['max_time_s']:7.2f} "
+            f"{p_min:8.2f} {p_max:8.2f} {cav_d:7.2f}"
+        )
+
+    lines.extend(
+        ["", "Pipe flow peaks:", f"  {'ID':<20} {'Q_min':>12} {'@t':>7} {'Q_max':>12} {'@t':>7}", "  (m^3/s)"]
+    )
+    for pipe_id, pipe_row in sorted(summary["pipes"].items()):
+        q = pipe_row["flow_m3s"]
+        lines.append(
+            f"  {pipe_id:<20} {q['min']:12.6f} {q['min_time_s']:7.2f} "
+            f"{q['max']:12.6f} {q['max_time_s']:7.2f}"
+        )
+    return "\n".join(lines)
+
+
+def export_study_json(path: str | Path, summary: StudySummary | StudySummarySI) -> Path:
     """Write a study summary dict to JSON."""
     out = Path(path)
     out.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return out
+
+
+def export_study_csv_si(directory: str | Path, summary: StudySummarySI) -> dict[str, Path]:
+    """Write SI node, pipe, and cavitation summary CSV files."""
+    out_dir = Path(directory)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: dict[str, Path] = {}
+
+    nodes_path = out_dir / "node_envelopes_si.csv"
+    with nodes_path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(
+            [
+                "node_id",
+                "head_min_m",
+                "head_min_time_s",
+                "head_max_m",
+                "head_max_time_s",
+                "pressure_min_kpa",
+                "pressure_max_kpa",
+                "cavitation_duration_s",
+                "cavitation_first_time_s",
+            ]
+        )
+        for node_id, node_row in sorted(summary["nodes"].items()):
+            h = node_row["head_m"]
+            p = node_row.get("pressure_kpa")
+            cav = node_row.get("cavitation")
+            writer.writerow(
+                [
+                    node_id,
+                    h["min"],
+                    h["min_time_s"],
+                    h["max"],
+                    h["max_time_s"],
+                    p["min"] if p else "",
+                    p["max"] if p else "",
+                    cav["duration_s"] if cav else 0.0,
+                    cav["first_time_s"] if cav and cav["first_time_s"] is not None else "",
+                ]
+            )
+    written["nodes"] = nodes_path
+
+    pipes_path = out_dir / "pipe_flow_envelopes_si.csv"
+    with pipes_path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(
+            [
+                "pipe_id",
+                "flow_min_m3s",
+                "flow_min_time_s",
+                "flow_max_m3s",
+                "flow_max_time_s",
+            ]
+        )
+        for pipe_id, pipe_row in sorted(summary["pipes"].items()):
+            q = pipe_row["flow_m3s"]
+            writer.writerow(
+                [pipe_id, q["min"], q["min_time_s"], q["max"], q["max_time_s"]]
+            )
+    written["pipes"] = pipes_path
+
+    meta_path = out_dir / "study_meta_si.json"
+    export_study_json(meta_path, summary)
+    written["meta"] = meta_path
+    return written
 
 
 def export_study_csv(directory: str | Path, summary: StudySummary) -> dict[str, Path]:
@@ -245,3 +402,10 @@ def export_study_csv(directory: str | Path, summary: StudySummary) -> dict[str, 
 def head_to_pressure_psi(head_ft: float, elevation_ft: float) -> float:
     """Convert piezometric head (ft) to gauge pressure (psi) at *elevation_ft*."""
     return (head_ft - elevation_ft) / PSI_TO_FT
+
+
+def head_to_pressure_kpa(head_m: float, elevation_m: float) -> float:
+    """Convert piezometric head (m) to gauge pressure (kPa) at *elevation_m*."""
+    return pressure_psi_to_kpa(
+        head_to_pressure_psi(length_m_to_ft(head_m), length_m_to_ft(elevation_m))
+    )

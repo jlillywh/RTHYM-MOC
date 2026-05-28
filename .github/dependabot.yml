@@ -1,0 +1,41 @@
+# Dependabot version updates for Python dependencies and GitHub Actions.
+# Vulnerability alerts are enabled separately in repository security settings.
+
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        patterns:
+          - pytest*
+          - ruff
+          - mypy
+          - pre-commit
+          - matplotlib
+          - sphinx*
+          - numpydoc
+      runtime-and-optional:
+        patterns:
+          - numpy
+          - wntr
+          - tsnet
+          - ptsnet
+          - mpi4py
+          - h5py
+          - tqdm
+          - numba
+          - setuptools
+          - pybind11
+          - scikit-build-core
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5

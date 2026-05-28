@@ -220,3 +220,180 @@ def test_hw_from_dw_zero_denom():
         assert _hw_from_dw(0.02, 300) == 130.0
     finally:
         epanet_mod.math = orig_math
+
+
+def test_load_inp_si_converts_override_kwargs(tmp_path: Path):
+    inp_path = tmp_path / "simple.inp"
+    inp_path.write_text(
+        """[JUNCTIONS]
+J1   0   0
+J2   0   0
+
+[PIPES]
+P1   J1   J2   1000   12   130   0.0   OPEN
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+""",
+        encoding="utf-8",
+    )
+
+    flow_m3s = m.flow_gpm_to_m3s(150.0)
+    solver = m.load_inp_si(
+        str(inp_path),
+        use_wntr=False,
+        initial_flows_m3s={"P1": flow_m3s},
+        initial_heads_m={"J1": 30.48},
+        stub_length_m=3.048,
+    )
+    assert solver is not None
+
+
+def test_load_inp_rthym_unrecognised_type_with_params_warns(tmp_path: Path):
+    inp_path = tmp_path / "rthym_bad_type.inp"
+    inp_path.write_text(
+        """[JUNCTIONS]
+J1   0   0
+
+[RESERVOIRS]
+R1   160
+
+[PIPES]
+P1   R1   J1   100   12   130   0   OPEN
+
+[RTHYM]
+J1 NotASurgeType tank_area=1.0
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.warns(UserWarning, match="unrecognised type"):
+        m.load_inp(str(inp_path), use_wntr=False, initial_flows={"P1": 100.0})
+
+
+def test_load_inp_rthym_invalid_param_value_is_skipped(tmp_path: Path):
+    inp_path = tmp_path / "rthym_bad_value.inp"
+    inp_path.write_text(
+        """[JUNCTIONS]
+J1   0   0
+
+[RESERVOIRS]
+R1   160
+
+[PIPES]
+P1   R1   J1   100   12   130   0   OPEN
+
+[RTHYM]
+J1 Standpipe tank_area=not_a_number
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+""",
+        encoding="utf-8",
+    )
+
+    solver = m.load_inp(str(inp_path), use_wntr=False, initial_flows={"P1": 100.0})
+    assert solver is not None
+
+
+def test_load_inp_pump_without_head_or_power_warns(tmp_path: Path):
+    inp_path = tmp_path / "pump_unknown.inp"
+    inp_path.write_text(
+        """[JUNCTIONS]
+J1   0   0
+J2   0   0
+
+[RESERVOIRS]
+R1   160
+
+[PIPES]
+P1   R1   J1   100   12   130   0   OPEN
+
+[PUMPS]
+PU1  J1   J2   SPEED  1.0
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.warns(UserWarning, match="cannot determine design point"):
+        m.load_inp(
+            str(inp_path),
+            use_wntr=False,
+            initial_flows={"P1": 100.0, "_PUMP_PU1": 100.0},
+        )
+
+
+def test_load_inp_demands_short_row_is_ignored(tmp_path: Path):
+    inp_path = tmp_path / "demands_short.inp"
+    inp_path.write_text(
+        """[JUNCTIONS]
+J1   0   0
+J2   0   0
+
+[RESERVOIRS]
+R1   160
+
+[PIPES]
+P1   R1   J1   100   12   130   0   OPEN
+P2   J1   J2   100   12   130   0   OPEN
+
+[DEMANDS]
+; malformed row with only node id
+J1
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+""",
+        encoding="utf-8",
+    )
+
+    solver = m.load_inp(str(inp_path), use_wntr=False, initial_flows={"P1": 100.0, "P2": 100.0})
+    assert solver is not None
+
+
+def test_load_inp_rthym_si_units_convert_physical_params(tmp_path: Path):
+    inp_path = tmp_path / "rthym_si.inp"
+    inp_path.write_text(
+        """[JUNCTIONS]
+J1   0   0
+
+[RESERVOIRS]
+R1   50
+
+[PIPES]
+P1   R1   J1   100   300   130   0   OPEN
+
+[RTHYM]
+J1 Standpipe tank_area=1.0
+
+[OPTIONS]
+UNITS LPS
+HEADLOSS H-W
+""",
+        encoding="utf-8",
+    )
+
+    added_nodes: dict[str, m.NodeInput] = {}
+    original_add_node = m.MOCSolver.add_node
+
+    def capture_add_node(self, node):
+        added_nodes[node.id] = node
+        return original_add_node(self, node)
+
+    with patch.object(m.MOCSolver, "add_node", capture_add_node):
+        m.load_inp(str(inp_path), use_wntr=False, initial_flows={"P1": 0.006309})
+
+    j1_node = added_nodes["J1"]
+    assert j1_node.type == "Standpipe"
+    assert j1_node.tank_area == pytest.approx(m.area_m2_to_ft2(1.0))

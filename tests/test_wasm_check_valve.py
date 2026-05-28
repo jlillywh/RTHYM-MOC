@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
-import os
 import shutil
 import subprocess
 
@@ -27,18 +26,17 @@ def test_wasm_bindings_expose_check_valve_runtime_contract():
     assert 'node_res.set("reverseFlowBlocked", reverseFlowBlocked);' in source
 
 
-@pytest.mark.skipif(
-  os.getenv("RTHYM_ENABLE_WASM_RUNTIME_TESTS") != "1"
-  or shutil.which("node") is None
-  or not WASM_JS.exists()
-  or not WASM_BIN.exists(),
-  reason=(
-    "Set RTHYM_ENABLE_WASM_RUNTIME_TESTS=1 and provide fresh generated WASM artifacts "
-    "to run the runtime WASM smoke test"
-  ),
-)
+@pytest.mark.wasm_runtime
 def test_wasm_runtime_reports_check_valve_type_and_reverse_flow_blocked():
     """The generated WASM module should report explicit CheckValve runtime state."""
+    if shutil.which("node") is None:
+        pytest.fail("node is required for WASM runtime tests")
+    if not WASM_JS.exists() or not WASM_BIN.exists():
+        pytest.fail(
+            "WASM artifacts not found. Run ./build_wasm.sh, then "
+            "pytest -m wasm_runtime --override-ini=\"addopts=\" tests/test_wasm_check_valve.py"
+        )
+
     node_program = f"""
 const createRthymMOC = require({json.dumps(str(WASM_JS))});
 
