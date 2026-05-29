@@ -1320,4 +1320,4 @@ RTHYM-MOC/
 
 **RTHYM-MOC** (this repository) is released under the [MIT License](https://opensource.org/licenses/MIT) and is free to use, modify, and distribute for any purpose, including commercial and academic work.  See `pyproject.toml` for the full license text.
 
-**R-THYM** (the web application at [lillywhitewater.com/products/r-thym/](https://lillywhitewater.com/products/r-thym/)) is a separate, proprietary product and is not covered by this license.  The R-THYM application, its user interface, and its hosted infrastructure remain the intellectual property of Lillywhite Water Solutions LLC and are not open source.
+**R-THYM** (the web application at [r-thym.com](https://www.r-thym.com)) is a separate, proprietary product and is not covered by this license.  The R-THYM application, its user interface, and its hosted infrastructure remain the intellectual property of Lillywhite Water Solutions LLC and are not open source.
