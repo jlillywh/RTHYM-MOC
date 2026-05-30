@@ -226,6 +226,8 @@ public:
     void clear_control_rules();
     double get_node_head(const std::string& id) const;
     double get_node_pressure(const std::string& id) const;
+    double get_node_gas_volume(const std::string& id) const;
+    double get_node_tank_flow_gpm(const std::string& id) const;
 
     // Adjust boundary conditions between calls to run() for scripted transients
     void set_valve_setting(const std::string& id, double pct_open);

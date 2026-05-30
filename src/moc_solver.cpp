@@ -209,6 +209,22 @@ double MOCSolver::get_node_pressure(const std::string& id) const {
     return (get_node_head(id) - ns.input.elevation) / PSI_TO_FT;
 }
 
+double MOCSolver::get_node_gas_volume(const std::string& id) const {
+    auto it = node_idx_map_.find(id);
+    if (it == node_idx_map_.end()) {
+        throw std::invalid_argument("Node not found: " + id);
+    }
+    return nodes_[it->second].gas_volume_ft3;
+}
+
+double MOCSolver::get_node_tank_flow_gpm(const std::string& id) const {
+    auto it = node_idx_map_.find(id);
+    if (it == node_idx_map_.end()) {
+        throw std::invalid_argument("Node not found: " + id);
+    }
+    return nodes_[it->second].tank_flow_gpm;
+}
+
 void MOCSolver::set_valve_setting(const std::string& id, double pct) {
     auto& node_input = requireNodeInputMutable(node_inputs_, id, "set_valve_setting()");
     requireNodeType(node_input, id, "set_valve_setting()", {NodeType::Valve, NodeType::Turbine}, "Valve or Turbine");
@@ -381,7 +397,7 @@ void MOCSolver::initGrid() {
             ns.gas_volume_ft3 = ns.input.gas_volume;
             const double H_g_abs0 = (ns.input.head - ns.input.elevation) + H_ATM_FT;
             ns.gas_constant = H_g_abs0 *
-                std::pow(std::max(ns.gas_volume_ft3, 1e-6), ns.input.polytropic_n);
+                std::pow(std::max(ns.gas_volume_ft3, 1e-9), ns.input.polytropic_n);
         }
         if (ns.input.type == NodeType::AirValve) {
             // Air valves start closed in the loaded steady-state operating
@@ -820,14 +836,45 @@ void MOCSolver::stepMOC() {
             const double K    = (C_eq >= 0.0) ? K_in : K_out;  // asymmetric
             const double Keq  = K * sum_AB;
 
-            // Solve:  Keq·Q² + Q − C_eq = 0
-            double Q_net;
-            if (Keq < 1e-12) {
-                Q_net = C_eq;  // zero orifice resistance → H_P = H_tank
-            } else if (C_eq >= 0.0) {
-                Q_net = (-1.0 + std::sqrt(1.0 + 4.0 * Keq * C_eq)) / (2.0 * Keq);
+            // Check if already at limits and flow direction is trying to violate the bounds:
+            const bool is_empty = (ns.gas_volume_ft3 >= n.tank_volume - 1e-5);
+            const bool is_full  = (ns.gas_volume_ft3 <= 1e-5);
+
+            double Q_net = 0.0;
+            if (is_empty && C_eq < 0.0) {
+                // Tank is empty, trying to draw water out -> clamp to 0
+                Q_net = 0.0;
+            } else if (is_full && C_eq > 0.0) {
+                // Tank is full, trying to push water in -> clamp to 0
+                Q_net = 0.0;
             } else {
-                Q_net = ( 1.0 - std::sqrt(1.0 - 4.0 * Keq * C_eq)) / (2.0 * Keq);
+                // Solve standard quadratic: Keq·Q² + Q − C_eq = 0
+                if (Keq < 1e-12) {
+                    Q_net = C_eq;  // zero orifice resistance → H_P = H_tank
+                } else if (C_eq >= 0.0) {
+                    Q_net = (-1.0 + std::sqrt(1.0 + 4.0 * Keq * C_eq)) / (2.0 * Keq);
+                } else {
+                    Q_net = ( 1.0 - std::sqrt(1.0 - 4.0 * Keq * C_eq)) / (2.0 * Keq);
+                }
+
+                // Limit Q_net if it would cross the empty/full boundary within this time step
+                if (Q_net > 0.0) {
+                    // Inflow (water enters, gas volume V_g decreases)
+                    const double max_inflow = (ns.gas_volume_ft3 - 1e-5) / dt_;
+                    if (max_inflow < 0.0) {
+                        Q_net = 0.0;
+                    } else if (Q_net > max_inflow) {
+                        Q_net = max_inflow;
+                    }
+                } else if (Q_net < 0.0) {
+                    // Outflow (water leaves, gas volume V_g increases)
+                    const double max_outflow = (ns.gas_volume_ft3 - (n.tank_volume - 1e-5)) / dt_;
+                    if (max_outflow > 0.0) {
+                        Q_net = 0.0;
+                    } else if (Q_net < max_outflow) {
+                        Q_net = max_outflow;
+                    }
+                }
             }
 
             // Pipeline head at the connection node
@@ -841,7 +888,7 @@ void MOCSolver::stepMOC() {
             for (int pi : out_pipes) set_upstream  (pi, H_P);
 
             // Update gas volume:  Q_net > 0 ⟹ water enters ⟹ V_g decreases
-            ns.gas_volume_ft3 = std::max(1e-9,
+            ns.gas_volume_ft3 = std::max(0.0,
                 std::min(ns.gas_volume_ft3 - Q_net * dt_, n.tank_volume));
 
             // Store transient metrics

@@ -324,6 +324,12 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def("get_node_pressure", &MOCSolver::get_node_pressure,
             py::arg("id"),
             "Query the current gauge pressure (psi) of a node.")
+        .def("get_node_gas_volume", &MOCSolver::get_node_gas_volume,
+            py::arg("id"),
+            "Query the current gas volume (ft3) of a hydropneumatic tank or air valve.")
+        .def("get_node_tank_flow_gpm", &MOCSolver::get_node_tank_flow_gpm,
+            py::arg("id"),
+            "Query the current transient flow (GPM) into/out of a hydropneumatic tank.")
         .def("set_valve_setting", &MOCSolver::set_valve_setting,
             py::arg("id"), py::arg("pct_open"),
             "Update a valve's opening (0=closed, 100=fully open) mid-simulation.")
