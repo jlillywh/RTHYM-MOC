@@ -101,6 +101,11 @@ static py::dict results_to_dict(SimResults&& r) {
     for (auto& [k, v] : r.valve_setting) vs[k.c_str()] = to_numpy(std::move(v));
     out["valve_setting"] = vs;
 
+    // pump_speed dict (% rated speed for Pump)
+    py::dict ps;
+    for (auto& [k, v] : r.pump_speed) ps[k.c_str()] = to_numpy(std::move(v));
+    out["pump_speed"] = ps;
+
     return out;
 }
 
@@ -198,6 +203,9 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def_readwrite("demand",           &NodeInput::demand)
         .def_readwrite("current_speed",    &NodeInput::current_speed)
         .def_readwrite("has_power",        &NodeInput::has_power)
+        .def_readwrite("inertia_wr2",      &NodeInput::inertia_wr2)
+        .def_readwrite("speed_rpm",        &NodeInput::speed_rpm)
+        .def_readwrite("efficiency",       &NodeInput::efficiency)
         .def_readwrite("current_setting",  &NodeInput::current_setting)
         .def_readwrite("design_head",      &NodeInput::design_head)
         .def_readwrite("design_flow",      &NodeInput::design_flow)

@@ -122,6 +122,9 @@ def node_si(
     closure_time: float | None = None,
     closure_damping: float | None = None,
     flipped: bool | None = None,
+    inertia_wr2_kg_m2: float | None = None,
+    speed_rpm: float | None = None,
+    efficiency: float | None = None,
 ) -> NodeInput:
     """Create a :class:`NodeInput` from SI-unit keyword arguments.
 
@@ -179,6 +182,12 @@ def node_si(
         node.closure_damping = float(closure_damping)
     if flipped is not None:
         node.flipped = bool(flipped)
+    if inertia_wr2_kg_m2 is not None:
+        node.inertia_wr2 = float(inertia_wr2_kg_m2) * 23.73036
+    if speed_rpm is not None:
+        node.speed_rpm = float(speed_rpm)
+    if efficiency is not None:
+        node.efficiency = float(efficiency)
 
     return node
 
@@ -474,6 +483,10 @@ def results_to_si(results: Mapping[str, Any]) -> dict[str, Any]:
     if "valve_setting" in results:
         out["valve_setting"] = {
             str(key): np.asarray(value, dtype=float) for key, value in results["valve_setting"].items()
+        }
+    if "pump_speed" in results:
+        out["pump_speed"] = {
+            str(key): np.asarray(value, dtype=float) for key, value in results["pump_speed"].items()
         }
 
     return out

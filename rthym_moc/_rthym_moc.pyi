@@ -14,6 +14,7 @@ class SimResultsDict(TypedDict):
     pipe_flow_gpm: dict[str, NDArray[np.float64]]
     valve_position: dict[str, NDArray[np.float64]]
     valve_velocity: dict[str, NDArray[np.float64]]
+    pump_speed: dict[str, NDArray[np.float64]]
 
 
 class NodeInput:
@@ -42,6 +43,9 @@ class NodeInput:
     closure_time: float
     closure_damping: float
     flipped: bool
+    inertia_wr2: float
+    speed_rpm: float
+    efficiency: float
 
     def __init__(self) -> None: ...
 

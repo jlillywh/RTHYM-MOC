@@ -70,6 +70,9 @@ struct NodeInput {
     double  design_head         = 0.0;   // ft shut-off/design head
     double  design_flow         = 0.0;   // GPM at BEP
     bool    has_power           = true;  // electrical power (PCV shutdown vs outage)
+    double  inertia_wr2         = 0.0;   // lb·ft² (rotational inertia, 0 = no inertia/falls back to schedule)
+    double  speed_rpm           = 1750.0;// rated speed (RPM)
+    double  efficiency          = 0.80;  // rated pump efficiency (0.0 to 1.0)
 
     // Valve / Turbine fields
     double  current_setting     = 100.0; // % open (100 = fully open)
@@ -121,6 +124,8 @@ struct SimResults {
     std::unordered_map<std::string, std::vector<double>> valve_velocity;
     // Throttling valve / turbine % open (from control rules and schedules)
     std::unordered_map<std::string, std::vector<double>> valve_setting;
+    // Pump speed telemetry (%)
+    std::unordered_map<std::string, std::vector<double>> pump_speed;
 };
 
 enum class ControlType {
@@ -206,6 +211,7 @@ struct NodeState {
     double air_cumulative_loss_gal = 0.0;
     double gas_pressure_psi = 0.0;
     double tank_flow_gpm = 0.0;
+    double rated_torque_ftlb = 0.0; // steady-state design torque (lb·ft)
 };
 
 // ── Main MOC solver class ────────────────────────────────────────────────────
