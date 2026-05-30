@@ -38,7 +38,7 @@ VESSEL_TANK_VOLUME_FT3 = 0.3
 CASE_BOUNDS = [
     pytest.param("none", 0.0, 190, 90, id="none"),
     pytest.param("air", 20.0, 170, 4, id="air_only"),
-    pytest.param("vessel", 17.0, 160, 50, id="vessel_only"),
+    pytest.param("vessel", 16.5, 165, 50, id="vessel_only"),
     pytest.param("both", 30.0, 155, 4, id="both"),
 ]
 

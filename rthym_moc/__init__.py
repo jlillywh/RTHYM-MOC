@@ -61,6 +61,10 @@ from .report import (
     summarize_study,
     summarize_study_si,
 )
+from .acceptance import (
+    run_acceptance_checks,
+    format_acceptance_report,
+)
 from .units import (
     DEFAULT_P_VAPOR_KPA,
     FT_TO_M,
@@ -121,6 +125,8 @@ __all__ = [
     "load_inp_si",
     "summarize_study",
     "summarize_study_si",
+    "run_acceptance_checks",
+    "format_acceptance_report",
     "study_summary_to_si",
     "series_extrema",
     "cavitation_summary",

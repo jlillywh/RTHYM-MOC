@@ -488,5 +488,9 @@ def results_to_si(results: Mapping[str, Any]) -> dict[str, Any]:
         out["pump_speed"] = {
             str(key): np.asarray(value, dtype=float) for key, value in results["pump_speed"].items()
         }
+    if "turbine_speed" in results:
+        out["turbine_speed"] = {
+            str(key): np.asarray(value, dtype=float) for key, value in results["turbine_speed"].items()
+        }
 
     return out

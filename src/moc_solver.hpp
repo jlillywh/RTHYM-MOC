@@ -126,6 +126,8 @@ struct SimResults {
     std::unordered_map<std::string, std::vector<double>> valve_setting;
     // Pump speed telemetry (%)
     std::unordered_map<std::string, std::vector<double>> pump_speed;
+    // Turbine speed telemetry (%)
+    std::unordered_map<std::string, std::vector<double>> turbine_speed;
 };
 
 enum class ControlType {
@@ -226,6 +228,8 @@ public:
     void clear_control_rules();
     double get_node_head(const std::string& id) const;
     double get_node_pressure(const std::string& id) const;
+    double get_node_gas_volume(const std::string& id) const;
+    double get_node_tank_flow_gpm(const std::string& id) const;
 
     // Adjust boundary conditions between calls to run() for scripted transients
     void set_valve_setting(const std::string& id, double pct_open);

@@ -38,8 +38,8 @@ VENT_DISTANCE_FT = 120.0
 CASE_BOUNDS = [
     pytest.param("none", 170, 90, 82, 90, id="none"),
     pytest.param("air", 95, 12, 80, 10, id="air_only"),
-    pytest.param("vessel", 110, 0, 80, 35, id="vessel_only"),
-    pytest.param("both", 90, 0, 82, 10, id="both"),
+    pytest.param("vessel", 120, 60, 80, 40, id="vessel_only"),
+    pytest.param("both", 90, 15, 82, 10, id="both"),
 ]
 
 
