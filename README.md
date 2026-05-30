@@ -902,14 +902,18 @@ av.air_release_head = 0.0     # ft vent reference above elevation
 solver.add_node(av)
 ```
 
-The current model includes:
+The model simulates compressible air dynamics using isentropic nozzle flow equations:
 
-- finite large-orifice air admission
-- finite small-orifice air release
-- trapped-air compression and delayed venting using an isothermal ideal-gas surrogate
-
-It does not yet include choked compressible airflow, float mechanics, or a more
-detailed thermodynamic air-mass model.
+- **Ideal Gas Law**: The air pocket pressure $P_g$ is determined by the ideal gas equation of state:
+  $$P_g V_g = M R T_g$$
+  where $M$ is the air mass inside the pocket, and the air temperature $T_g$ is assumed constant at atmospheric temperature ($T_{\text{atm}} = 518.67 \text{ °R}$).
+- **Compressible Airflow**: Air mass flow rate $\dot{m}$ through the admission or release orifice is determined using standard compressible flow relations (with specific heat ratio $k = 1.4$):
+  - If the pressure ratio $p_r = p_{\text{outlet}} / p_{\text{inlet}} \le 0.528$ (critical ratio), the flow is **sonic/choked**:
+    $$\dot{m} = C_d A \frac{p_{\text{inlet}}}{\sqrt{T_{\text{inlet}}}} \sqrt{\frac{k}{R} \left(\frac{2}{k+1}\right)^{\frac{k+1}{k-1}}}$$
+  - If $p_r > 0.528$, the flow is **subsonic**:
+    $$\dot{m} = C_d A \frac{p_{\text{inlet}}}{\sqrt{T_{\text{inlet}}}} \sqrt{\frac{2k}{R(k-1)} \left( p_r^{\frac{2}{k}} - p_r^{\frac{k+1}{k}} \right)}$$
+  For air admission (inflow), $p_{\text{inlet}} = P_{\text{atm}}$ and $p_r = P_g / P_{\text{atm}}$. For air release (outflow), $p_{\text{inlet}} = P_g$ and $p_r = P_{\text{atm}} / P_g$.
+- **Vessel Limits**: To prevent physically impossible states, the pocket volume is capped at the local chamber/vent body volume (`tank_volume`).
 
 ### Standpipe (open surge tank)
 
@@ -963,6 +967,48 @@ solver.add_node(hpt)
 **Vessel Limits (Option C Clamping)**: To prevent physically impossible states (such as a negative gas volume or a gas pocket exceeding the total vessel size), the solver automatically clamps the net flow to zero when the tank becomes completely flooded ($V_g \le 0$) or completely dry ($V_g \ge V_{tank}$). The connection node head is dynamically calculated based on the clamped flow.
 
 **Design guidance**: pre-charge the vessel so that `gas_volume / tank_volume` ≈ 0.33–0.50 at the steady-state operating pressure.  Separate `loss_coeff_in` and `loss_coeff_out` values allow modelling of a throttle or riser dip tube that damps re-filling surges more aggressively than the initial discharge.
+
+---
+
+## Pump & Turbine Rotational Inertia
+
+For transient cases such as pump power failure (trip) or turbine grid disconnection, the solver models the dynamic change in rotational speed integrated over time based on the polar moment of inertia ($I = \text{inertia\_wr2} / g$).
+
+### Grid Synchronization States
+- **Grid Synchronized (`has_power = True`)**: The node speed is locked at 100% of rated speed (`speed_rpm`). For pumps, this represents normal operation. For turbines, this represents synchronization to the electrical grid under load.
+- **Tripped / Disconnected (`has_power = False`)**: The node is disconnected from the electrical source/sink. The runner is free to accelerate or decelerate based on the balance of torque.
+  - If `inertia_wr2 <= 0.0`, the speed changes instantly. A tripped pump instantly stops ($s = 0$), while a tripped turbine instantly reaches runaway speed ($N = N_{\text{runaway}}$).
+  - If `inertia_wr2 > 0.0`, the speed is integrated step-by-step.
+
+### Pump Deceleration
+When power is lost on a pump with inertia, the deceleration rate is governed by the torque-speed dynamics:
+
+$$\Delta s = \frac{-T_h}{I \cdot \omega_0} \cdot \Delta t$$
+$$s_{\text{new}} = \text{clamp}(s + \Delta s, 0.0, 1.0)$$
+
+where:
+- $s$ is the speed ratio ($N / N_{\text{rated}}$)
+- $T_h$ is the hydraulic resistance torque (ft·lb), modeled as:
+  $$T_h = T_{\text{rated}} \cdot (0.5 \cdot s^2 + 0.5 \cdot s \cdot q_{\text{ratio}})$$
+- $q_{\text{ratio}} = Q_{\text{gpm}} / Q_{\text{design}}$
+- $\omega_0 = 2\pi \cdot N_{\text{rated}} / 60$ is the rated angular velocity (rad/s)
+- $I = \text{inertia\_wr2} / g$ is the moment of inertia (slug·ft²)
+
+### Turbine Startup & Runaway Dynamics
+When a turbine is disconnected from the grid under load, it accelerates or decelerates under the action of the hydraulic torque:
+
+$$\Delta N_{\text{rpm}} = \frac{307.486 \cdot T_{\text{hydraulic}}}{\text{inertia\_wr2}} \cdot \Delta t$$
+$$N_{\text{new}} = \max(0.0, N_{\text{current}} + \Delta N_{\text{rpm}})$$
+
+where:
+- $T_{\text{hydraulic}}$ is computed using a linear torque-speed simplification based on design head ($H_{\text{design}}$) and wicket gate opening ratio ($G = \text{current\_setting} / 100.0$):
+  $$T_{\text{stall}} = 1.5 \cdot T_{\text{rated}} \cdot G \cdot \left(\frac{\Delta H}{H_{\text{design}}}\right)$$
+  $$N_{\text{runaway}} = 1.8 \cdot N_{\text{rated}} \cdot \sqrt{\frac{\Delta H}{H_{\text{design}}}}$$
+  $$T_{\text{hydraulic}} = T_{\text{stall}} \cdot \left(1.0 - \frac{N_{\text{current}}}{N_{\text{runaway}}}\right)$$
+- $T_{\text{rated}}$ is the rated shaft torque at best efficiency point (BEP):
+  $$T_{\text{rated}} = \frac{5252.0 \cdot \text{BHP}_d}{N_{\text{rated}}}$$
+  $$\text{BHP}_d = \frac{Q_d \cdot H_d \cdot \eta}{3960.0}$$
+  with $Q_d = \text{design\_flow}$ (GPM), $H_d = \text{design\_head}$ (ft), and $\eta = \text{efficiency}$ (BEP fractional efficiency).
 
 ---
 
@@ -1119,10 +1165,10 @@ where $B = a/g$ (ft·s²/ft = s²) is the pipe impedance and $R = f \Delta x / (
 - *PressureBoundary / Tank*: $H$ fixed; $V$ solved from the appropriate $C^\pm$.
 - *Junction*: Kirchhoff continuity; $H$ solved from the combined $C^\pm$ of all incident pipes.
 - *Dead-end (Junction, demand = 0, no outflow pipe)*: $H = C^+$ (zero-flow reflection).
-- *Valve / Turbine*: $K = (100/s)^2 - 1$ loss; combined with $C^\pm$ to solve $H$ and $V$.
+- *Valve / Turbine*: $K = (100/s)^2 - 1$ loss; combined with $C^\pm$ to solve $H$ and $V$. For turbines, when `has_power = False`, speed is integrated dynamically using its rotational inertia.
 - *CheckValve*: one-way flow with optional exponential disc closure; position and velocity are recorded in results.
 - *PRV / PSV / PBV*: simplified regulating pressure-control valves using the setpoint stored in `NodeInput.head`.
-- *Pump*: affinity-curve head-flow relationship combined with $C^\pm$; `has_power` affects PCV interlock behavior.
+- *Pump*: affinity-curve head-flow relationship combined with $C^\pm$; `has_power` and `inertia_wr2` determine the speed decay behavior following power failure.
 - *AirValve*: finite admission/release orifices with trapped-air compression and delayed venting.
 - *Standpipe*: $H$ updated from the standpipe continuity equation each step.
 - *HydropneumaticTank*: $H$ updated from the polytropic gas law combined with the orifice flow equation each step.
