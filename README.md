@@ -340,10 +340,13 @@ node.demand           = 0.0           # GPM withdrawal (Junction, OutflowNode)
 node.current_setting  = 100.0         # % open (Valve, Turbine; 100 = fully open)
 node.diameter         = 8.0           # inches (Valve orifice / Turbine runner)
 node.current_speed    = 100.0         # % rated speed (Pump)
-node.has_power        = True          # electrical power available (Pump; PCV logic)
-node.design_head      = 50.0          # ft at BEP (Pump)
-node.design_flow      = 100.0         # GPM at BEP (Pump)
+node.has_power        = True          # electrical power available (Pump/Turbine; grid sync logic)
+node.design_head      = 50.0          # ft at BEP (Pump/Turbine design head)
+node.design_flow      = 100.0         # GPM at BEP (Pump/Turbine design flow)
 node.design_velocity  = 0.0           # ft/s (Turbine; derived from design_flow if 0)
+node.inertia_wr2      = 45.0          # lb·ft² — pump runner & motor rotational inertia
+node.speed_rpm        = 1750.0        # RPM — rated speed of pump or turbine
+node.efficiency       = 0.80          # 0.0 to 1.0 — pump or turbine BEP efficiency
 node.closure_time     = 0.03          # s — CheckValve exponential close time (default 0.03)
 node.closure_damping  = 0.0           # dimensionless CheckValve damping (optional)
 node.flipped          = False         # CheckValve: reverse installed direction
@@ -506,11 +509,13 @@ cav_flag    = np.array(results["node_cavitation"]["NODE_ID"])# (N,) int32, 0 or 
 valve_pct   = np.array(results["valve_setting"]["V1"])      # (N,) float64, % open (Valve/Turbine)
 valve_pos   = np.array(results["valve_position"]["CV1"])    # (N,) float64, 0–1 (CheckValve position)
 valve_vel   = np.array(results["valve_velocity"]["CV1"])   # (N,) float64, ft/s (CheckValve disc velocity)
+pump_speed  = np.array(results["pump_speed"]["P1"])         # (N,) float64, % rated speed (Pump)
+turbine_speed = np.array(results["turbine_speed"]["T1"])    # (N,) float64, % rated speed (Turbine)
 ```
 
 Every node and every pipe that was added to the solver has a corresponding key in the respective sub-dictionary.  `node_head` records the hydraulic grade line (HGL) at each node.  `node_cavitation` is 1 for any time step at which the computed pressure fell below `p_vapor`.
 
-`valve_setting` is recorded for `Valve` and `Turbine` nodes.  `valve_position` and `valve_velocity` are recorded for `CheckValve` nodes during slam dynamics.
+`valve_setting` is recorded for `Valve` and `Turbine` nodes.  `valve_position` and `valve_velocity` are recorded for `CheckValve` nodes during slam dynamics.  `pump_speed` is recorded for `Pump` nodes.  `turbine_speed` is recorded for `Turbine` nodes.
 
 ### Post-processing & study reports
 
@@ -533,6 +538,8 @@ rthym_moc.export_study_csv("study_output", summary)  # node_envelopes.csv, pipe_
 | `export_study_json(path, summary)` | Write the full summary dict to JSON |
 | `export_study_csv(directory, summary)` | Write node and pipe envelope CSVs plus metadata JSON |
 | `head_to_pressure_psi(head_ft, elevation_ft)` | Convert piezometric head to gauge pressure (psi) |
+| `run_acceptance_checks(results, max_pressure_limit, min_pressure_limit, cavitation_time_threshold)` | Evaluate overpressure, subatmospheric, and cavitation duration limits |
+| `format_acceptance_report(checks)` | Format acceptance check results into a clean, human-readable text report |
 | `summarize_study_si(results, dt_s=None)` | Same as `summarize_study`, with `head_m`, `pressure_kpa`, and `flow_m3s` keys |
 | `study_summary_to_si(summary)` | Convert an existing US-customary `StudySummary` to SI |
 | `format_study_table_si(summary)` | Plain-text SI table for logs or reports |
@@ -952,6 +959,8 @@ hpt.loss_coeff_in  = 0.7      # C_d for inflow (water entering, gas compresses)
 hpt.loss_coeff_out = 0.7      # C_d for outflow (water leaving, gas expands)
 solver.add_node(hpt)
 ```
+
+**Vessel Limits (Option C Clamping)**: To prevent physically impossible states (such as a negative gas volume or a gas pocket exceeding the total vessel size), the solver automatically clamps the net flow to zero when the tank becomes completely flooded ($V_g \le 0$) or completely dry ($V_g \ge V_{tank}$). The connection node head is dynamically calculated based on the clamped flow.
 
 **Design guidance**: pre-charge the vessel so that `gas_volume / tank_volume` ≈ 0.33–0.50 at the steady-state operating pressure.  Separate `loss_coeff_in` and `loss_coeff_out` values allow modelling of a throttle or riser dip tube that damps re-filling surges more aggressively than the initial discharge.
 
