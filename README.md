@@ -1007,9 +1007,13 @@ where:
   $$N_{\text{runaway}} = 1.8 \cdot N_{\text{rated}} \cdot \sqrt{\frac{\Delta H}{H_{\text{design}}}}$$
   $$T_{\text{hydraulic}} = T_{\text{stall}} \cdot \left(1.0 - \frac{N_{\text{current}}}{N_{\text{runaway}}}\right)$$
 - $T_{\text{rated}}$ is the rated shaft torque at best efficiency point (BEP):
-  $$T_{\text{rated}} = \frac{5252.0 \cdot \text{BHP}_d}{N_{\text{rated}}}$$
-  $$\text{BHP}_d = \frac{Q_d \cdot H_d \cdot \eta}{3960.0}$$
-  with $Q_d$ = `design_flow` (GPM), $H_d$ = `design_head` (ft), and $\eta$ = `efficiency` (BEP fractional efficiency).
+
+$$T_{\text{rated}} = \frac{5252.0 \cdot \text{BHP}_d}{N_{\text{rated}}}$$
+
+$$\text{BHP}_d = \frac{Q_d \cdot H_d \cdot \eta}{3960.0}$$
+
+with $Q_d$ = `design_flow` (GPM), $H_d$ = `design_head` (ft), and $\eta$ = `efficiency` (BEP fractional efficiency).
+
 
 ---
 
