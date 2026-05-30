@@ -27,6 +27,7 @@ A high-performance 1-D Method of Characteristics (MOC) transient hydraulic solve
 - [Valve closure types](#valve-closure-types)
 - [Operational Controls & Event Logic](#operational-controls--event-logic)
 - [Surge control components](#surge-control-components)
+- [Pump & Turbine Rotational Inertia](#pump--turbine-rotational-inertia)
 - [Scripted multi-event transients](#scripted-multi-event-transients)
 - [Loading from EPANET (.inp)](#loading-from-epanet-inp)
 - [Numerical method](#numerical-method)
@@ -972,7 +973,7 @@ solver.add_node(hpt)
 
 ## Pump & Turbine Rotational Inertia
 
-For transient cases such as pump power failure (trip) or turbine grid disconnection, the solver models the dynamic change in rotational speed integrated over time based on the polar moment of inertia ($I = \text{inertia\_wr2} / g$).
+For transient cases such as pump power failure (trip) or turbine grid disconnection, the solver models the dynamic change in rotational speed integrated over time based on the polar moment of inertia ($I = WR^2 / g$, where $WR^2$ is the rotational inertia `inertia_wr2`).
 
 ### Grid Synchronization States
 - **Grid Synchronized (`has_power = True`)**: The node speed is locked at 100% of rated speed (`speed_rpm`). For pumps, this represents normal operation. For turbines, this represents synchronization to the electrical grid under load.
@@ -992,23 +993,23 @@ where:
   $$T_h = T_{\text{rated}} \cdot (0.5 \cdot s^2 + 0.5 \cdot s \cdot q_{\text{ratio}})$$
 - $q_{\text{ratio}} = Q_{\text{gpm}} / Q_{\text{design}}$
 - $\omega_0 = 2\pi \cdot N_{\text{rated}} / 60$ is the rated angular velocity (rad/s)
-- $I = \text{inertia\_wr2} / g$ is the moment of inertia (slug·ft²)
+- $I = WR^2 / g$ is the moment of inertia (slug·ft²), with $WR^2$ being the rotational inertia `inertia_wr2` (lb·ft²)
 
 ### Turbine Startup & Runaway Dynamics
 When a turbine is disconnected from the grid under load, it accelerates or decelerates under the action of the hydraulic torque:
 
-$$\Delta N_{\text{rpm}} = \frac{307.486 \cdot T_{\text{hydraulic}}}{\text{inertia\_wr2}} \cdot \Delta t$$
+$$\Delta N_{\text{rpm}} = \frac{307.486 \cdot T_{\text{hydraulic}}}{WR^2} \cdot \Delta t$$
 $$N_{\text{new}} = \max(0.0, N_{\text{current}} + \Delta N_{\text{rpm}})$$
 
 where:
-- $T_{\text{hydraulic}}$ is computed using a linear torque-speed simplification based on design head ($H_{\text{design}}$) and wicket gate opening ratio ($G = \text{current\_setting} / 100.0$):
+- $T_{\text{hydraulic}}$ is computed using a linear torque-speed simplification based on design head ($H_{\text{design}}$) and wicket gate opening ratio ($G = Y / 100.0$, where $Y$ is the wicket gate opening percentage `current_setting`):
   $$T_{\text{stall}} = 1.5 \cdot T_{\text{rated}} \cdot G \cdot \left(\frac{\Delta H}{H_{\text{design}}}\right)$$
   $$N_{\text{runaway}} = 1.8 \cdot N_{\text{rated}} \cdot \sqrt{\frac{\Delta H}{H_{\text{design}}}}$$
   $$T_{\text{hydraulic}} = T_{\text{stall}} \cdot \left(1.0 - \frac{N_{\text{current}}}{N_{\text{runaway}}}\right)$$
 - $T_{\text{rated}}$ is the rated shaft torque at best efficiency point (BEP):
   $$T_{\text{rated}} = \frac{5252.0 \cdot \text{BHP}_d}{N_{\text{rated}}}$$
   $$\text{BHP}_d = \frac{Q_d \cdot H_d \cdot \eta}{3960.0}$$
-  with $Q_d = \text{design\_flow}$ (GPM), $H_d = \text{design\_head}$ (ft), and $\eta = \text{efficiency}$ (BEP fractional efficiency).
+  with $Q_d$ = `design_flow` (GPM), $H_d$ = `design_head` (ft), and $\eta$ = `efficiency` (BEP fractional efficiency).
 
 ---
 
