@@ -83,7 +83,7 @@ emscripten::val MOCSolver::get_step_results() const {
         node_res.set("cavitation", upH <= n.elevation + p_vapor_ || downH <= n.elevation + p_vapor_);
         node_res.set("currentSpeed", ns.input.current_speed);
         node_res.set("currentSetting", ns.input.current_setting);
-        if (n.type == NodeType::Pump) {
+        if (n.type == NodeType::Pump || n.type == NodeType::Turbine) {
             node_res.set("hasPower", ns.input.has_power);
         } else {
             node_res.set("hasPower", emscripten::val::undefined());
@@ -239,6 +239,7 @@ EMSCRIPTEN_BINDINGS(rthym_moc) {
         .function("set_valve_setting", &MOCSolver::set_valve_setting)
         .function("set_pump_speed", &MOCSolver::set_pump_speed)
         .function("set_pump_power", &MOCSolver::set_pump_power)
+        .function("set_generator_connected", &MOCSolver::set_pump_power)
         .function("set_node_demand", &MOCSolver::set_node_demand)
         .function("set_node_head", &MOCSolver::set_node_head)
         .function("initGrid", &MOCSolver::initGrid)
