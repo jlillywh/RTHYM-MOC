@@ -247,7 +247,7 @@ void MOCSolver::set_pump_speed(const std::string& id, double pct) {
 
 void MOCSolver::set_pump_power(const std::string& id, bool has_power) {
     auto& node_input = requireNodeInputMutable(node_inputs_, id, "set_pump_power()");
-    requireNodeType(node_input, id, "set_pump_power()", {NodeType::Pump}, "Pump");
+    requireNodeType(node_input, id, "set_pump_power()", {NodeType::Pump, NodeType::Turbine}, "Pump or Turbine");
     node_input.has_power = has_power;
     auto it = node_idx_map_.find(id);
     if (it != node_idx_map_.end())
@@ -420,6 +420,14 @@ void MOCSolver::initGrid() {
             double eff = std::max(0.01, ns.input.efficiency);
             double rpm = std::max(1.0, ns.input.speed_rpm);
             double bhp_d = (q_d * h_d) / (3960.0 * eff);
+            ns.rated_torque_ftlb = (5252.0 * bhp_d) / rpm;
+        }
+        if (ns.input.type == NodeType::Turbine) {
+            double q_d = ns.input.design_flow;
+            double h_d = ns.input.design_head;
+            double eff = std::max(0.01, ns.input.efficiency);
+            double rpm = std::max(1.0, ns.input.speed_rpm);
+            double bhp_d = (q_d * h_d * eff) / 3960.0;
             ns.rated_torque_ftlb = (5252.0 * bhp_d) / rpm;
         }
         nodes_.push_back(std::move(ns));
@@ -1241,6 +1249,47 @@ void MOCSolver::stepMOC() {
                     set_upstream(pi, H_dn);
                 }
             }
+
+            if (n.type == NodeType::Turbine) {
+                const double G = n.current_setting / 100.0;
+                double H_up = n.elevation;
+                double H_dn = n.elevation;
+                if (!in_pipes.empty()) {
+                    const int bIn = in_pipes[0];
+                    const int last = pipes_[bIn].num_nodes - 1;
+                    H_up = newH[bIn][last];
+                }
+                if (!out_pipes.empty()) {
+                    const int bOut = out_pipes[0];
+                    H_dn = newH[bOut][0];
+                }
+
+                const double dH = std::max(0.0, H_up - H_dn);
+                const double N_rated = std::max(1.0, n.speed_rpm);
+                const double H_design = std::max(1e-6, n.design_head);
+                const double dH_ratio = dH / H_design;
+
+                const double T_stall = 1.5 * ns.rated_torque_ftlb * G * dH_ratio;
+                const double N_runaway = 1.8 * N_rated * std::sqrt(dH_ratio);
+                const double N_current = (n.current_speed / 100.0) * N_rated;
+
+                double T_hydraulic = 0.0;
+                if (N_runaway > 1e-6) {
+                    T_hydraulic = T_stall * (1.0 - N_current / N_runaway);
+                }
+
+                if (n.has_power) {
+                    n.current_speed = 100.0;
+                } else {
+                    if (n.inertia_wr2 <= 1e-6) {
+                        n.current_speed = (N_runaway / N_rated) * 100.0;
+                    } else {
+                        const double dN_rpm = (307.486 * T_hydraulic / n.inertia_wr2) * dt_;
+                        const double N_new = std::max(0.0, N_current + dN_rpm);
+                        n.current_speed = (N_new / N_rated) * 100.0;
+                    }
+                }
+            }
             break;
         }
 
@@ -1461,6 +1510,8 @@ void MOCSolver::recordStep(SimResults& results) const {
             results.valve_setting[n.id].push_back(n.current_setting);
         if (n.type == NodeType::Pump)
             results.pump_speed[n.id].push_back(n.current_speed);
+        if (n.type == NodeType::Turbine)
+            results.turbine_speed[n.id].push_back(n.current_speed);
     }
 
     for (int i = 0; i < static_cast<int>(pipes_.size()); ++i) {
@@ -1495,6 +1546,9 @@ SimResults MOCSolver::run(double total_time_s, double dt,
         results.node_cavitation[ni.id].reserve(num_steps);
         if (ni.type == NodeType::Pump) {
             results.pump_speed[ni.id].reserve(num_steps);
+        }
+        if (ni.type == NodeType::Turbine) {
+            results.turbine_speed[ni.id].reserve(num_steps);
         }
     }
     for (const auto& pi : pipe_inputs_) {

@@ -106,6 +106,11 @@ static py::dict results_to_dict(SimResults&& r) {
     for (auto& [k, v] : r.pump_speed) ps[k.c_str()] = to_numpy(std::move(v));
     out["pump_speed"] = ps;
 
+    // turbine_speed dict (% rated speed for Turbine)
+    py::dict ts;
+    for (auto& [k, v] : r.turbine_speed) ts[k.c_str()] = to_numpy(std::move(v));
+    out["turbine_speed"] = ts;
+
     return out;
 }
 
@@ -339,6 +344,9 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def("set_pump_power", &MOCSolver::set_pump_power,
             py::arg("id"), py::arg("has_power"),
             "Set whether a pump has electrical power (affects PCV shutdown hold logic).")
+        .def("set_generator_connected", &MOCSolver::set_pump_power,
+            py::arg("id"), py::arg("connected"),
+            "Set whether a turbine's generator is connected to the grid (equivalent to has_power).")
         .def("set_node_demand", &MOCSolver::set_node_demand,
             py::arg("id"), py::arg("demand_gpm"),
             "Update a junction demand mid-simulation.")

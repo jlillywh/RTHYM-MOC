@@ -126,6 +126,8 @@ struct SimResults {
     std::unordered_map<std::string, std::vector<double>> valve_setting;
     // Pump speed telemetry (%)
     std::unordered_map<std::string, std::vector<double>> pump_speed;
+    // Turbine speed telemetry (%)
+    std::unordered_map<std::string, std::vector<double>> turbine_speed;
 };
 
 enum class ControlType {
