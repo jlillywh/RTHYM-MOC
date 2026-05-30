@@ -181,3 +181,158 @@ def test_head_to_pressure_kpa():
     assert head_to_pressure_kpa(head_m, 0.0) == pytest.approx(
         m.pressure_psi_to_kpa(m.length_m_to_ft(head_m) / m.PSI_TO_FT)
     )
+
+
+def test_summarize_study_with_acceptance_limits():
+    time_s = np.array([0.0, 0.01, 0.02])
+    results = {
+        "time": time_s,
+        "node_head": {"J1": np.array([100.0, 90.0, 95.0])},
+        "node_pressure": {"J1": np.array([43.0, 39.0, 41.0])},
+        "node_cavitation": {"J1": np.array([0, 1, 0])},
+        "pipe_flow_gpm": {"P1": np.array([100.0, -20.0, 50.0])},
+    }
+    # Test passed max_pressure, min_pressure, allow_cavitation, max_cavitation_duration_s
+    summary = summarize_study(
+        results,
+        dt_s=0.01,
+        max_pressure=50.0,
+        min_pressure=30.0,
+        allow_cavitation=True,
+        max_cavitation_duration_s=0.05,
+    )
+    assert "acceptance" in summary
+    assert summary["acceptance"]["passed"] is True
+
+    # Test failed min_pressure
+    summary_failed_min = summarize_study(results, dt_s=0.01, min_pressure=40.0)
+    assert summary_failed_min["acceptance"]["passed"] is False
+
+    # Test failed cavitation duration
+    summary_failed_cav = summarize_study(
+        results,
+        dt_s=0.01,
+        allow_cavitation=True,
+        max_cavitation_duration_s=0.005,
+    )
+    assert summary_failed_cav["acceptance"]["passed"] is False
+
+    # Test failed max_pressure
+    summary_failed = summarize_study(
+        results,
+        dt_s=0.01,
+        max_pressure=40.0,
+        allow_cavitation=True,
+        max_cavitation_duration_s=0.05,
+    )
+    assert "acceptance" in summary_failed
+    assert summary_failed["acceptance"]["passed"] is False
+    assert len(summary_failed["acceptance"]["violations"]) == 1
+    assert summary_failed["acceptance"]["violations"][0]["check"] == "max_pressure"
+
+
+def test_summarize_study_si_with_acceptance_limits():
+    time_s = np.array([0.0, 0.01, 0.02])
+    results = {
+        "time": time_s,
+        "node_head": {"J1": np.array([100.0, 90.0, 95.0])},
+        "node_pressure": {"J1": np.array([43.0, 39.0, 41.0])},
+        "node_cavitation": {"J1": np.array([0, 1, 0])},
+        "pipe_flow_gpm": {"P1": np.array([100.0, -20.0, 50.0])},
+    }
+    # Test passed max_pressure, min_pressure, allow_cavitation, max_cavitation_duration_s in SI
+    summary = summarize_study_si(
+        results,
+        dt_s=0.01,
+        max_pressure=350.0,
+        min_pressure=200.0,
+        allow_cavitation=True,
+        max_cavitation_duration_s=0.05,
+    )
+    assert "acceptance" in summary
+    assert summary["acceptance"]["passed"] is True
+    assert summary["acceptance"]["is_si"] is True
+
+    # Test failed min_pressure in SI
+    summary_failed_min = summarize_study_si(results, dt_s=0.01, min_pressure=280.0)
+    assert summary_failed_min["acceptance"]["passed"] is False
+
+    # Test failed cavitation duration in SI
+    summary_failed_cav = summarize_study_si(
+        results,
+        dt_s=0.01,
+        allow_cavitation=True,
+        max_cavitation_duration_s=0.005,
+    )
+    assert summary_failed_cav["acceptance"]["passed"] is False
+
+    # Test failed max_pressure in kPa
+    summary_failed = summarize_study_si(
+        results,
+        dt_s=0.01,
+        max_pressure=250.0,
+        allow_cavitation=True,
+        max_cavitation_duration_s=0.05,
+    )
+    assert "acceptance" in summary_failed
+    assert summary_failed["acceptance"]["passed"] is False
+    assert summary_failed["acceptance"]["violations"][0]["check"] == "max_pressure"
+
+
+def test_study_summary_to_si_converts_acceptance():
+    time_s = np.array([0.0, 0.01, 0.02])
+    results = {
+        "time": time_s,
+        "node_head": {"J1": np.array([100.0, 90.0, 95.0])},
+        "node_pressure": {"J1": np.array([43.0, 39.0, 41.0])},
+        "node_cavitation": {"J1": np.array([0, 0, 0])},
+        "pipe_flow_gpm": {"P1": np.array([100.0, -20.0, 50.0])},
+    }
+    # Run US checks that will fail (actual max 43.0 psi, limit 40.0 psi)
+    summary_us = summarize_study(results, dt_s=0.01, max_pressure=40.0, min_pressure=10.0)
+    # Convert to SI
+    summary_si = study_summary_to_si(summary_us)
+
+    assert "acceptance" in summary_si
+    acc_si = summary_si["acceptance"]
+    assert acc_si["is_si"] is True
+    assert acc_si["passed"] is False
+    assert len(acc_si["violations"]) == 1
+
+    v = acc_si["violations"][0]
+    assert v["check"] == "max_pressure"
+    assert v["limit"] == pytest.approx(40.0 * m.PSI_TO_KPA)
+    assert v["actual"] == pytest.approx(43.0 * m.PSI_TO_KPA)
+    assert "kPa" in v["message"]
+
+    # Also test subatmospheric/min pressure conversion
+    summary_us_min = summarize_study(results, dt_s=0.01, min_pressure=45.0)
+    summary_si_min = study_summary_to_si(summary_us_min)
+    v_min = summary_si_min["acceptance"]["violations"][0]
+    assert v_min["check"] == "min_pressure"
+    assert v_min["limit"] == pytest.approx(45.0 * m.PSI_TO_KPA)
+    assert v_min["actual"] == pytest.approx(39.0 * m.PSI_TO_KPA)
+    assert "subatmospheric minimum pressure violation" in v_min["message"]
+    assert "kPa" in v_min["message"]
+
+
+def test_format_study_table_with_acceptance():
+    time_s = np.array([0.0, 0.01, 0.02])
+    results = {
+        "time": time_s,
+        "node_head": {"J1": np.array([100.0, 90.0, 95.0])},
+        "node_pressure": {"J1": np.array([43.0, 39.0, 41.0])},
+        "node_cavitation": {"J1": np.array([0, 0, 0])},
+        "pipe_flow_gpm": {"P1": np.array([100.0, -20.0, 50.0])},
+    }
+    # US
+    summary_us = summarize_study(results, dt_s=0.01, max_pressure=40.0)
+    table_us = format_study_table(summary_us)
+    assert "ENGINEERING SURGE ANALYSIS ACCEPTANCE REPORT" in table_us
+    assert "FAILED" in table_us
+
+    # SI
+    summary_si = summarize_study_si(results, dt_s=0.01, max_pressure=250.0)
+    table_si = format_study_table_si(summary_si)
+    assert "ENGINEERING SURGE ANALYSIS ACCEPTANCE REPORT" in table_si
+    assert "FAILED" in table_si

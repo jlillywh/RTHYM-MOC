@@ -12,6 +12,7 @@ from typing import Any, Mapping, TypedDict
 import numpy as np
 
 from . import PSI_TO_FT
+from .acceptance import CheckResults, run_acceptance_checks, ViolationDetail, format_acceptance_report
 from .units import FT_TO_M, GPM_TO_M3S, PSI_TO_KPA, length_m_to_ft, pressure_psi_to_kpa
 
 
@@ -39,10 +40,11 @@ class PipeStudySummary(TypedDict):
     flow_gpm: Extrema
 
 
-class StudySummary(TypedDict):
+class StudySummary(TypedDict, total=False):
     meta: dict[str, float | int]
     nodes: dict[str, NodeStudySummary]
     pipes: dict[str, PipeStudySummary]
+    acceptance: CheckResults
 
 
 class NodeStudySummarySI(TypedDict, total=False):
@@ -55,10 +57,11 @@ class PipeStudySummarySI(TypedDict):
     flow_m3s: Extrema
 
 
-class StudySummarySI(TypedDict):
+class StudySummarySI(TypedDict, total=False):
     meta: dict[str, float | int]
     nodes: dict[str, NodeStudySummarySI]
     pipes: dict[str, PipeStudySummarySI]
+    acceptance: CheckResults
 
 
 def _as_time(results: Mapping[str, Any]) -> np.ndarray:
@@ -114,7 +117,15 @@ def cavitation_summary(
     )
 
 
-def summarize_study(results: Mapping[str, Any], *, dt_s: float | None = None) -> StudySummary:
+def summarize_study(
+    results: Mapping[str, Any],
+    *,
+    dt_s: float | None = None,
+    max_pressure: float | dict[str, float] | None = None,
+    min_pressure: float | dict[str, float] | None = None,
+    allow_cavitation: bool | None = None,
+    max_cavitation_duration_s: float | None = None,
+) -> StudySummary:
     """Build node/pipe envelopes and cavitation summaries from a ``run()`` result dict."""
     time_s = _as_time(results)
     dt = _infer_dt(time_s) if dt_s is None else float(dt_s)
@@ -140,7 +151,7 @@ def summarize_study(results: Mapping[str, Any], *, dt_s: float | None = None) ->
             "flow_gpm": series_extrema(time_s, flow_series),
         }
 
-    return StudySummary(
+    summary = StudySummary(
         meta={
             "duration_s": float(time_s[-1]) if time_s.size else 0.0,
             "num_steps": int(time_s.size),
@@ -149,6 +160,25 @@ def summarize_study(results: Mapping[str, Any], *, dt_s: float | None = None) ->
         nodes=nodes_out,
         pipes=pipes_out,
     )
+
+    if (
+        max_pressure is not None
+        or min_pressure is not None
+        or allow_cavitation is not None
+        or max_cavitation_duration_s is not None
+    ):
+        kwargs: dict[str, Any] = {}
+        if max_pressure is not None:
+            kwargs["max_pressure"] = max_pressure
+        if min_pressure is not None:
+            kwargs["min_pressure"] = min_pressure
+        if allow_cavitation is not None:
+            kwargs["allow_cavitation"] = allow_cavitation
+        if max_cavitation_duration_s is not None:
+            kwargs["max_cavitation_duration_s"] = max_cavitation_duration_s
+        summary["acceptance"] = run_acceptance_checks(summary, **kwargs)
+
+    return summary
 
 
 def _scale_extrema(ext: Extrema, factor: float) -> Extrema:
@@ -179,12 +209,74 @@ def study_summary_to_si(summary: StudySummary) -> StudySummarySI:
         for pipe_id, pipe_row in summary["pipes"].items()
     }
 
-    return StudySummarySI(meta=dict(summary["meta"]), nodes=nodes_out, pipes=pipes_out)
+    si_summary = StudySummarySI(meta=dict(summary["meta"]), nodes=nodes_out, pipes=pipes_out)
+
+    if "acceptance" in summary:
+        acceptance = summary["acceptance"]
+        violations_si: list[ViolationDetail] = []
+        for v in acceptance["violations"]:
+            v_si = dict(v)
+            if v["check"] in ("max_pressure", "min_pressure"):
+                limit_si = v["limit"] * PSI_TO_KPA if isinstance(v["limit"], (int, float)) else v["limit"]
+                actual_si = v["actual"] * PSI_TO_KPA if isinstance(v["actual"], (int, float)) else v["actual"]
+                v_si["limit"] = limit_si
+                v_si["actual"] = actual_si
+                unit = "kPa"
+                time_str = f" at {v['time_s']:.2f} s" if v["time_s"] is not None else ""
+                if v["check"] == "max_pressure":
+                    v_si["message"] = (
+                        f"Node '{v['node_id']}' maximum pressure violation. "
+                        f"Limit: {limit_si:.2f} {unit}, "
+                        f"Actual: {actual_si:.2f} {unit}{time_str}"
+                    )
+                else:
+                    v_si["message"] = (
+                        f"Node '{v['node_id']}' subatmospheric minimum pressure violation. "
+                        f"Limit: {limit_si:.2f} {unit}, "
+                        f"Actual: {actual_si:.2f} {unit}{time_str}"
+                    )
+            violations_si.append(v_si)  # type: ignore
+
+        si_summary["acceptance"] = CheckResults(
+            passed=acceptance["passed"],
+            is_si=True,
+            violations=violations_si,
+        )
+
+    return si_summary
 
 
-def summarize_study_si(results: Mapping[str, Any], *, dt_s: float | None = None) -> StudySummarySI:
+def summarize_study_si(
+    results: Mapping[str, Any],
+    *,
+    dt_s: float | None = None,
+    max_pressure: float | dict[str, float] | None = None,
+    min_pressure: float | dict[str, float] | None = None,
+    allow_cavitation: bool | None = None,
+    max_cavitation_duration_s: float | None = None,
+) -> StudySummarySI:
     """Build node/pipe envelopes and cavitation summaries in SI units."""
-    return study_summary_to_si(summarize_study(results, dt_s=dt_s))
+    us_summary = summarize_study(results, dt_s=dt_s)
+    si_summary = study_summary_to_si(us_summary)
+
+    if (
+        max_pressure is not None
+        or min_pressure is not None
+        or allow_cavitation is not None
+        or max_cavitation_duration_s is not None
+    ):
+        kwargs: dict[str, Any] = {}
+        if max_pressure is not None:
+            kwargs["max_pressure"] = max_pressure
+        if min_pressure is not None:
+            kwargs["min_pressure"] = min_pressure
+        if allow_cavitation is not None:
+            kwargs["allow_cavitation"] = allow_cavitation
+        if max_cavitation_duration_s is not None:
+            kwargs["max_cavitation_duration_s"] = max_cavitation_duration_s
+        si_summary["acceptance"] = run_acceptance_checks(si_summary, **kwargs)
+
+    return si_summary
 
 
 def format_study_table(summary: StudySummary) -> str:
@@ -219,6 +311,11 @@ def format_study_table(summary: StudySummary) -> str:
             f"  {pipe_id:<20} {q['min']:10.1f} {q['min_time_s']:7.2f} "
             f"{q['max']:10.1f} {q['max_time_s']:7.2f}"
         )
+
+    if "acceptance" in summary:
+        lines.append("")
+        lines.append(format_acceptance_report(summary["acceptance"]))
+
     return "\n".join(lines)
 
 
@@ -257,6 +354,11 @@ def format_study_table_si(summary: StudySummarySI) -> str:
             f"  {pipe_id:<20} {q['min']:12.6f} {q['min_time_s']:7.2f} "
             f"{q['max']:12.6f} {q['max_time_s']:7.2f}"
         )
+
+    if "acceptance" in summary:
+        lines.append("")
+        lines.append(format_acceptance_report(summary["acceptance"]))
+
     return "\n".join(lines)
 
 
