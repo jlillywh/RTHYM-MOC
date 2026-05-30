@@ -127,6 +127,31 @@ void validateSchedule(const std::vector<std::pair<double,double>>& schedule,
     }
 }
 
+constexpr double R_AIR = 1716.0; // ft-lb/(slug-R)
+constexpr double T_ATM_R = 529.67; // Rankine (~70 F)
+constexpr double RHO_WATER_G = 62.4; // lb/ft^3
+
+double computeCompressibleAirFlow(double Cd, double Area, double p1, double pr, double T1) {
+    if (Cd <= 0.0 || Area <= 0.0 || p1 <= 0.0) return 0.0;
+    
+    constexpr double k = 1.4;
+    constexpr double R = 1716.0;
+    constexpr double pr_crit = 0.52828;
+    
+    double m_dot = 0.0;
+    if (pr <= pr_crit) {
+        // Sonic / Choked flow
+        double factor = std::sqrt((k / R) * std::pow(2.0 / (k + 1.0), (k + 1.0) / (k - 1.0)));
+        m_dot = Cd * Area * (p1 / std::sqrt(T1)) * factor;
+    } else {
+        // Subsonic flow
+        double term = std::max(0.0, std::pow(pr, 2.0 / k) - std::pow(pr, (k + 1.0) / k));
+        double factor = std::sqrt((2.0 * k) / (R * (k - 1.0))) * std::sqrt(term);
+        m_dot = Cd * Area * (p1 / std::sqrt(T1)) * factor;
+    }
+    return m_dot;
+}
+
 } // namespace
 
 // ── Public input API ──────────────────────────────────────────────────────────
@@ -364,7 +389,22 @@ void MOCSolver::initGrid() {
             // would otherwise go subatmospheric.
             ns.gas_volume_ft3 = std::max(0.0,
                 std::min(ns.input.gas_volume, std::max(ns.input.tank_volume, 1e-6)));
-            ns.gas_constant = 0.0;
+            if (ns.gas_volume_ft3 > 1e-6) {
+                constexpr double H_ATM_FT = 33.9;
+                const double H_ref_abs = H_ATM_FT + ns.input.air_release_head;
+                double p0 = RHO_WATER_G * H_ref_abs;
+                ns.gas_constant = (p0 * ns.gas_volume_ft3) / (R_AIR * T_ATM_R);
+            } else {
+                ns.gas_constant = 0.0;
+            }
+        }
+        if (ns.input.type == NodeType::Pump) {
+            double q_d = ns.input.design_flow;
+            double h_d = ns.input.design_head;
+            double eff = std::max(0.01, ns.input.efficiency);
+            double rpm = std::max(1.0, ns.input.speed_rpm);
+            double bhp_d = (q_d * h_d) / (3960.0 * eff);
+            ns.rated_torque_ftlb = (5252.0 * bhp_d) / rpm;
         }
         nodes_.push_back(std::move(ns));
         node_idx_map_[node_inputs_[i].id] = i;
@@ -856,11 +896,12 @@ void MOCSolver::stepMOC() {
 
             if (!pocket_active) {
                 ns.gas_volume_ft3 = std::max(1e-4, n.gas_volume);
-                ns.gas_constant = H_ref_abs * ns.gas_volume_ft3;
+                const double p0 = RHO_WATER_G * H_ref_abs;
+                ns.gas_constant = (p0 * ns.gas_volume_ft3) / (R_AIR * T_ATM_R);
             }
 
-            const double H_abs = std::max(1e-6,
-                ns.gas_constant / std::max(ns.gas_volume_ft3, 1e-6));
+            const double p_pocket = (std::max(1e-12, ns.gas_constant) * R_AIR * T_ATM_R) / std::max(ns.gas_volume_ft3, 1e-6);
+            const double H_abs = std::max(1e-6, p_pocket / RHO_WATER_G);
             double H_P = n.elevation + H_abs - H_ATM_FT;
             if (H_P < H_vap) H_P = H_vap;
 
@@ -888,16 +929,21 @@ void MOCSolver::stepMOC() {
             const double A_admit = M_PI_ * std::pow(admit_d_ft / 2.0, 2.0);
             const double A_release = M_PI_ * std::pow(release_d_ft / 2.0, 2.0);
 
-            double M_after_air = std::max(1e-6, ns.gas_constant);
-            double Q_air_out = 0.0;
+            double M_after_air = ns.gas_constant;
+            double Q_air_cfs = 0.0;
+            const double rho_atm = (RHO_WATER_G * H_ATM_FT) / (R_AIR * T_ATM_R);
+
             if (H_abs < H_ref_abs - 1e-9) {
-                const double Q_air_in = std::max(n.loss_coeff_in, 1e-9) * A_admit
-                    * std::sqrt(2.0 * g * (H_ref_abs - H_abs));
-                M_after_air += H_ref_abs * Q_air_in * dt_;
+                const double p_atm_abs = RHO_WATER_G * H_ref_abs;
+                const double pr = p_pocket / p_atm_abs;
+                const double m_dot_in = computeCompressibleAirFlow(std::max(n.loss_coeff_in, 1e-9), A_admit, p_atm_abs, pr, T_ATM_R);
+                M_after_air += m_dot_in * dt_;
             } else if (H_abs > H_ref_abs + 1e-9 && V_after_water > 1e-6) {
-                Q_air_out = std::max(n.loss_coeff_out, 1e-9) * A_release
-                    * std::sqrt(2.0 * g * (H_abs - H_ref_abs));
-                M_after_air = std::max(1e-6, M_after_air - H_abs * Q_air_out * dt_);
+                const double p_atm_abs = RHO_WATER_G * H_ref_abs;
+                const double pr = p_atm_abs / p_pocket;
+                const double m_dot_out = computeCompressibleAirFlow(std::max(n.loss_coeff_out, 1e-9), A_release, p_pocket, pr, T_ATM_R);
+                M_after_air = std::max(1e-12, M_after_air - m_dot_out * dt_);
+                Q_air_cfs = m_dot_out / rho_atm;
             }
 
             if (V_after_water <= 5e-4 && H_junc >= H_ref) {
@@ -907,8 +953,8 @@ void MOCSolver::stepMOC() {
             } else {
                 ns.gas_volume_ft3 = V_after_water;
                 ns.gas_constant = M_after_air;
-                ns.air_loss_rate_gpm = Q_air_out * 448.831;
-                ns.air_cumulative_loss_gal += Q_air_out * dt_ * 7.48052;
+                ns.air_loss_rate_gpm = Q_air_cfs * 448.831;
+                ns.air_cumulative_loss_gal += Q_air_cfs * dt_ * 7.48052;
             }
             ns.gas_pressure_psi = (H_abs - 33.9) * 0.433;
             ns.actual_demand = n.demand;
@@ -1186,6 +1232,8 @@ void MOCSolver::stepMOC() {
             const double s  = spd / 100.0;
             const double s2 = s * s;
 
+            double Q = 0.0;
+
             if (in_pipes.size() == 1 && out_pipes.size() == 1) {
                 const int bIn  = in_pipes[0];
                 const int bOut = out_pipes[0];
@@ -1198,7 +1246,6 @@ void MOCSolver::stepMOC() {
                 const double b_q = B_eq;
                 const double c_q = -(C_eq + alpha * s2);
 
-                double Q = 0.0;
                 if (a_q < 1e-10) {
                     Q = -c_q / b_q;
                 } else {
@@ -1245,7 +1292,35 @@ void MOCSolver::stepMOC() {
                 const double H_base = getInitialHead(ns);
                 for (int pi : in_pipes)  set_downstream(pi, std::max(H_vap, H_base - alpha * s2));
                 for (int pi : out_pipes) set_upstream  (pi, std::max(H_vap, H_base + alpha * s2));
+
+                // Estimate Q for speed decay
+                double Q_sum = 0.0;
+                for (int pi : in_pipes) {
+                    int last = pipes_[pi].num_nodes - 1;
+                    Q_sum += newV[pi][last] * pipes_[pi].area;
+                }
+                Q = std::max(0.0, Q_sum);
             }
+
+            // Integrate pump deceleration speed decay if power is lost and pump has inertia
+            if (!n.has_power && n.inertia_wr2 > 0.0) {
+                double Q_gpm = Q / GPM_TO_CFS;
+                double q_ratio = (n.design_flow > 1e-6) ? Q_gpm / n.design_flow : 0.0;
+                double torque_h = ns.rated_torque_ftlb * (0.5 * s2 + 0.5 * s * q_ratio);
+                double I = n.inertia_wr2 / g;
+                double omega_0 = 2.0 * M_PI_ * std::max(1.0, n.speed_rpm) / 60.0;
+                double denom = I * omega_0;
+                double ds = 0.0;
+                if (denom > 1e-9) {
+                    ds = (-torque_h / denom) * dt_;
+                }
+                double s_new = std::clamp(s + ds, 0.0, 1.0);
+                ns.input.current_speed = s_new * 100.0;
+            } else if (!n.has_power) {
+                // Tripped and no inertia: instant stop
+                ns.input.current_speed = 0.0;
+            }
+
             break;
         }
 
@@ -1337,6 +1412,8 @@ void MOCSolver::recordStep(SimResults& results) const {
         results.valve_velocity[n.id].push_back(ns.valve_velocity);
         if (n.type == NodeType::Valve || n.type == NodeType::Turbine)
             results.valve_setting[n.id].push_back(n.current_setting);
+        if (n.type == NodeType::Pump)
+            results.pump_speed[n.id].push_back(n.current_speed);
     }
 
     for (int i = 0; i < static_cast<int>(pipes_.size()); ++i) {
@@ -1369,6 +1446,9 @@ SimResults MOCSolver::run(double total_time_s, double dt,
         results.node_head      [ni.id].reserve(num_steps);
         results.node_pressure  [ni.id].reserve(num_steps);
         results.node_cavitation[ni.id].reserve(num_steps);
+        if (ni.type == NodeType::Pump) {
+            results.pump_speed[ni.id].reserve(num_steps);
+        }
     }
     for (const auto& pi : pipe_inputs_) {
         results.pipe_flow_gpm[pi.id].reserve(num_steps);
@@ -1609,15 +1689,19 @@ void MOCSolver::evaluateControlRules(double t_now) {
                         if (state.pcv_timer >= ramp_close || valve.input.current_setting <= 0.0) {
                             valve.input.current_setting = 0.0;
                             state.pcv_phase = "idle";
-                            pump.input.current_speed = 0.0;
+                            if (pump.input.inertia_wr2 <= 0.0) {
+                                pump.input.current_speed = 0.0;
+                            }
                         } else if (pump.input.has_power) {
                             pump.input.current_speed = 100.0;
-                        } else {
+                        } else if (pump.input.inertia_wr2 <= 0.0) {
                             pump.input.current_speed = 0.0;
                         }
                     } else if (state.pcv_phase == "idle" || state.pcv_phase == "off") {
                         valve.input.current_setting = 0.0;
-                        pump.input.current_speed = 0.0;
+                        if (pump.input.inertia_wr2 <= 0.0) {
+                            pump.input.current_speed = 0.0;
+                        }
                     }
                 }
             }

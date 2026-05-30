@@ -187,7 +187,10 @@ EMSCRIPTEN_BINDINGS(rthym_moc) {
         .property("loss_coeff_in",    &NodeInput::loss_coeff_in)
         .property("loss_coeff_out",   &NodeInput::loss_coeff_out)
         .property("closure_time",     &NodeInput::closure_time)
-        .property("flipped",          &NodeInput::flipped);
+        .property("flipped",          &NodeInput::flipped)
+        .property("inertia_wr2",      &NodeInput::inertia_wr2)
+        .property("speed_rpm",        &NodeInput::speed_rpm)
+        .property("efficiency",       &NodeInput::efficiency);
 
     class_<PipeInput>("PipeInput")
         .constructor<>()
