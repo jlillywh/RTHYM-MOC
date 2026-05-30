@@ -34,8 +34,8 @@ benchmark = [
     "h5py",
     "tqdm",
     "numba",
-    "numpy<2",
-    "setuptools>=64,<81",
+    "numpy<3",
+    "setuptools>=64,<83",
 ]
 
 [tool.scikit-build]
