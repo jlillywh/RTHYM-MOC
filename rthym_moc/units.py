@@ -120,7 +120,6 @@ def node_si(
     loss_coeff_in: float | None = None,
     loss_coeff_out: float | None = None,
     closure_time: float | None = None,
-    closure_damping: float | None = None,
     flipped: bool | None = None,
     inertia_wr2_kg_m2: float | None = None,
     speed_rpm: float | None = None,
@@ -178,8 +177,6 @@ def node_si(
         node.loss_coeff_out = float(loss_coeff_out)
     if closure_time is not None:
         node.closure_time = float(closure_time)
-    if closure_damping is not None:
-        node.closure_damping = float(closure_damping)
     if flipped is not None:
         node.flipped = bool(flipped)
     if inertia_wr2_kg_m2 is not None:

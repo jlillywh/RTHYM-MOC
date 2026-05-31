@@ -227,7 +227,6 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def_readwrite("loss_coeff_out",   &NodeInput::loss_coeff_out)
         // CheckValve closure dynamics
         .def_readwrite("closure_time",     &NodeInput::closure_time)
-        .def_readwrite("closure_damping",  &NodeInput::closure_damping)
         .def_readwrite("flipped",          &NodeInput::flipped);
 
     // ── PipeInput ──────────────────────────────────────────────────────────

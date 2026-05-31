@@ -29,7 +29,6 @@ def test_node_si_sets_underlying_us_customary_fields():
         current_setting=75.0,
         tank_area_m2=2.0,
         gas_volume_m3=1.0,
-        closure_damping=0.2,
     )
 
     assert node.id == "V1"
@@ -41,7 +40,6 @@ def test_node_si_sets_underlying_us_customary_fields():
     assert node.current_setting == pytest.approx(75.0)
     assert node.tank_area == pytest.approx(m.area_m2_to_ft2(2.0))
     assert node.gas_volume == pytest.approx(m.volume_m3_to_ft3(1.0))
-    assert node.closure_damping == pytest.approx(0.2)
 
 
 def test_node_si_sets_all_optional_fields():
