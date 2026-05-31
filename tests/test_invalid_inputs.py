@@ -55,3 +55,51 @@ def test_set_head_schedule_rejects_empty_schedule():
 
     with pytest.raises(ValueError, match="at least one schedule point"):
         solver.set_head_schedule("T1", [])
+
+
+def test_zero_or_negative_diameter_does_not_crash():
+    """Ensures nodes/pipes with zero or negative diameter do not crash the solver with NaNs."""
+    solver = m.MOCSolver()
+    solver.add_node(_make_node("T1", "Tank", elevation=0.0, head=100.0))
+    solver.add_node(_make_node("CV1", "CheckValve", elevation=0.0, diameter=0.0))
+    solver.add_node(_make_node("V1", "Valve", elevation=0.0, diameter=-2.0))
+    solver.add_node(_make_node("T2", "Tank", elevation=0.0, head=90.0))
+
+    p1 = m.PipeInput()
+    p1.id = "P1"
+    p1.from_node = "T1"
+    p1.to_node = "CV1"
+    p1.length = 100.0
+    p1.diameter = 0.0
+    p1.roughness = 120.0
+    p1.flow_gpm = 10.0
+    solver.add_pipe(p1)
+
+    p2 = m.PipeInput()
+    p2.id = "P2"
+    p2.from_node = "CV1"
+    p2.to_node = "V1"
+    p2.length = 100.0
+    p2.diameter = 8.0
+    p2.roughness = 120.0
+    p2.flow_gpm = 10.0
+    solver.add_pipe(p2)
+
+    p3 = m.PipeInput()
+    p3.id = "P3"
+    p3.from_node = "V1"
+    p3.to_node = "T2"
+    p3.length = 100.0
+    p3.diameter = 8.0
+    p3.roughness = 120.0
+    p3.flow_gpm = 10.0
+    solver.add_pipe(p3)
+
+    results = solver.run(total_time=0.1, dt=0.01)
+
+    assert len(results["time"]) > 0
+    for head_list in results["node_head"].values():
+        for h in head_list:
+            import math
+            assert not math.isnan(h)
+
