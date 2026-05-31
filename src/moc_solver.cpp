@@ -1001,7 +1001,7 @@ void MOCSolver::stepMOC() {
                 Q_air_cfs = m_dot_out / rho_atm;
             }
 
-            if (V_after_water <= 5e-4 && H_junc >= H_ref) {
+            if (V_after_water <= 5e-4) {
                 ns.gas_volume_ft3 = 0.0;
                 ns.gas_constant = 0.0;
                 ns.air_loss_rate_gpm = 0.0;
