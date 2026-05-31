@@ -339,7 +339,7 @@ node.level            = 100.0         # % full  (Tank, derived/legacy compatibil
 node.max_level        = 20.0          # ft depth at 100 % full (Tank)
 node.demand           = 0.0           # GPM withdrawal (Junction, OutflowNode)
 node.current_setting  = 100.0         # % open (Valve, Turbine; 100 = fully open)
-node.diameter         = 8.0           # inches (Valve orifice / Turbine runner)
+node.diameter         = 8.0           # inches (Valve orifice / Turbine runner; <= 0 is sanitized to 0.01)
 node.current_speed    = 100.0         # % rated speed (Pump)
 node.has_power        = True          # electrical power available (Pump/Turbine; grid sync logic)
 node.design_head      = 50.0          # ft at BEP (Pump/Turbine design head)
@@ -352,7 +352,7 @@ node.closure_time     = 0.03          # s — CheckValve exponential close time 
 node.closure_damping  = 0.0           # dimensionless CheckValve damping (optional)
 node.flipped          = False         # CheckValve: reverse installed direction
 node.air_release_head = 0.0           # ft vent reference above elevation (AirValve)
-node.air_release_diameter = 0.25      # inches (AirValve small-orifice release port)
+node.air_release_diameter = 0.25      # inches (AirValve small-orifice release port; <= 0 is sanitized to 0.01)
 node.tank_area        = 10.0          # ft² cross-sectional area (Standpipe)
 node.gas_volume       = 10.0          # ft³ initial trapped gas / air-pocket volume
 node.tank_volume      = 30.0          # ft³ total vessel or chamber volume
@@ -397,11 +397,11 @@ pipe.id             = "P1"     # str — unique identifier
 pipe.from_node      = "R1"     # str — upstream node id
 pipe.to_node        = "J1"     # str — downstream node id
 pipe.length         = 3000.0   # ft
-pipe.diameter       = 12.0     # inches
+pipe.diameter       = 12.0     # inches (<= 0 is sanitized to 0.01, and initial flow is overridden to 0)
 pipe.roughness      = 120.0    # Hazen-Williams C (higher = smoother)
 pipe.minor_loss     = 0.0      # dimensionless local-loss coefficient K
 pipe.flow_gpm       = 500.0    # GPM, initial steady-state flow (+ = from→to)
-pipe.wall_thickness = 0.25     # inches (used only if youngs_modulus > 0)
+pipe.wall_thickness = 0.25     # inches (used only if youngs_modulus > 0; <= 0 is sanitized to 0.01)
 pipe.youngs_modulus = 0.0      # psi (0 = rigid pipe, default wave speed ~4000 ft/s)
 pipe.poissons_ratio = 0.3      # (used only if youngs_modulus > 0)
 ```

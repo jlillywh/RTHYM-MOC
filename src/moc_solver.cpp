@@ -375,6 +375,12 @@ void MOCSolver::initGrid() {
     for (int i = 0; i < static_cast<int>(node_inputs_.size()); ++i) {
         NodeState ns;
         ns.input = node_inputs_[i];
+        if (ns.input.diameter <= 0.0) {
+            ns.input.diameter = 1e-2;
+        }
+        if (ns.input.air_release_diameter <= 0.0) {
+            ns.input.air_release_diameter = 1e-2;
+        }
         if ((ns.input.type == NodeType::Pump || ns.input.type == NodeType::Turbine) &&
             ns.input.design_head <= 0.0 && ns.input.design_flow <= 0.0) {
             ns.input.design_head = 50.0;
@@ -443,7 +449,9 @@ void MOCSolver::initGrid() {
         ps.to_id   = p.to_node;
         ps.L       = p.length;
 
-        const double diam_ft = p.diameter / 12.0;
+        const double d_in = std::max(p.diameter, 1e-2);
+        const double flow_gpm_sanitized = (p.diameter <= 0.0) ? 0.0 : p.flow_gpm;
+        const double diam_ft = d_in / 12.0;
         ps.D    = diam_ft;
         ps.area = M_PI_ * (diam_ft / 2.0) * (diam_ft / 2.0);
 
@@ -457,8 +465,9 @@ void MOCSolver::initGrid() {
             const double K  = 319000.0;          // psi
             const double c  = 1.0 - p.poissons_ratio * p.poissons_ratio;
             const double a0 = 4860.0;            // ft/s
+            const double t_in = std::max(p.wall_thickness, 1e-2);
             wave_speed = a0 / std::sqrt(
-                1.0 + (K / p.youngs_modulus) * (p.diameter / p.wall_thickness) * c);
+                1.0 + (K / p.youngs_modulus) * (d_in / t_in) * c);
         }
 
         // ── Courant condition: Cr = a·dt/dx = 1 ───────────────────────────
@@ -472,12 +481,12 @@ void MOCSolver::initGrid() {
 
         // ── Darcy-Weisbach friction factor from Hazen-Williams ─────────────
         // Hf = 10.44 · L · Q^1.852 / (C^1.852 · D_in^4.871)  [all US units]
-        const double Q_cfs     = p.flow_gpm * GPM_TO_CFS;
+        const double Q_cfs     = flow_gpm_sanitized * GPM_TO_CFS;
         const double vel_init  = (ps.area > 1e-9) ? Q_cfs / ps.area : 0.0;
         double Hf_pipe_hw = 0.0;
-        if (std::abs(p.flow_gpm) > 1e-4) {
-            Hf_pipe_hw = (10.44 * p.length * std::pow(std::abs(p.flow_gpm), 1.852))
-                       / (std::pow(p.roughness, 1.852) * std::pow(p.diameter, 4.871));
+        if (std::abs(flow_gpm_sanitized) > 1e-4) {
+            Hf_pipe_hw = (10.44 * p.length * std::pow(std::abs(flow_gpm_sanitized), 1.852))
+                       / (std::pow(p.roughness, 1.852) * std::pow(d_in, 4.871));
         }
         double f_calc = 0.02;
         if (std::abs(vel_init) > 1e-4) {
@@ -516,7 +525,7 @@ void MOCSolver::initGrid() {
             if (tit != node_idx_map_.end()) to_fixed   = is_fixed_head(nodes_[tit->second].input.type);
         }
 
-        const double sgn = (p.flow_gpm >= 0.0) ? 1.0 : -1.0;
+        const double sgn = (flow_gpm_sanitized >= 0.0) ? 1.0 : -1.0;
         double H_start = H_from, H_end = H_to;
         if (from_fixed && !to_fixed) {
             // Upstream reservoir drives; downstream head is friction-derived.
