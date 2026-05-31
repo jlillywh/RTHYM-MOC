@@ -370,6 +370,11 @@ void MOCSolver::initGrid() {
     node_inflow_pipes_.clear();
     node_outflow_pipes_.clear();
 
+    for (const auto& ni : node_inputs_) {
+        node_inflow_pipes_ .emplace(ni.id, std::vector<int>{});
+        node_outflow_pipes_.emplace(ni.id, std::vector<int>{});
+    }
+
     // Build node state vector and lookup map
     nodes_.reserve(node_inputs_.size());
     for (int i = 0; i < static_cast<int>(node_inputs_.size()); ++i) {
@@ -1504,10 +1509,16 @@ void MOCSolver::stepMOC() {
                 sum_AB_C += AB * bndry[pi].C_M;
                 sum_AB   += AB;
             }
-
             double H_P = (sum_AB > 1e-12)
                 ? (sum_AB_C - Q_dem) / sum_AB
                 : getInitialHead(ns);
+            // Cavitation limit: clamp HGL to vapor pressure.
+            // NOTE: This is a simplified, first-order cavitation model. It detects
+            // when the local pressure reaches vapor pressure, but it does not
+            // integrate or track vapor cavity volume over time. Severe column
+            // separation events resulting in high-pressure spikes upon cavity
+            // collapse (water column collision) are not modeled. For such scenarios,
+            // a full Discrete Vapor Cavity Model (DVCM) is recommended.
             if (H_P < H_vap) H_P = H_vap;
 
             for (int pi : in_pipes)  set_downstream(pi, H_P);
@@ -1614,13 +1625,6 @@ SimResults MOCSolver::run(double total_time_s, double dt,
     }
     for (const auto& pi : pipe_inputs_) {
         results.pipe_flow_gpm[pi.id].reserve(num_steps);
-    }
-
-    // Make sure every node id has an entry in adjacency maps
-    // (isolated nodes will have empty vectors, which is fine)
-    for (const auto& ni : node_inputs_) {
-        node_inflow_pipes_ .emplace(ni.id, std::vector<int>{});
-        node_outflow_pipes_.emplace(ni.id, std::vector<int>{});
     }
 
     for (int step = 0; step < num_steps; ++step) {
