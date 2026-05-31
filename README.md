@@ -342,8 +342,8 @@ node.current_setting  = 100.0         # % open (Valve, Turbine; 100 = fully open
 node.diameter         = 8.0           # inches (Valve orifice / Turbine runner; <= 0 is sanitized to 0.01)
 node.current_speed    = 100.0         # % rated speed (Pump)
 node.has_power        = True          # electrical power available (Pump/Turbine; grid sync logic)
-node.design_head      = 50.0          # ft at BEP (Pump/Turbine design head)
-node.design_flow      = 100.0         # GPM at BEP (Pump/Turbine design flow)
+node.design_head      = 50.0          # ft at BEP (Pump/Turbine design head; <= 0 is sanitized to 50.0)
+node.design_flow      = 100.0         # GPM at BEP (Pump/Turbine design flow; <= 0 is sanitized to 100.0)
 node.design_velocity  = 0.0           # ft/s (Turbine; derived from design_flow if 0)
 node.inertia_wr2      = 45.0          # lb·ft² — pump runner & motor rotational inertia
 node.speed_rpm        = 1750.0        # RPM — rated speed of pump or turbine
