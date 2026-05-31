@@ -381,10 +381,9 @@ void MOCSolver::initGrid() {
         if (ns.input.air_release_diameter <= 0.0) {
             ns.input.air_release_diameter = 1e-2;
         }
-        if ((ns.input.type == NodeType::Pump || ns.input.type == NodeType::Turbine) &&
-            ns.input.design_head <= 0.0 && ns.input.design_flow <= 0.0) {
-            ns.input.design_head = 50.0;
-            ns.input.design_flow = 100.0;
+        if (ns.input.type == NodeType::Pump || ns.input.type == NodeType::Turbine) {
+            if (ns.input.design_head <= 0.0) ns.input.design_head = 50.0;
+            if (ns.input.design_flow <= 0.0) ns.input.design_flow = 100.0;
         }
         ns.air_loss_rate_gpm = 0.0;
         ns.air_cumulative_loss_gal = 0.0;
@@ -392,8 +391,12 @@ void MOCSolver::initGrid() {
         ns.tank_flow_gpm = 0.0;
         if (ns.input.type == NodeType::Pump || ns.input.type == NodeType::Turbine)
             ns.command_speed = ns.input.current_speed;
-        if (ns.input.type == NodeType::Standpipe)
+        if (ns.input.type == NodeType::Standpipe) {
             ns.surge_level_ft = ns.input.head; // initial water-surface elevation (ft HGL)
+            if (ns.input.tank_area <= 0.0) {
+                ns.input.tank_area = 1e-4;
+            }
+        }
         if (ns.input.type == NodeType::HydropneumaticTank) {
             // Compute and store the polytropic gas constant:
             //   C = H_g_abs * V_g^n

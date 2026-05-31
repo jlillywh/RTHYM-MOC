@@ -342,8 +342,8 @@ node.current_setting  = 100.0         # % open (Valve, Turbine; 100 = fully open
 node.diameter         = 8.0           # inches (Valve orifice / Turbine runner; <= 0 is sanitized to 0.01)
 node.current_speed    = 100.0         # % rated speed (Pump)
 node.has_power        = True          # electrical power available (Pump/Turbine; grid sync logic)
-node.design_head      = 50.0          # ft at BEP (Pump/Turbine design head)
-node.design_flow      = 100.0         # GPM at BEP (Pump/Turbine design flow)
+node.design_head      = 50.0          # ft at BEP (Pump/Turbine design head; <= 0 is sanitized to 50.0)
+node.design_flow      = 100.0         # GPM at BEP (Pump/Turbine design flow; <= 0 is sanitized to 100.0)
 node.design_velocity  = 0.0           # ft/s (Turbine; derived from design_flow if 0)
 node.inertia_wr2      = 45.0          # lb·ft² — pump runner & motor rotational inertia
 node.speed_rpm        = 1750.0        # RPM — rated speed of pump or turbine
@@ -353,7 +353,7 @@ node.closure_damping  = 0.0           # dimensionless CheckValve damping (option
 node.flipped          = False         # CheckValve: reverse installed direction
 node.air_release_head = 0.0           # ft vent reference above elevation (AirValve)
 node.air_release_diameter = 0.25      # inches (AirValve small-orifice release port; <= 0 is sanitized to 0.01)
-node.tank_area        = 10.0          # ft² cross-sectional area (Standpipe)
+node.tank_area        = 10.0          # ft² cross-sectional area (Standpipe; <= 0 is sanitized to 1e-4)
 node.gas_volume       = 10.0          # ft³ initial trapped gas / air-pocket volume
 node.tank_volume      = 30.0          # ft³ total vessel or chamber volume
 node.polytropic_n     = 1.2           # polytropic exponent (1.0 = isothermal, 1.4 = adiabatic)
