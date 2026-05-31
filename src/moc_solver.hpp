@@ -52,7 +52,6 @@ std::string nodeTypeToStr(NodeType t);
 struct NodeInput {
         // CheckValve closure dynamics
         double closure_time = 0.03;      // s, time to fully close from open (default: 0.03s, tuned for minimal reverse flow)
-        double closure_damping = 0.0;    // dimensionless, damping ratio (0 = none, >0 = damped)
     std::string id;
     NodeType    type            = NodeType::Junction;
 
