@@ -353,7 +353,7 @@ node.closure_damping  = 0.0           # dimensionless CheckValve damping (option
 node.flipped          = False         # CheckValve: reverse installed direction
 node.air_release_head = 0.0           # ft vent reference above elevation (AirValve)
 node.air_release_diameter = 0.25      # inches (AirValve small-orifice release port; <= 0 is sanitized to 0.01)
-node.tank_area        = 10.0          # ft² cross-sectional area (Standpipe)
+node.tank_area        = 10.0          # ft² cross-sectional area (Standpipe; <= 0 is sanitized to 1e-4)
 node.gas_volume       = 10.0          # ft³ initial trapped gas / air-pocket volume
 node.tank_volume      = 30.0          # ft³ total vessel or chamber volume
 node.polytropic_n     = 1.2           # polytropic exponent (1.0 = isothermal, 1.4 = adiabatic)
