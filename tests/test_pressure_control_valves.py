@@ -171,11 +171,11 @@ J2   0   0
 
 [RESERVOIRS]
 R1   200
-R2   120
+R2   50
 
 [PIPES]
 P1   R1   J1   500   12   130   0   OPEN
-P2   J1   J2   500   12   130   0   OPEN
+P2   J2   R2   500   12   130   0   OPEN
 
 [VALVES]
 V1   J1   J2   12   PRV   50
@@ -191,7 +191,7 @@ HEADLOSS H-W
         str(inp_path),
         use_wntr=False,
         initial_flows={"P1": 300.0, "P2": 300.0, "_P_V1_up": 300.0, "_P_V1_dn": 300.0},
-        initial_heads={"J1": 180.0, "J2": 150.0},
+        initial_heads={"J1": 180.0, "J2": 115.5},
     )
     results = solver.run(total_time=0.15, dt=DT_S)
 
@@ -388,3 +388,52 @@ HEADLOSS H-W
         if w.category is UserWarning and "[RTHYM]" in str(w.message)
     ]
     assert rthym_msgs == []
+
+
+def test_prv_closed_state_prevents_reverse_flow():
+    """A PRV should act as closed and prevent reverse flow when downstream head exceeds upstream."""
+    solver = m.MOCSolver()
+    solver.add_node(_make_node("R1", "PressureBoundary", head=100.0))
+    solver.add_node(_make_node("PRV1", "PRV", head=120.0, diameter=12.0, current_setting=100.0))
+    solver.add_node(_make_node("R2", "PressureBoundary", head=150.0))  # higher head downstream
+    solver.add_pipe(_make_pipe("P1", "R1", "PRV1", flow_gpm=0.0))
+    solver.add_pipe(_make_pipe("P2", "PRV1", "R2", flow_gpm=0.0))
+
+    results = solver.run(total_time=0.1, dt=0.01)
+
+    # Verify that flow is zero or negligible
+    flows = np.asarray(results["pipe_flow_gpm"]["P1"])
+    assert np.all(np.abs(flows) < 1e-3), f"Expected no reverse flow through PRV, got {flows}"
+
+
+def test_psv_closed_state_prevents_reverse_flow():
+    """A PSV should act as closed and prevent reverse flow when downstream head exceeds upstream."""
+    solver = m.MOCSolver()
+    solver.add_node(_make_node("R1", "PressureBoundary", head=100.0))
+    solver.add_node(_make_node("PSV1", "PSV", head=120.0, diameter=12.0, current_setting=100.0))
+    solver.add_node(_make_node("R2", "PressureBoundary", head=150.0))  # higher head downstream
+    solver.add_pipe(_make_pipe("P1", "R1", "PSV1", flow_gpm=0.0))
+    solver.add_pipe(_make_pipe("P2", "PSV1", "R2", flow_gpm=0.0))
+
+    results = solver.run(total_time=0.1, dt=0.01)
+
+    # Verify that flow is zero or negligible
+    flows = np.asarray(results["pipe_flow_gpm"]["P1"])
+    assert np.all(np.abs(flows) < 1e-3), f"Expected no reverse flow through PSV, got {flows}"
+
+
+def test_pbv_closed_state_prevents_reverse_flow():
+    """A PBV should prevent reverse flow when pressure gradient would drive backward flow."""
+    solver = m.MOCSolver()
+    solver.add_node(_make_node("R1", "PressureBoundary", head=100.0))
+    solver.add_node(_make_node("PBV1", "PBV", head=10.0, diameter=12.0, current_setting=100.0))
+    solver.add_node(_make_node("R2", "PressureBoundary", head=150.0))  # downstream head higher
+    solver.add_pipe(_make_pipe("P1", "R1", "PBV1", flow_gpm=0.0))
+    solver.add_pipe(_make_pipe("P2", "PBV1", "R2", flow_gpm=0.0))
+
+    results = solver.run(total_time=0.1, dt=0.01)
+
+    # Verify that flow is zero or negligible
+    flows = np.asarray(results["pipe_flow_gpm"]["P1"])
+    assert np.all(np.abs(flows) < 1e-3), f"Expected no reverse flow through PBV, got {flows}"
+
