@@ -46,7 +46,7 @@ RTHYM-MOC solves the 1-D water-hammer equations using the Method of Characterist
 
 - **Network-capable**: arbitrary topologies of pipes, junctions, reservoirs, air valves, valves, pumps, standpipe surge tanks, hydropneumatic tanks, and turbines.
 - **Time-varying events**: valve schedules, pump trip/start, demand changes — specified either as discrete step changes between `run()` calls or as continuous piecewise-linear schedules registered before `run()`.
-- **Cavitation detection**: integrates a column-separation flag (pressure < vapour pressure) at each node.
+- **Cavitation detection**: integrates a column-separation flag (pressure < vapour pressure) at each node. *Note: This is a first-order head-clamping model. It does not integrate or track vapor cavity volume over time or simulate column separation collapse surges (water column collision). For severe cavitation, a Discrete Vapor Cavity Model (DVCM) is recommended.*
 - **Study summaries**: built-in helpers tun raw time series into node/pipe envelopes, cavitation duration, and CSV/JSON exports — see [Post-processing & study reports](#post-processing--study-reports).
 - **Fast**: on the standard Joukowsky case, the C++ core is roughly **200–400× faster** than [TSNet](https://github.com/glorialulu/TSNet) (pure Python) on typical hardware — see [Benchmarking](#benchmarking).
 - **Validated**: automated regressions against R-THYM exports, EPANET/wntr steady state, and analytical checks — Joukowsky first-step error < 0.05 %, wave period error < 0.2 % — see [Validation](#validation).

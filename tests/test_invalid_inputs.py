@@ -176,4 +176,33 @@ def test_zero_pump_flow_or_head_does_not_crash():
             assert not math.isnan(h)
 
 
+def test_isolated_nodes_do_not_crash_simulation():
+    """Ensures isolated nodes in the topology do not crash the solver during init/record."""
+    solver = m.MOCSolver()
+    # Active pipeline
+    solver.add_node(_make_node("T1", "Tank", elevation=0.0, head=100.0))
+    solver.add_node(_make_node("T2", "Tank", elevation=0.0, head=90.0))
+    # Isolated node
+    solver.add_node(_make_node("ISO1", "Junction", elevation=10.0, head=95.0, demand=0.0))
+
+    p1 = m.PipeInput()
+    p1.id = "P1"
+    p1.from_node = "T1"
+    p1.to_node = "T2"
+    p1.length = 100.0
+    p1.diameter = 8.0
+    p1.roughness = 120.0
+    p1.flow_gpm = 10.0
+    solver.add_pipe(p1)
+
+    results = solver.run(total_time=0.1, dt=0.01)
+
+    assert len(results["time"]) > 0
+    assert "ISO1" in results["node_head"]
+    # Check that isolated node head remains steady at its initial head
+    for h in results["node_head"]["ISO1"]:
+        assert abs(h - 95.0) < 1e-6
+
+
+
 
