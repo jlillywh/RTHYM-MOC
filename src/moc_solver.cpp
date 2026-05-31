@@ -1153,21 +1153,70 @@ void MOCSolver::stepMOC() {
 
                 if (n.type == NodeType::PRV) {
                     if (H_dn_open > H_set + reg_tol) {
-                        H_dn = std::max(H_vap, H_set);
-                        Q    = (bndry[bIn].C_P - H_dn) / std::max(Bi, 1e-12);
-                        H_up = bndry[bIn].C_P - Bi * Q;
+                        const double Q_reg = (H_set - bndry[bOut].C_M) / std::max(Bo, 1e-12);
+                        if (Q_reg < 0.0) {
+                            // Closed
+                            Q    = 0.0;
+                            H_up = bndry[bIn].C_P;
+                            H_dn = bndry[bOut].C_M;
+                        } else {
+                            // Regulating
+                            Q    = Q_reg;
+                            H_dn = H_set;
+                            H_up = bndry[bIn].C_P - Bi * Q;
+                        }
+                    } else {
+                        if (Q_open < 0.0) {
+                            // Closed
+                            Q    = 0.0;
+                            H_up = bndry[bIn].C_P;
+                            H_dn = bndry[bOut].C_M;
+                        } else {
+                            // Open
+                            Q    = Q_open;
+                            H_up = H_up_open;
+                            H_dn = H_dn_open;
+                        }
                     }
                 } else if (n.type == NodeType::PSV) {
                     if (H_up_open < H_set - reg_tol) {
-                        H_up = std::max(H_vap, H_set);
-                        Q    = (bndry[bIn].C_P - H_up) / std::max(Bi, 1e-12);
-                        H_dn = bndry[bOut].C_M + Bo * Q;
+                        const double Q_reg = (bndry[bIn].C_P - H_set) / std::max(Bi, 1e-12);
+                        if (Q_reg < 0.0) {
+                            // Closed
+                            Q    = 0.0;
+                            H_up = bndry[bIn].C_P;
+                            H_dn = bndry[bOut].C_M;
+                        } else {
+                            // Regulating
+                            Q    = Q_reg;
+                            H_up = H_set;
+                            H_dn = bndry[bOut].C_M + Bo * Q;
+                        }
+                    } else {
+                        if (Q_open < 0.0) {
+                            // Closed
+                            Q    = 0.0;
+                            H_up = bndry[bIn].C_P;
+                            H_dn = bndry[bOut].C_M;
+                        } else {
+                            // Open
+                            Q    = Q_open;
+                            H_up = H_up_open;
+                            H_dn = H_dn_open;
+                        }
                     }
                 } else {
                     const double delta = H_set;
-                    Q    = (C_eq - delta) / std::max(B_eq, 1e-12);
-                    H_up = bndry[bIn].C_P - Bi * Q;
-                    H_dn = H_up - delta;
+                    Q = (C_eq - delta) / std::max(B_eq, 1e-12);
+                    if (Q < 0.0) {
+                        // Closed
+                        Q    = 0.0;
+                        H_up = bndry[bIn].C_P;
+                        H_dn = bndry[bOut].C_M;
+                    } else {
+                        H_up = bndry[bIn].C_P - Bi * Q;
+                        H_dn = H_up - delta;
+                    }
                 }
 
                 if (H_dn < H_vap) {
