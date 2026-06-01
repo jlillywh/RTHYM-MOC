@@ -61,6 +61,7 @@ def test_node_si_sets_all_optional_fields():
         loss_coeff_out=0.6,
         closure_time=0.15,
         flipped=True,
+        ramp_time_s=10.0,
     )
 
     assert node.level == pytest.approx(80.0)
@@ -78,6 +79,7 @@ def test_node_si_sets_all_optional_fields():
     assert node.loss_coeff_out == pytest.approx(0.6)
     assert node.closure_time == pytest.approx(0.15)
     assert node.flipped is True
+    assert node.ramp_time == pytest.approx(10.0)
 
 
 def test_pipe_si_sets_underlying_us_customary_fields():
