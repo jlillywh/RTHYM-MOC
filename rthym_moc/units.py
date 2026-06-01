@@ -15,7 +15,7 @@ from typing import Any
 
 import numpy as np
 
-from ._rthym_moc import ControlRuleInput, ControlType, MOCSolver, NodeInput, PipeInput
+from ._rthym_moc import CavitationModel, ControlRuleInput, ControlType, MOCSolver, NodeInput, PipeInput
 
 TimeSeriesSchedule = Sequence[tuple[float, float]]
 
@@ -437,16 +437,26 @@ def run_si(
     p_vapor_kpa: float = DEFAULT_P_VAPOR_KPA,
     usf_tau: float = 0.5,
     k_bru: float = -1.0,
+    cavitation_model: CavitationModel | None = None,
 ) -> dict[str, Any]:
-    """Run a transient and return an SI-unit results dictionary."""
+    """Run a transient and return an SI-unit results dictionary.
 
-    results = solver.run(
-        total_time,
-        dt,
-        pressure_kpa_to_psi(p_vapor_kpa),
-        usf_tau,
-        k_bru,
-    )
+    Parameters
+    ----------
+    cavitation_model : CavitationModel | None
+        Optional cavitation model override for this run. When omitted, the
+        solver's currently configured cavitation model is used.
+    """
+
+    run_kwargs: dict[str, Any] = {
+        "p_vapor_psi": pressure_kpa_to_psi(p_vapor_kpa),
+        "usf_tau": usf_tau,
+        "k_bru": k_bru,
+    }
+    if cavitation_model is not None:
+        run_kwargs["cavitation_model"] = cavitation_model
+
+    results = solver.run(total_time, dt, **run_kwargs)
     return results_to_si(results)
 
 
@@ -460,6 +470,13 @@ def results_to_si(results: Mapping[str, Any]) -> dict[str, Any]:
     - ``node_pressure_kpa``
     - ``pipe_flow_m3s``
     - ``valve_velocity_m_s``
+
+    Optional additive cavity channels are converted/passed through when
+    present in the input dictionary:
+
+    - ``node_cavity_volume_m3``
+    - ``node_cavity_active``
+    - ``node_cavity_collapse_count``
     """
 
     out: dict[str, Any] = {"time": np.asarray(results.get("time", []), dtype=float)}
@@ -475,6 +492,16 @@ def results_to_si(results: Mapping[str, Any]) -> dict[str, Any]:
     if "node_cavitation" in results:
         out["node_cavitation"] = {
             str(key): np.asarray(value, dtype=int) for key, value in results["node_cavitation"].items()
+        }
+    if "node_cavity_volume" in results:
+        out["node_cavity_volume_m3"] = _convert_series_dict(results["node_cavity_volume"], FT3_TO_M3)
+    if "node_cavity_active" in results:
+        out["node_cavity_active"] = {
+            str(key): np.asarray(value, dtype=int) for key, value in results["node_cavity_active"].items()
+        }
+    if "node_cavity_collapse_count" in results:
+        out["node_cavity_collapse_count"] = {
+            str(key): np.asarray(value, dtype=int) for key, value in results["node_cavity_collapse_count"].items()
         }
     if "valve_position" in results:
         out["valve_position"] = {

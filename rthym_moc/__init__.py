@@ -37,6 +37,7 @@ Quick-start
 """
 
 from ._rthym_moc import (
+    CavitationModel,
     MOCSolver,
     NodeInput,
     PipeInput,
@@ -113,6 +114,7 @@ from .units import (
 from ._version import __version__
 
 __all__ = [
+    "CavitationModel",
     "MOCSolver",
     "NodeInput",
     "PipeInput",

@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <cmath>
 #include <stdexcept>
+#include <optional>
 
 #if defined(EMSCRIPTEN) || defined(__EMSCRIPTEN__)
 #include <emscripten/val.h>
@@ -41,6 +42,11 @@ enum class NodeType {
     HydropneumaticTank,  // Closed pressurized vessel — polytropic gas + orifice (R-THYM SurgeTank)
     InflowNode,          // Demand node that injects flow (demand sign is negative)
     OutflowNode,         // Standard demand node
+};
+
+enum class CavitationModel {
+    LegacyClamp,
+    DVCM,
 };
 
 // Convert string → NodeType (unknown strings become Junction)
@@ -119,6 +125,9 @@ struct SimResults {
     std::unordered_map<std::string, std::vector<double>> node_pressure;// psi
     std::unordered_map<std::string, std::vector<double>> pipe_flow_gpm;// GPM
     std::unordered_map<std::string, std::vector<int>>    node_cavitation; // 0/1
+    std::unordered_map<std::string, std::vector<double>> node_cavity_volume; // ft^3
+    std::unordered_map<std::string, std::vector<int>>    node_cavity_active; // 0/1
+    std::unordered_map<std::string, std::vector<int>>    node_cavity_collapse_count; // cumulative count
     // CheckValve closure dynamics telemetry
     std::unordered_map<std::string, std::vector<double>> valve_position;
     std::unordered_map<std::string, std::vector<double>> valve_velocity;
@@ -199,6 +208,11 @@ struct NodeState {
         double valve_position = 1.0;     // 1.0 = fully open, 0.0 = fully closed
         double valve_velocity = 0.0;     // rate of closure/opening (1/s)
         bool is_closing = false;         // true if closure is in progress
+    // Cavitation scaffolding state (Phase 1; no DVCM physics yet)
+    bool cavity_active = false;
+    double cavity_volume_ft3 = 0.0;
+    int cavity_collapse_count = 0;
+    int cavity_consecutive_collapses = 0;
     NodeInput input;
     // Pump: commanded target speed (%) separate from input.current_speed, which
     // PCV and other rules may override transiently during valve ramping.
@@ -256,7 +270,8 @@ public:
                    double dt            = 0.01,
                    double p_vapor_psi   = -14.0,
                    double usf_tau       = 0.5,
-                   double k_bru         = -1.0); // -1 = auto Vardy-Brown; 0 = no USF; >0 = static
+                   double k_bru         = -1.0,
+                   std::optional<CavitationModel> cavitation_model = std::nullopt); // -1 = auto Vardy-Brown; 0 = no USF; >0 = static
 
     // Step-by-step API for WASM integration
     void   initGrid();
@@ -266,6 +281,8 @@ public:
     void   set_p_vapor_psi(double p_vapor_psi) { p_vapor_ = p_vapor_psi * PSI_TO_FT; }
     void   set_usf_tau(double usf_tau) { usf_tau_ = usf_tau; }
     void   set_k_bru(double k_bru) { k_Bru_ = k_bru; }
+    void   set_cavitation_model(CavitationModel cavitation_model) { cavitation_model_ = cavitation_model; }
+    CavitationModel get_cavitation_model() const { return cavitation_model_; }
 
 #if defined(EMSCRIPTEN) || defined(__EMSCRIPTEN__)
     emscripten::val get_step_results() const;
@@ -303,6 +320,7 @@ private:
     // Simulation parameters
     double dt_      = 0.01;
     double p_vapor_ = -14.0 * PSI_TO_FT; // ft (converted from psi at init)
+    CavitationModel cavitation_model_ = CavitationModel::LegacyClamp;
     double usf_tau_ = 0.5;               // s  boundary-layer relaxation time constant
     // Brunone (1991) dimensionless USF coefficient.
     //   < 0  (default -1): compute dynamically each timestep via Vardy-Brown (1996)

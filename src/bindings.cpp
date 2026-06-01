@@ -81,6 +81,21 @@ static py::dict results_to_dict(SimResults&& r) {
     for (auto& [k, v] : r.node_cavitation) nc[k.c_str()] = to_numpy_int(std::move(v));
     out["node_cavitation"] = nc;
 
+    // node_cavity_volume dict
+    py::dict ncv;
+    for (auto& [k, v] : r.node_cavity_volume) ncv[k.c_str()] = to_numpy(std::move(v));
+    out["node_cavity_volume"] = ncv;
+
+    // node_cavity_active dict
+    py::dict nca;
+    for (auto& [k, v] : r.node_cavity_active) nca[k.c_str()] = to_numpy_int(std::move(v));
+    out["node_cavity_active"] = nca;
+
+    // node_cavity_collapse_count dict
+    py::dict nccc;
+    for (auto& [k, v] : r.node_cavity_collapse_count) nccc[k.c_str()] = to_numpy_int(std::move(v));
+    out["node_cavity_collapse_count"] = nccc;
+
     // pipe_flow_gpm dict
     py::dict pf;
     for (auto& [k, v] : r.pipe_flow_gpm) pf[k.c_str()] = to_numpy(std::move(v));
@@ -263,6 +278,12 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def_readwrite("youngs_modulus", &PipeInput::youngs_modulus)
         .def_readwrite("poissons_ratio", &PipeInput::poissons_ratio);
 
+    // ── CavitationModel Enum ─────────────────────────────────────────────
+    py::enum_<CavitationModel>(m, "CavitationModel")
+        .value("LegacyClamp", CavitationModel::LegacyClamp)
+        .value("DVCM", CavitationModel::DVCM)
+        .export_values();
+
     // ── ControlType Enum ───────────────────────────────────────────────────
     py::enum_<ControlType>(m, "ControlType")
         .value("Threshold", ControlType::Threshold)
@@ -347,6 +368,11 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def("set_pump_power", &MOCSolver::set_pump_power,
             py::arg("id"), py::arg("has_power"),
             "Set whether a pump has electrical power (affects PCV shutdown hold logic).")
+        .def("set_cavitation_model", &MOCSolver::set_cavitation_model,
+            py::arg("cavitation_model"),
+            "Select the cavitation model used by subsequent run() calls.")
+        .def("get_cavitation_model", &MOCSolver::get_cavitation_model,
+            "Return the currently configured cavitation model.")
         .def("set_generator_connected", &MOCSolver::set_pump_power,
             py::arg("id"), py::arg("connected"),
             "Set whether a turbine's generator is connected to the grid (equivalent to has_power).")
@@ -445,15 +471,21 @@ PYBIND11_MODULE(_rthym_moc, m) {
                double dt,
                double p_vapor_psi,
                double usf_tau,
-               double k_bru) -> py::dict {
+               double k_bru,
+               py::object cavitation_model) -> py::dict {
+                std::optional<CavitationModel> cavitation_model_opt = std::nullopt;
+                if (!cavitation_model.is_none()) {
+                    cavitation_model_opt = cavitation_model.cast<CavitationModel>();
+                }
                 return results_to_dict(
-                    self.run(total_time, dt, p_vapor_psi, usf_tau, k_bru));
+                    self.run(total_time, dt, p_vapor_psi, usf_tau, k_bru, cavitation_model_opt));
             },
             py::arg("total_time"),
             py::arg("dt")          = 0.01,
             py::arg("p_vapor_psi") = -14.0,
             py::arg("usf_tau")     = 0.5,
             py::arg("k_bru")       = -1.0,
+            py::arg("cavitation_model") = py::none(),
             R"pbdoc(
             Run the transient simulation and return results.
 
@@ -482,6 +514,10 @@ PYBIND11_MODULE(_rthym_moc, m) {
 
                 **> 0** — User-supplied static value (calibrated). Typical
                 turbulent pipe flow range: 0.02–0.15.
+            cavitation_model : CavitationModel | None
+                Optional cavitation model selector. When omitted, run() uses
+                the solver's current setting from ``set_cavitation_model()``.
+                The default solver setting is ``LegacyClamp``.
 
             Returns
             -------
@@ -491,6 +527,11 @@ PYBIND11_MODULE(_rthym_moc, m) {
               "node_pressure"    : dict[node_id] → numpy.ndarray (num_steps,)  psi
               "node_cavitation"  : dict[node_id] → numpy.ndarray (num_steps,)  0/1
               "pipe_flow_gpm"    : dict[pipe_id] → numpy.ndarray (num_steps,)  GPM
+
+                        Optional additive keys (experimental cavity scaffolding):
+                            "node_cavity_volume" : dict[node_id] → numpy.ndarray (num_steps,)  ft³
+                            "node_cavity_active" : dict[node_id] → numpy.ndarray (num_steps,)  0/1
+                            "node_cavity_collapse_count" : dict[node_id] → numpy.ndarray (num_steps,)  cumulative count
             )pbdoc");
 
     // ── Module-level convenience constants ────────────────────────────────
