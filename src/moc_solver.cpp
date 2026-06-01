@@ -245,6 +245,16 @@ void MOCSolver::set_pump_speed(const std::string& id, double pct) {
     }
 }
 
+void MOCSolver::set_pump_command_speed(const std::string& id, double pct) {
+    auto& node_input = requireNodeInputMutable(node_inputs_, id, "set_pump_command_speed()");
+    requireNodeType(node_input, id, "set_pump_command_speed()", {NodeType::Pump}, "Pump");
+    node_input.current_speed = pct;
+    auto it = node_idx_map_.find(id);
+    if (it != node_idx_map_.end()) {
+        nodes_[it->second].command_speed = pct;
+    }
+}
+
 void MOCSolver::set_pump_power(const std::string& id, bool has_power) {
     auto& node_input = requireNodeInputMutable(node_inputs_, id, "set_pump_power()");
     requireNodeType(node_input, id, "set_pump_power()", {NodeType::Pump, NodeType::Turbine}, "Pump or Turbine");
@@ -659,6 +669,18 @@ void MOCSolver::stepMOC() {
     // Enforce VFD Pump Speed acceleration/deceleration limits
     for (auto& ns : nodes_) {
         if (ns.input.type == NodeType::Pump) {
+            bool under_pcv_close = false;
+            for (const auto& state : control_rule_states_) {
+                if (state.input.type == ControlType::PCV &&
+                    state.input.monitored_node == ns.input.id &&
+                    state.pcv_phase == "closing") {
+                    under_pcv_close = true;
+                    break;
+                }
+            }
+            if (under_pcv_close) {
+                continue;
+            }
             if (ns.input.has_power) {
                 double s_current = ns.input.current_speed;
                 double s_cmd = ns.command_speed;
@@ -1880,7 +1902,7 @@ void MOCSolver::evaluateControlRules(double t_now) {
                             }
                         } else if (pump.input.has_power) {
                             pump.input.current_speed = 100.0;
-                            pump.command_speed = 100.0;
+                            // Keep pump.command_speed at 0.0 (user's target) to allow PCV to closing state
                         } else if (pump.input.inertia_wr2 <= 0.0) {
                             pump.input.current_speed = 0.0;
                             pump.command_speed = 0.0;
