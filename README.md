@@ -5,7 +5,11 @@
 [![PyPI](https://img.shields.io/pypi/v/rthym-moc)](https://pypi.org/project/rthym-moc/)
 [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fquickstart_notebook.ipynb)
 
-A high-performance 1-D Method of Characteristics (MOC) transient hydraulic solver with a C++17 core and a Python API via PyBind11.  Originally developed as the engine behind the [R-THYM](https://lillywhitewater.com/products/r-thym/) web application, it is released here as a standalone, open-source library suitable for research scripting, parametric studies, and automated validation pipelines.
+A high-performance tool for simulating water hammer and other pressure surges
+in pipe networks. It uses a C++17 core with a Python API, and it was originally
+developed as the engine behind the [R-THYM](https://lillywhitewater.com/products/r-thym/)
+web application. The project is released here as a standalone, open-source
+library for research, design studies, and automated validation.
 
 ## Contents
 
@@ -47,8 +51,12 @@ RTHYM-MOC solves the 1-D water-hammer equations using the Method of Characterist
 - **Network-capable**: arbitrary topologies of pipes, junctions, reservoirs, air valves, valves, pumps, standpipe surge tanks, hydropneumatic tanks, and turbines.
 - **Time-varying events**: valve schedules, pump trip/start, demand changes — specified either as discrete step changes between `run()` calls or as continuous piecewise-linear schedules registered before `run()`.
 - **Cavitation detection**: integrates a column-separation flag (pressure < vapour pressure) at each node. *Note: This is a first-order head-clamping model. It does not integrate or track vapor cavity volume over time or simulate column separation collapse surges (water column collision). For severe cavitation, a Discrete Vapor Cavity Model (DVCM) is recommended.*
-- **Study summaries**: built-in helpers tun raw time series into node/pipe envelopes, cavitation duration, and CSV/JSON exports — see [Post-processing & study reports](#post-processing--study-reports).
-- **Fast**: on the standard Joukowsky case, the C++ core is roughly **200–400× faster** than [TSNet](https://github.com/glorialulu/TSNet) (pure Python) on typical hardware — see [Benchmarking](#benchmarking).
+- **Study summaries**: built-in helpers turn raw time series into node/pipe
+  envelopes, cavitation duration, and CSV/JSON exports — see [Post-processing &
+  study reports](#post-processing--study-reports).
+- **Fast**: in the representative Joukowsky benchmark, the C++ core is much
+  faster than [TSNet](https://github.com/glorialulu/TSNet) (pure Python) on
+  typical hardware — see [Benchmarking](#benchmarking).
 - **Validated**: automated regressions against R-THYM exports, EPANET/wntr steady state, and analytical checks — Joukowsky first-step error < 0.05 %, wave period error < 0.2 % — see [Validation](#validation).
 
 ---
@@ -74,10 +82,9 @@ Verify:
 python -c "import rthym_moc; print(rthym_moc.__version__)"
 ```
 
-**Platforms:** Linux, macOS, and **Windows** are supported (Python 3.9–3.12; see CI).
-Starting with releases built by the wheel-publishing workflow, prebuilt wheels are
-published for the most common platforms so most users do not need a local C++
-compiler:
+**Platforms:** Linux, macOS, and **Windows** are supported (Python 3.9–3.12;
+see CI). For most users, prebuilt wheels are published for the common
+platform/Python combinations below, so no local C++ compiler is needed.
 
 | OS | Wheel architecture | Python |
 |----|--------------------|--------|
@@ -95,8 +102,8 @@ distribution and compiles the C++ extension locally. Source builds require a
 | macOS | Xcode Command Line Tools (Clang) |
 | Windows | [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the **“Desktop development with C++”** workload (MSVC 2019 or newer). Use a normal **x64** Command Prompt or PowerShell, not WSL, when installing into Windows Python. |
 
-On Windows, if `pip install rthym-moc` falls back to a source build and fails with
-a compiler error, install the Build Tools, open a new terminal, and retry.
+On Windows, if `pip install rthym-moc` falls back to a source build and fails
+with a compiler error, install the Build Tools, open a new terminal, and retry.
 
 ### Requirements
 

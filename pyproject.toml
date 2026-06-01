@@ -34,9 +34,14 @@ benchmark = [
     "h5py",
     "tqdm",
     "numba",
-    "numpy<3",
-    "setuptools>=64,<83",
+    "numpy<2",
+    "setuptools<81",
 ]
+
+[project.urls]
+Homepage = "https://github.com/jlillywh/RTHYM-MOC"
+Repository = "https://github.com/jlillywh/RTHYM-MOC"
+Issues = "https://github.com/jlillywh/RTHYM-MOC/issues"
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
