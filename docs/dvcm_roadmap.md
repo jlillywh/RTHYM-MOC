@@ -30,8 +30,8 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 ### Checklist
 
 - [x] Capture baseline metrics from current tests (runtime, failures, key pressure traces). See `docs/dvcm_phase0_baseline.md`.
-- [ ] Record baseline cavitation behavior in a short design note.
-- [ ] Create DVCM epic with linked issues for each phase.
+- [x] Record baseline cavitation behavior in a short design note. See `docs/dvcm_baseline_cavitation_note.md`.
+- [x] Create DVCM epic with linked issues for each phase. Epic: https://github.com/jlillywh/RTHYM-MOC/issues/52
 - [ ] Require CI green and targeted benchmark pass for each DVCM PR.
 
 ### Exit criteria
