@@ -227,7 +227,9 @@ def test_cavity_output_channels_are_additive() -> None:
     # New additive channels are present and aligned in length.
     assert "node_cavity_volume" in results
     assert "node_cavity_active" in results
+    assert "node_cavity_collapse_flag" in results
     assert "node_cavity_collapse_count" in results
     assert len(results["node_cavity_volume"]["J1"]) == len(results["time"])
     assert len(results["node_cavity_active"]["J1"]) == len(results["time"])
+    assert len(results["node_cavity_collapse_flag"]["J1"]) == len(results["time"])
     assert len(results["node_cavity_collapse_count"]["J1"]) == len(results["time"])

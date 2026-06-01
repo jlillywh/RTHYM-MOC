@@ -71,16 +71,16 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 ### Checklist
 
-- [ ] Implement regime logic: liquid-full, cavity-active, collapse transition.
-- [ ] Enforce non-negative cavity volume and physically bounded updates.
-- [ ] Add hysteresis/tolerances to prevent mode-chatter near vapor threshold.
-- [ ] Preserve current behavior for unsupported node types.
-- [ ] Record cavity diagnostics per step (volume, active state, collapse flag).
-- [ ] Add unit tests for cavity initiation and collapse at junction nodes.
+- [x] Implement regime logic: liquid-full, cavity-active, collapse transition.
+- [x] Enforce non-negative cavity volume and physically bounded updates.
+- [x] Add hysteresis/tolerances to prevent mode-chatter near vapor threshold.
+- [x] Preserve current behavior for unsupported node types.
+- [x] Record cavity diagnostics per step (volume, active state, collapse flag).
+- [x] Add unit tests for cavity initiation and collapse at junction nodes.
 
 ### Exit criteria
 
-- Junction DVCM passes dedicated tests and does not destabilize legacy suite.
+- Junction DVCM passes dedicated tests and does not destabilize legacy suite. Verified by `tests/test_dvcm_junction_regime.py`, `tests/test_dvcm_unsupported_nodes.py`, and full-suite validation (`306 passed, 2 deselected`) with `pytest -q --cov=rthym_moc --cov-report=term-missing` at 100% package coverage.
 
 ## Phase 3: Validation Harness and Reference Cases
 
@@ -219,9 +219,9 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 ## Master checklist
 
-- [ ] Phase 0 complete
+- [x] Phase 0 complete
 - [x] Phase 1 complete
-- [ ] Phase 2 complete
+- [x] Phase 2 complete
 - [ ] Phase 3 complete
 - [ ] Phase 4 complete
 - [ ] Phase 5 complete

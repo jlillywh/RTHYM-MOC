@@ -476,6 +476,7 @@ def results_to_si(results: Mapping[str, Any]) -> dict[str, Any]:
 
     - ``node_cavity_volume_m3``
     - ``node_cavity_active``
+    - ``node_cavity_collapse_flag``
     - ``node_cavity_collapse_count``
     """
 
@@ -498,6 +499,10 @@ def results_to_si(results: Mapping[str, Any]) -> dict[str, Any]:
     if "node_cavity_active" in results:
         out["node_cavity_active"] = {
             str(key): np.asarray(value, dtype=int) for key, value in results["node_cavity_active"].items()
+        }
+    if "node_cavity_collapse_flag" in results:
+        out["node_cavity_collapse_flag"] = {
+            str(key): np.asarray(value, dtype=int) for key, value in results["node_cavity_collapse_flag"].items()
         }
     if "node_cavity_collapse_count" in results:
         out["node_cavity_collapse_count"] = {

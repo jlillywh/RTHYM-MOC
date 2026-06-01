@@ -49,6 +49,12 @@ enum class CavitationModel {
     DVCM,
 };
 
+enum class CavityRegime {
+    LiquidFull,
+    CavityActive,
+    CollapseTransition,
+};
+
 // Convert string → NodeType (unknown strings become Junction)
 NodeType parseNodeType(const std::string& s);
 std::string nodeTypeToStr(NodeType t);
@@ -127,6 +133,7 @@ struct SimResults {
     std::unordered_map<std::string, std::vector<int>>    node_cavitation; // 0/1
     std::unordered_map<std::string, std::vector<double>> node_cavity_volume; // ft^3
     std::unordered_map<std::string, std::vector<int>>    node_cavity_active; // 0/1
+    std::unordered_map<std::string, std::vector<int>>    node_cavity_collapse_flag; // 0/1, this step
     std::unordered_map<std::string, std::vector<int>>    node_cavity_collapse_count; // cumulative count
     // CheckValve closure dynamics telemetry
     std::unordered_map<std::string, std::vector<double>> valve_position;
@@ -211,8 +218,10 @@ struct NodeState {
     // Cavitation scaffolding state (Phase 1; no DVCM physics yet)
     bool cavity_active = false;
     double cavity_volume_ft3 = 0.0;
+    bool cavity_collapsed_this_step = false;
     int cavity_collapse_count = 0;
     int cavity_consecutive_collapses = 0;
+    CavityRegime cavity_regime = CavityRegime::LiquidFull;
     NodeInput input;
     // Pump: commanded target speed (%) separate from input.current_speed, which
     // PCV and other rules may override transiently during valve ramping.

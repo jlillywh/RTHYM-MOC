@@ -834,6 +834,8 @@ void MOCSolver::stepMOC() {
                 return ( Beq - std::sqrt(std::max(0.0, Beq*Beq - 4.0*Keq*Ceq))) / (2.0*Keq);
         };
 
+        ns.cavity_collapsed_this_step = false;
+
         switch (n.type) {
 
         // ── Fixed-head boundaries ──────────────────────────────────────────
@@ -1568,9 +1570,70 @@ void MOCSolver::stepMOC() {
                 sum_AB_C += AB * bndry[pi].C_M;
                 sum_AB   += AB;
             }
-            double H_P = (sum_AB > 1e-12)
+            const double H_candidate = (sum_AB > 1e-12)
                 ? (sum_AB_C - Q_dem) / sum_AB
                 : getInitialHead(ns);
+            double H_P = H_candidate;
+
+            if (cavitation_model_ == CavitationModel::DVCM) {
+                constexpr double H_CAVITY_ENTER_TOL = 0.10 * PSI_TO_FT;
+                constexpr double H_CAVITY_LEAVE_TOL = 0.50 * PSI_TO_FT;
+                const bool enter_cavity = H_candidate <= (H_vap - H_CAVITY_ENTER_TOL);
+                const bool leave_cavity = H_candidate >= (H_vap + H_CAVITY_LEAVE_TOL);
+                double cavity_capacity_ft3 = 0.0;
+                for (int pi : in_pipes) {
+                    cavity_capacity_ft3 += 0.5 * pipes_[pi].area * pipes_[pi].L;
+                }
+                for (int pi : out_pipes) {
+                    cavity_capacity_ft3 += 0.5 * pipes_[pi].area * pipes_[pi].L;
+                }
+                const double imbalance_cfs = std::abs(sum_AB * (H_candidate - H_vap));
+                const double max_step_delta_ft3 = 0.25 * cavity_capacity_ft3;
+                const double bounded_step_delta_ft3 = std::min(imbalance_cfs * dt_, max_step_delta_ft3);
+
+                switch (ns.cavity_regime) {
+                    case CavityRegime::LiquidFull:
+                        if (enter_cavity) {
+                            ns.cavity_regime = CavityRegime::CavityActive;
+                            ns.cavity_active = true;
+                            ns.cavity_volume_ft3 = std::min(
+                                cavity_capacity_ft3,
+                                std::max(0.0, ns.cavity_volume_ft3 + bounded_step_delta_ft3));
+                        } else {
+                            ns.cavity_active = false;
+                            ns.cavity_volume_ft3 = 0.0;
+                            ns.cavity_consecutive_collapses = 0;
+                        }
+                        break;
+                    case CavityRegime::CavityActive:
+                        if (leave_cavity) {
+                            ns.cavity_regime = CavityRegime::CollapseTransition;
+                            ns.cavity_active = false;
+                            ns.cavity_volume_ft3 = std::max(0.0, ns.cavity_volume_ft3 - bounded_step_delta_ft3);
+                            ns.cavity_collapsed_this_step = true;
+                            ns.cavity_collapse_count += 1;
+                            ns.cavity_consecutive_collapses += 1;
+                        } else {
+                            ns.cavity_active = true;
+                            ns.cavity_volume_ft3 = std::min(
+                                cavity_capacity_ft3,
+                                std::max(0.0, ns.cavity_volume_ft3 + bounded_step_delta_ft3));
+                        }
+                        break;
+                    case CavityRegime::CollapseTransition:
+                        if (ns.cavity_volume_ft3 <= bounded_step_delta_ft3 &&
+                            H_candidate >= (H_vap - H_CAVITY_ENTER_TOL)) {
+                            ns.cavity_regime = CavityRegime::LiquidFull;
+                            ns.cavity_active = false;
+                            ns.cavity_volume_ft3 = 0.0;
+                            ns.cavity_consecutive_collapses = 0;
+                        } else {
+                            ns.cavity_active = false;
+                            ns.cavity_volume_ft3 = std::max(0.0, ns.cavity_volume_ft3 - bounded_step_delta_ft3);
+                        }
+                        break;
+                }
+            }
             // Cavitation limit: clamp HGL to vapor pressure.
             // NOTE: This is a simplified, first-order cavitation model. It detects
             // when the local pressure reaches vapor pressure, but it does not
@@ -1603,6 +1666,19 @@ void MOCSolver::stepMOC() {
         auto& ns = nodes_[ni];
         const auto& n = ns.input;
 
+        const bool is_junction_like =
+            n.type == NodeType::Junction ||
+            n.type == NodeType::InflowNode ||
+            n.type == NodeType::OutflowNode;
+        if (cavitation_model_ == CavitationModel::DVCM && is_junction_like) {
+            if (!ns.cavity_active) {
+                ns.cavity_volume_ft3 = std::max(ns.cavity_volume_ft3, 0.0);
+            } else {
+                ns.cavity_volume_ft3 = std::max(ns.cavity_volume_ft3, 0.0);
+            }
+            continue;
+        }
+
         double H = getInitialHead(ns);
         const auto& in_p = node_inflow_pipes_.at(n.id);
         const auto& out_p = node_outflow_pipes_.at(n.id);
@@ -1628,6 +1704,7 @@ void MOCSolver::stepMOC() {
         const double P_psi = (H - n.elevation) / PSI_TO_FT;
         const bool is_cavity_active = (P_psi <= P_vapor);
         const bool collapsed_this_step = ns.cavity_active && !is_cavity_active;
+        ns.cavity_collapsed_this_step = collapsed_this_step;
 
         if (collapsed_this_step) {
             ns.cavity_collapse_count += 1;
@@ -1637,6 +1714,7 @@ void MOCSolver::stepMOC() {
         }
 
         ns.cavity_active = is_cavity_active;
+        ns.cavity_regime = is_cavity_active ? CavityRegime::CavityActive : CavityRegime::LiquidFull;
         if (!is_cavity_active) {
             ns.cavity_volume_ft3 = 0.0;
         } else {
@@ -1684,6 +1762,7 @@ void MOCSolver::recordStep(SimResults& results) const {
         results.node_cavitation[n.id].push_back(P_psi <= P_vapor ? 1 : 0);
         results.node_cavity_volume[n.id].push_back(ns.cavity_volume_ft3);
         results.node_cavity_active[n.id].push_back(ns.cavity_active ? 1 : 0);
+        results.node_cavity_collapse_flag[n.id].push_back(ns.cavity_collapsed_this_step ? 1 : 0);
         results.node_cavity_collapse_count[n.id].push_back(ns.cavity_collapse_count);
 
         // CheckValve closure dynamics telemetry
@@ -1732,6 +1811,7 @@ SimResults MOCSolver::run(double total_time_s, double dt,
         results.node_cavitation[ni.id].reserve(num_steps);
         results.node_cavity_volume[ni.id].reserve(num_steps);
         results.node_cavity_active[ni.id].reserve(num_steps);
+        results.node_cavity_collapse_flag[ni.id].reserve(num_steps);
         results.node_cavity_collapse_count[ni.id].reserve(num_steps);
         if (ni.type == NodeType::Pump) {
             results.pump_speed[ni.id].reserve(num_steps);
