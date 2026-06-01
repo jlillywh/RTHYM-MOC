@@ -88,6 +88,60 @@ def test_threshold_pressure_valve_lt():
     assert final_flow > 10.0, f"Expected flow to be positive after valve opens, got {final_flow}"
 
 
+def test_threshold_resets_controlled_device_when_condition_clears():
+    """Threshold controls must release to 0% when condition is no longer met."""
+    solver = rthym_moc.MOCSolver()
+    solver.add_node(_make_node("R1", "PressureBoundary", head=150.0))
+    solver.add_node(_make_node("J1", "Junction", elevation=0.0, head=150.0))
+    solver.add_node(_make_node("V1", "Valve", diameter=12.0, current_setting=0.0))
+    solver.add_node(_make_node("R2", "PressureBoundary", head=50.0))
+
+    solver.add_pipe(_make_pipe("P1", "R1", "J1", length=100.0, diameter=12.0, flow_gpm=100.0))
+    solver.add_pipe(_make_pipe("P2", "J1", "V1", length=100.0, diameter=12.0, flow_gpm=100.0))
+    solver.add_pipe(_make_pipe("P3", "V1", "R2", length=100.0, diameter=12.0, flow_gpm=100.0))
+
+    rule = rthym_moc.ControlRuleInput()
+    rule.id = "rule_reset"
+    rule.type = rthym_moc.ControlType.Threshold
+    rule.monitored_node = "J1"
+    rule.controlled_node = "V1"
+    rule.monitored_quantity = "pressure"
+    rule.condition = "gt"
+    rule.threshold = 45.0
+    rule.target = 100.0
+    solver.add_control_rule(rule)
+
+    # Start above threshold (opens valve), then drop below threshold (must reset to 0%).
+    solver.set_head_schedule("R1", [(0.0, 150.0), (0.2, 150.0), (0.3, 80.0)])
+
+    res = solver.run(total_time=0.6, dt=0.01)
+    assert res["valve_setting"]["V1"][-1] < 1.0
+
+
+def test_deadband_preserves_initial_on_state_inside_band():
+    """Deadband startup should keep an initially ON pump ON when level starts in-band."""
+    solver = rthym_moc.MOCSolver()
+    solver.add_node(_make_node("T1", "Tank", elevation=0.0, head=10.0, max_level=20.0, tank_area=0.05))
+    solver.add_node(_make_node("Pmp1", "Pump", design_head=50.0, design_flow=100.0, current_speed=100.0))
+    solver.add_node(_make_node("R1", "PressureBoundary", head=50.0))
+    solver.add_pipe(_make_pipe("P1", "R1", "Pmp1", length=50.0, diameter=6.0, flow_gpm=50.0))
+    solver.add_pipe(_make_pipe("P2", "Pmp1", "T1", length=50.0, diameter=6.0, flow_gpm=50.0))
+
+    rule = rthym_moc.ControlRuleInput()
+    rule.id = "db_fill_inband"
+    rule.type = rthym_moc.ControlType.Deadband
+    rule.monitored_node = "T1"
+    rule.controlled_node = "Pmp1"
+    rule.monitored_quantity = "level"
+    rule.threshold = 40.0
+    rule.deadband = 20.0
+    rule.action = "fill"
+    solver.add_control_rule(rule)
+
+    res = solver.run(total_time=0.1, dt=0.01)
+    assert res["pipe_flow_gpm"]["P1"][-1] > 10.0
+
+
 def test_deadband_level_pump_fill():
     """Verify deadband control with fill action."""
     # Scenario 1: Initial level is 35% (below 40% threshold), pump should start and run (ON)
