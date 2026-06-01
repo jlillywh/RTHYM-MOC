@@ -72,6 +72,7 @@ struct NodeInput {
     double  inertia_wr2         = 0.0;   // lb·ft² (rotational inertia, 0 = no inertia/falls back to schedule)
     double  speed_rpm           = 1750.0;// rated speed (RPM)
     double  efficiency          = 0.80;  // rated pump efficiency (0.0 to 1.0)
+    double  ramp_time           = 0.0;   // s (VFD pump speed acceleration/deceleration limit, 0 = instant)
 
     // Valve / Turbine fields
     double  current_setting     = 100.0; // % open (100 = fully open)

@@ -124,6 +124,7 @@ def node_si(
     inertia_wr2_kg_m2: float | None = None,
     speed_rpm: float | None = None,
     efficiency: float | None = None,
+    ramp_time_s: float | None = None,
 ) -> NodeInput:
     """Create a :class:`NodeInput` from SI-unit keyword arguments.
 
@@ -185,6 +186,8 @@ def node_si(
         node.speed_rpm = float(speed_rpm)
     if efficiency is not None:
         node.efficiency = float(efficiency)
+    if ramp_time_s is not None:
+        node.ramp_time = float(ramp_time_s)
 
     return node
 

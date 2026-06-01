@@ -46,6 +46,7 @@ class NodeInput:
     inertia_wr2: float
     speed_rpm: float
     efficiency: float
+    ramp_time: float
 
     def __init__(self) -> None: ...
 

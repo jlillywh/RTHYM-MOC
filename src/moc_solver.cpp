@@ -656,6 +656,28 @@ void MOCSolver::initGrid() {
 void MOCSolver::stepMOC() {
     evaluateControlRules(t_now_);
 
+    // Enforce VFD Pump Speed acceleration/deceleration limits
+    for (auto& ns : nodes_) {
+        if (ns.input.type == NodeType::Pump) {
+            if (ns.input.has_power) {
+                double s_current = ns.input.current_speed;
+                double s_cmd = ns.command_speed;
+                if (s_current != s_cmd) {
+                    if (ns.input.ramp_time <= 0.0) {
+                        ns.input.current_speed = s_cmd;
+                    } else {
+                        double delta_s_max = (100.0 / ns.input.ramp_time) * dt_;
+                        if (s_current < s_cmd) {
+                            ns.input.current_speed = std::min(s_cmd, s_current + delta_s_max);
+                        } else {
+                            ns.input.current_speed = std::max(s_cmd, s_current - delta_s_max);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     const double g          = G_FT_S2;
     const double alpha_filt = dt_ / usf_tau_; // IIR coefficient: dt / τ_BL
 
@@ -1645,7 +1667,6 @@ SimResults MOCSolver::run(double total_time_s, double dt,
                 auto nit = node_idx_map_.find(pid);
                 if (nit != node_idx_map_.end()) {
                     const double val = interpSchedule(sched, t_now);
-                    nodes_[nit->second].input.current_speed = val;
                     nodes_[nit->second].command_speed = val;
                 }
             }
@@ -1726,7 +1747,6 @@ void MOCSolver::evaluateControlRules(double t_now) {
                     auto& ns = nodes_[it->second];
                     if (ns.input.type == NodeType::Pump) {
                         const double spd = std::clamp(rule.target, 0.0, 100.0);
-                        ns.input.current_speed = spd;
                         ns.command_speed = spd;
                     } else if (ns.input.type == NodeType::Valve || ns.input.type == NodeType::Turbine) {
                         ns.input.current_setting = std::clamp(rule.target, 0.0, 100.0);
@@ -1768,7 +1788,6 @@ void MOCSolver::evaluateControlRules(double t_now) {
                 auto& ns = nodes_[it->second];
                 double target_val = active ? 100.0 : 0.0;
                 if (ns.input.type == NodeType::Pump) {
-                    ns.input.current_speed = target_val;
                     ns.command_speed = target_val;
                 } else if (ns.input.type == NodeType::Valve || ns.input.type == NodeType::Turbine) {
                     ns.input.current_setting = target_val;
@@ -1805,7 +1824,6 @@ void MOCSolver::evaluateControlRules(double t_now) {
             if (it != node_idx_map_.end()) {
                 auto& ns = nodes_[it->second];
                 if (ns.input.type == NodeType::Pump) {
-                    ns.input.current_speed = clamped_output;
                     ns.command_speed = clamped_output;
                 } else if (ns.input.type == NodeType::Valve || ns.input.type == NodeType::Turbine) {
                     ns.input.current_setting = clamped_output;
@@ -1842,6 +1860,7 @@ void MOCSolver::evaluateControlRules(double t_now) {
                         valve.input.current_setting = 100.0;
                     }
                     pump.input.current_speed = cmd_speed;
+                    pump.command_speed = cmd_speed;
                 } else {
                     if (state.pcv_phase == "running" || state.pcv_phase == "opening") {
                         state.pcv_phase = "closing";
@@ -1857,16 +1876,20 @@ void MOCSolver::evaluateControlRules(double t_now) {
                             state.pcv_phase = "idle";
                             if (pump.input.inertia_wr2 <= 0.0) {
                                 pump.input.current_speed = 0.0;
+                                pump.command_speed = 0.0;
                             }
                         } else if (pump.input.has_power) {
                             pump.input.current_speed = 100.0;
+                            pump.command_speed = 100.0;
                         } else if (pump.input.inertia_wr2 <= 0.0) {
                             pump.input.current_speed = 0.0;
+                            pump.command_speed = 0.0;
                         }
                     } else if (state.pcv_phase == "idle" || state.pcv_phase == "off") {
                         valve.input.current_setting = 0.0;
                         if (pump.input.inertia_wr2 <= 0.0) {
                             pump.input.current_speed = 0.0;
+                            pump.command_speed = 0.0;
                         }
                     }
                 }
