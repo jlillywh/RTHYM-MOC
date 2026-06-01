@@ -656,6 +656,18 @@ void MOCSolver::initGrid() {
             state.integral_error = initial_val / rule.ki;
         }
 
+        state.last_active = false;
+        if (rule.type == ControlType::Deadband || rule.type == ControlType::Threshold) {
+            if (v_it != node_idx_map_.end()) {
+                const auto& ctrl_node = nodes_[v_it->second];
+                if (ctrl_node.input.type == NodeType::Pump) {
+                    state.last_active = (ctrl_node.command_speed > 0.0);
+                } else if (ctrl_node.input.type == NodeType::Valve || ctrl_node.input.type == NodeType::Turbine) {
+                    state.last_active = (ctrl_node.input.current_setting > 0.0);
+                }
+            }
+        }
+
         control_rule_states_.push_back(state);
     }
 }
@@ -1837,6 +1849,15 @@ void MOCSolver::evaluateControlRules(double t_now) {
                 }
                 state.last_active = true;
             } else {
+                auto it = node_idx_map_.find(rule.controlled_node);
+                if (it != node_idx_map_.end()) {
+                    auto& ns = nodes_[it->second];
+                    if (ns.input.type == NodeType::Pump) {
+                        ns.command_speed = 0.0;
+                    } else if (ns.input.type == NodeType::Valve || ns.input.type == NodeType::Turbine) {
+                        ns.input.current_setting = 0.0;
+                    }
+                }
                 state.last_active = false;
             }
         } 
