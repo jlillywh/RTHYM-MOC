@@ -341,6 +341,9 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def("set_pump_speed", &MOCSolver::set_pump_speed,
             py::arg("id"), py::arg("pct_speed"),
             "Update a pump's speed (0=off, 100=rated speed) mid-simulation.")
+        .def("set_pump_command_speed", &MOCSolver::set_pump_command_speed,
+            py::arg("id"), py::arg("pct_speed"),
+            "Update a pump's commanded target speed mid-simulation for VFD ramping.")
         .def("set_pump_power", &MOCSolver::set_pump_power,
             py::arg("id"), py::arg("has_power"),
             "Set whether a pump has electrical power (affects PCV shutdown hold logic).")

@@ -239,6 +239,7 @@ EMSCRIPTEN_BINDINGS(rthym_moc) {
         .function("clear_control_rules", &MOCSolver::clear_control_rules)
         .function("set_valve_setting", &MOCSolver::set_valve_setting)
         .function("set_pump_speed", &MOCSolver::set_pump_speed)
+        .function("set_pump_command_speed", &MOCSolver::set_pump_command_speed)
         .function("set_pump_power", &MOCSolver::set_pump_power)
         .function("set_generator_connected", &MOCSolver::set_pump_power)
         .function("set_node_demand", &MOCSolver::set_node_demand)
