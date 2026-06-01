@@ -55,7 +55,7 @@ def test_phase1_e2e_contract_legacy_mode_stable_and_additive() -> None:
         assert key in results
 
     # Phase 1 additive channels must be available and aligned.
-    for key in ("node_cavity_volume", "node_cavity_active", "node_cavity_collapse_count"):
+    for key in ("node_cavity_volume", "node_cavity_active", "node_cavity_collapse_flag", "node_cavity_collapse_count"):
         assert key in results
 
     n = len(results["time"])
@@ -64,6 +64,7 @@ def test_phase1_e2e_contract_legacy_mode_stable_and_additive() -> None:
     assert len(results["node_cavitation"]["J1"]) == n
     assert len(results["node_cavity_volume"]["J1"]) == n
     assert len(results["node_cavity_active"]["J1"]) == n
+    assert len(results["node_cavity_collapse_flag"]["J1"]) == n
     assert len(results["node_cavity_collapse_count"]["J1"]) == n
 
     # Legacy mode should remain equivalent to explicit LegacyClamp selection.
@@ -90,4 +91,5 @@ def test_phase1_e2e_contract_legacy_mode_stable_and_additive() -> None:
     assert "pipe_flow_m3s" in si_results
     assert "node_cavity_volume_m3" in si_results
     assert "node_cavity_active" in si_results
+    assert "node_cavity_collapse_flag" in si_results
     assert "node_cavity_collapse_count" in si_results

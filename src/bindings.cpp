@@ -91,6 +91,11 @@ static py::dict results_to_dict(SimResults&& r) {
     for (auto& [k, v] : r.node_cavity_active) nca[k.c_str()] = to_numpy_int(std::move(v));
     out["node_cavity_active"] = nca;
 
+    // node_cavity_collapse_flag dict
+    py::dict nccf;
+    for (auto& [k, v] : r.node_cavity_collapse_flag) nccf[k.c_str()] = to_numpy_int(std::move(v));
+    out["node_cavity_collapse_flag"] = nccf;
+
     // node_cavity_collapse_count dict
     py::dict nccc;
     for (auto& [k, v] : r.node_cavity_collapse_count) nccc[k.c_str()] = to_numpy_int(std::move(v));
@@ -531,6 +536,7 @@ PYBIND11_MODULE(_rthym_moc, m) {
                         Optional additive keys (experimental cavity scaffolding):
                             "node_cavity_volume" : dict[node_id] → numpy.ndarray (num_steps,)  ft³
                             "node_cavity_active" : dict[node_id] → numpy.ndarray (num_steps,)  0/1
+                            "node_cavity_collapse_flag" : dict[node_id] → numpy.ndarray (num_steps,)  0/1 this step
                             "node_cavity_collapse_count" : dict[node_id] → numpy.ndarray (num_steps,)  cumulative count
             )pbdoc");
 

@@ -17,6 +17,7 @@ class _SimResultsRequired(TypedDict):
 class SimResultsDict(_SimResultsRequired, total=False):
     node_cavity_volume: dict[str, NDArray[np.float64]]
     node_cavity_active: dict[str, NDArray[np.int_]]
+    node_cavity_collapse_flag: dict[str, NDArray[np.int_]]
     node_cavity_collapse_count: dict[str, NDArray[np.int_]]
     valve_position: dict[str, NDArray[np.float64]]
     valve_velocity: dict[str, NDArray[np.float64]]
