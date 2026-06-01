@@ -1,0 +1,234 @@
+# DVCM Implementation Roadmap
+
+This document provides a full-scale, staged plan for adding a Discrete Vapor Cavity Model (DVCM) to RTHYM-MOC while protecting current behavior.
+
+## Goals
+
+- Add physically meaningful cavitation dynamics (cavity formation, growth, collapse).
+- Preserve current solver behavior by default during rollout.
+- Avoid regressions in existing transient features (controls, valves, pumps, surge devices, INP import).
+- Provide clear validation evidence before enabling DVCM as a recommended mode.
+
+## Non-goals (initial rollout)
+
+- Perfect parity with every commercial implementation detail.
+- Immediate support for every boundary type in the first implementation.
+- Simultaneous introduction of DGCM and advanced entrained-gas models.
+
+## Delivery strategy
+
+Use gated phases with explicit exit criteria. Legacy clamp stays default until DVCM meets stability and validation gates.
+
+## Phase 0: Baseline and Governance
+
+### Deliverables
+
+- Freeze current cavitation behavior as the baseline reference mode.
+- Define ownership for solver core, bindings, tests, and docs.
+- Define branch and PR policy for DVCM work.
+
+### Checklist
+
+- [x] Capture baseline metrics from current tests (runtime, failures, key pressure traces). See `docs/dvcm_phase0_baseline.md`.
+- [x] Record baseline cavitation behavior in a short design note. See `docs/dvcm_baseline_cavitation_note.md`.
+- [x] Create DVCM epic with linked issues for each phase. Epic: https://github.com/jlillywh/RTHYM-MOC/issues/52
+- [x] Require CI green and targeted benchmark pass for each DVCM PR. Policy: `docs/dvcm_pr_gate_policy.md`; CI gate: `.github/workflows/tests.yml` job `dvcm-targeted-benchmark`.
+
+### Exit criteria
+
+- Baseline snapshot committed and linked in issue tracker.
+- Team agrees on staged rollout and acceptance criteria.
+
+## Phase 1: Safe Scaffolding (No Physics Change)
+
+### Deliverables
+
+- Cavitation mode selector added, defaulting to legacy clamp behavior.
+- Internal state placeholders for cavity metrics.
+- Backward-compatible result schema extension.
+
+### Checklist
+
+- [ ] Add `CavitationModel` enum (for example: `LegacyClamp`, `DVCM`).
+- [ ] Add solver parameter/plumbing to select model.
+- [ ] Keep default mode as `LegacyClamp`.
+- [ ] Add `NodeState` fields for cavity state (active flag, cavity volume, collapse counters).
+- [ ] Add optional output channels (for example `node_cavity_volume`) without changing existing keys.
+- [ ] Update bindings and type hints for new optional outputs.
+- [ ] Add regression tests proving legacy mode output is unchanged.
+
+### Exit criteria
+
+- Zero behavior change in legacy mode across existing tests.
+- New schema fields available and documented as experimental.
+
+## Phase 2: Junction-Only DVCM MVP
+
+### Deliverables
+
+- DVCM equations and regime switching for junction-like nodes only.
+- Numerically stable cavity growth/collapse handling for this subset.
+
+### Checklist
+
+- [ ] Implement regime logic: liquid-full, cavity-active, collapse transition.
+- [ ] Enforce non-negative cavity volume and physically bounded updates.
+- [ ] Add hysteresis/tolerances to prevent mode-chatter near vapor threshold.
+- [ ] Preserve current behavior for unsupported node types.
+- [ ] Record cavity diagnostics per step (volume, active state, collapse flag).
+- [ ] Add unit tests for cavity initiation and collapse at junction nodes.
+
+### Exit criteria
+
+- Junction DVCM passes dedicated tests and does not destabilize legacy suite.
+
+## Phase 3: Validation Harness and Reference Cases
+
+### Deliverables
+
+- Reference DVCM cases with quantitative acceptance thresholds.
+- Clear comparison workflow against legacy clamp and known references.
+
+### Checklist
+
+- [ ] Add at least 3 canonical cavitation scenarios:
+- [ ] Rapid closure with cavity formation and collapse spike.
+- [ ] Reopening/pressure recovery case.
+- [ ] Long-run stability case with repeated events.
+- [ ] Define acceptance metrics (peak error, timing of collapse, RMS trace error).
+- [ ] Store reference artifacts for reproducible regression.
+- [ ] Add CI jobs/markers for DVCM tests.
+
+### Exit criteria
+
+- Validation metrics documented and reproducible in CI.
+
+## Phase 4: Boundary Expansion
+
+### Deliverables
+
+- DVCM interactions extended to major boundary/device categories.
+
+### Checklist
+
+- [ ] Integrate with valve boundary logic (standard valves and check valves).
+- [ ] Integrate with pump trip/start and inertia behavior.
+- [ ] Evaluate interactions with standpipe and hydropneumatic tank dynamics.
+- [ ] Evaluate interactions with air valve compressible model.
+- [ ] Add targeted tests per boundary/device integration.
+
+### Exit criteria
+
+- No major instability in mixed-device benchmark networks.
+
+## Phase 5: Numerical Robustness and Performance
+
+### Deliverables
+
+- Stable behavior under aggressive events and practical timestep ranges.
+- Acceptable runtime overhead relative to baseline.
+
+### Checklist
+
+- [ ] Stress test with small/large `dt`, short/long pipes, stiff networks.
+- [ ] Add guards for NaN/Inf propagation and non-physical states.
+- [ ] Profile DVCM hot paths and optimize key loops.
+- [ ] Set runtime overhead target (for example <= 25% on selected benchmarks).
+- [ ] Document recommended timestep guidance for DVCM mode.
+
+### Exit criteria
+
+- Robustness and performance targets met on defined benchmark matrix.
+
+## Phase 6: API and Documentation Hardening
+
+### Deliverables
+
+- Public API support finalized and documented.
+- User guidance for choosing cavitation model.
+
+### Checklist
+
+- [ ] Finalize public parameter names and defaults.
+- [ ] Update README cavitation section with explicit model options.
+- [ ] Add docs page comparing Legacy Clamp vs DVCM behavior and cost.
+- [ ] Add migration notes for existing users.
+- [ ] Add notebook/example showcasing DVCM scenarios and interpretation.
+
+### Exit criteria
+
+- Docs, API reference, and examples fully aligned.
+
+## Phase 7: Controlled Rollout
+
+### Deliverables
+
+- DVCM released as opt-in with monitoring period.
+
+### Checklist
+
+- [ ] Release as experimental or opt-in mode.
+- [ ] Collect feedback from internal and external users.
+- [ ] Track defect reports and edge-case failures.
+- [ ] Patch high-severity issues before broader recommendation.
+
+### Exit criteria
+
+- No unresolved critical defects in opt-in period.
+
+## Phase 8: Default-Mode Decision
+
+### Deliverables
+
+- Decision whether to keep legacy default or promote DVCM default.
+
+### Checklist
+
+- [ ] Review validation, stability, and performance evidence.
+- [ ] Confirm backward compatibility impact and migration burden.
+- [ ] Decide default mode and deprecation timeline (if any).
+- [ ] Publish release notes and upgrade guide.
+
+### Exit criteria
+
+- Decision documented with rationale and implementation plan.
+
+## Risk register
+
+- Numerical chatter at regime boundaries.
+- Non-physical cavity behavior under coarse timestep.
+- Hidden interactions with control rules and device models.
+- Performance regression in large networks.
+- User confusion from multiple cavitation modes.
+
+## Mitigations
+
+- Keep legacy mode default through Phase 7.
+- Use strict invariants and assertion-backed debug builds.
+- Add targeted mixed-device regression suites early.
+- Track performance budgets per phase.
+- Provide clear mode-selection guidance and examples.
+
+## Test strategy summary
+
+- Unit tests: regime transitions, cavity volume integration, invariants.
+- Regression tests: legacy equivalence in `LegacyClamp` mode.
+- Physics validation tests: cavity formation/collapse against reference traces.
+- Integration tests: DVCM with controls, pumps, valves, and surge devices.
+- Stability tests: long-run and repeated-event transients.
+
+## Master checklist
+
+- [ ] Phase 0 complete
+- [ ] Phase 1 complete
+- [ ] Phase 2 complete
+- [ ] Phase 3 complete
+- [ ] Phase 4 complete
+- [ ] Phase 5 complete
+- [ ] Phase 6 complete
+- [ ] Phase 7 complete
+- [ ] Phase 8 complete
+- [ ] Legacy mode unchanged and verified throughout rollout
+- [ ] DVCM validation artifacts committed and reproducible
+- [ ] User-facing docs and examples complete
+- [ ] Final release decision documented
