@@ -515,6 +515,9 @@ H_node      = np.array(results["node_head"]["NODE_ID"])     # (N,) float64, ft
 P_node      = np.array(results["node_pressure"]["NODE_ID"]) # (N,) float64, psi
 Q_pipe      = np.array(results["pipe_flow_gpm"]["PIPE_ID"]) # (N,) float64, GPM
 cav_flag    = np.array(results["node_cavitation"]["NODE_ID"])# (N,) int32, 0 or 1
+cav_vol     = np.array(results["node_cavity_volume"]["NODE_ID"])         # (N,) float64, ft^3 (optional, experimental)
+cav_active  = np.array(results["node_cavity_active"]["NODE_ID"])         # (N,) int32, 0/1 (optional, experimental)
+cav_coll    = np.array(results["node_cavity_collapse_count"]["NODE_ID"]) # (N,) int32, cumulative (optional, experimental)
 valve_pct   = np.array(results["valve_setting"]["V1"])      # (N,) float64, % open (Valve/Turbine)
 valve_pos   = np.array(results["valve_position"]["CV1"])    # (N,) float64, 0–1 (CheckValve position)
 valve_vel   = np.array(results["valve_velocity"]["CV1"])   # (N,) float64, ft/s (CheckValve disc velocity)
@@ -523,6 +526,8 @@ turbine_speed = np.array(results["turbine_speed"]["T1"])    # (N,) float64, % ra
 ```
 
 Every node and every pipe that was added to the solver has a corresponding key in the respective sub-dictionary.  `node_head` records the hydraulic grade line (HGL) at each node.  `node_cavitation` is 1 for any time step at which the computed pressure fell below `p_vapor`.
+
+The cavity channels (`node_cavity_volume`, `node_cavity_active`, `node_cavity_collapse_count`) are optional additive outputs introduced for DVCM Phase 1 scaffolding. They are experimental and may evolve as full DVCM physics is implemented.
 
 `valve_setting` is recorded for `Valve` and `Turbine` nodes.  `valve_position` and `valve_velocity` are recorded for `CheckValve` nodes during slam dynamics.  `pump_speed` is recorded for `Pump` nodes.  `turbine_speed` is recorded for `Turbine` nodes.
 

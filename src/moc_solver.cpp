@@ -1019,7 +1019,10 @@ void MOCSolver::stepMOC() {
             const double p_pocket = (std::max(1e-12, ns.gas_constant) * R_AIR * T_ATM_R) / std::max(ns.gas_volume_ft3, 1e-6);
             const double H_abs = std::max(1e-6, p_pocket / RHO_WATER_G);
             double H_P = n.elevation + H_abs - H_ATM_FT;
-            if (H_P < H_vap) H_P = H_vap;
+            const bool clamp_to_vapor =
+                (cavitation_model_ == CavitationModel::LegacyClamp) ||
+                (cavitation_model_ == CavitationModel::DVCM);
+            if (clamp_to_vapor && H_P < H_vap) H_P = H_vap;
 
             double net_Q = 0.0; // CFS into the air chamber (positive compresses air)
             for (int pi : in_pipes) {
@@ -1580,6 +1583,55 @@ void MOCSolver::stepMOC() {
         pipes_[i].V = std::move(newV[i]);
     }
 
+    // Update cavity-state scaffolding from the committed hydraulic state.
+    // This tracks transitions only; cavity volume remains a placeholder until
+    // DVCM integration is implemented in a later phase.
+    const double P_vapor = p_vapor_ / PSI_TO_FT;
+    for (int ni = 0; ni < static_cast<int>(nodes_.size()); ++ni) {
+        auto& ns = nodes_[ni];
+        const auto& n = ns.input;
+
+        double H = getInitialHead(ns);
+        const auto& in_p = node_inflow_pipes_.at(n.id);
+        const auto& out_p = node_outflow_pipes_.at(n.id);
+
+        if (n.type == NodeType::PRV || n.type == NodeType::PBV) {
+            if (!out_p.empty()) {
+                H = pipes_[out_p[0]].H.front();
+            } else if (!in_p.empty()) {
+                H = pipes_[in_p[0]].H.back();
+            }
+        } else if (n.type == NodeType::PSV) {
+            if (!in_p.empty()) {
+                H = pipes_[in_p[0]].H.back();
+            } else if (!out_p.empty()) {
+                H = pipes_[out_p[0]].H.front();
+            }
+        } else if (!in_p.empty()) {
+            H = pipes_[in_p[0]].H.back();
+        } else if (!out_p.empty()) {
+            H = pipes_[out_p[0]].H.front();
+        }
+
+        const double P_psi = (H - n.elevation) / PSI_TO_FT;
+        const bool is_cavity_active = (P_psi <= P_vapor);
+        const bool collapsed_this_step = ns.cavity_active && !is_cavity_active;
+
+        if (collapsed_this_step) {
+            ns.cavity_collapse_count += 1;
+            ns.cavity_consecutive_collapses += 1;
+        } else if (!is_cavity_active) {
+            ns.cavity_consecutive_collapses = 0;
+        }
+
+        ns.cavity_active = is_cavity_active;
+        if (!is_cavity_active) {
+            ns.cavity_volume_ft3 = 0.0;
+        } else {
+            ns.cavity_volume_ft3 = std::max(ns.cavity_volume_ft3, 0.0);
+        }
+    }
+
     t_now_ += dt_;
 }
 
@@ -1618,6 +1670,9 @@ void MOCSolver::recordStep(SimResults& results) const {
         results.node_head    [n.id].push_back(H);
         results.node_pressure[n.id].push_back(P_psi);
         results.node_cavitation[n.id].push_back(P_psi <= P_vapor ? 1 : 0);
+        results.node_cavity_volume[n.id].push_back(ns.cavity_volume_ft3);
+        results.node_cavity_active[n.id].push_back(ns.cavity_active ? 1 : 0);
+        results.node_cavity_collapse_count[n.id].push_back(ns.cavity_collapse_count);
 
         // CheckValve closure dynamics telemetry
         results.valve_position[n.id].push_back(ns.valve_position);
@@ -1643,9 +1698,12 @@ void MOCSolver::recordStep(SimResults& results) const {
 
 SimResults MOCSolver::run(double total_time_s, double dt,
                           double p_vapor_psi, double usf_tau,
-                          double k_bru) {
+                          double k_bru, std::optional<CavitationModel> cavitation_model) {
     dt_      = dt;
     p_vapor_ = p_vapor_psi * PSI_TO_FT; // convert psi → ft
+    if (cavitation_model.has_value()) {
+        cavitation_model_ = *cavitation_model;
+    }
     usf_tau_ = usf_tau;
     k_Bru_   = k_bru;
 
@@ -1660,6 +1718,9 @@ SimResults MOCSolver::run(double total_time_s, double dt,
         results.node_head      [ni.id].reserve(num_steps);
         results.node_pressure  [ni.id].reserve(num_steps);
         results.node_cavitation[ni.id].reserve(num_steps);
+        results.node_cavity_volume[ni.id].reserve(num_steps);
+        results.node_cavity_active[ni.id].reserve(num_steps);
+        results.node_cavity_collapse_count[ni.id].reserve(num_steps);
         if (ni.type == NodeType::Pump) {
             results.pump_speed[ni.id].reserve(num_steps);
         }

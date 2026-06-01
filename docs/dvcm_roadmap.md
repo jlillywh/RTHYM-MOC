@@ -49,18 +49,18 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 ### Checklist
 
-- [ ] Add `CavitationModel` enum (for example: `LegacyClamp`, `DVCM`).
-- [ ] Add solver parameter/plumbing to select model.
-- [ ] Keep default mode as `LegacyClamp`.
-- [ ] Add `NodeState` fields for cavity state (active flag, cavity volume, collapse counters).
-- [ ] Add optional output channels (for example `node_cavity_volume`) without changing existing keys.
-- [ ] Update bindings and type hints for new optional outputs.
-- [ ] Add regression tests proving legacy mode output is unchanged.
+- [x] Add `CavitationModel` enum (for example: `LegacyClamp`, `DVCM`).
+- [x] Add solver parameter/plumbing to select model.
+- [x] Keep default mode as `LegacyClamp`.
+- [x] Add `NodeState` fields for cavity state (active flag, cavity volume, collapse counters).
+- [x] Add optional output channels (for example `node_cavity_volume`) without changing existing keys.
+- [x] Update bindings and type hints for new optional outputs.
+- [x] Add regression tests proving legacy mode output is unchanged.
 
 ### Exit criteria
 
-- Zero behavior change in legacy mode across existing tests.
-- New schema fields available and documented as experimental.
+- Zero behavior change in legacy mode across existing tests. Verified by full suite + explicit legacy regressions in `tests/test_legacy_mode_regression.py` and `tests/test_phase1_e2e_contract.py`.
+- New schema fields available and documented as experimental. Implemented in solver/bindings and documented in `README.md` Results dictionary section.
 
 ## Phase 2: Junction-Only DVCM MVP
 
@@ -220,7 +220,7 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 ## Master checklist
 
 - [ ] Phase 0 complete
-- [ ] Phase 1 complete
+- [x] Phase 1 complete
 - [ ] Phase 2 complete
 - [ ] Phase 3 complete
 - [ ] Phase 4 complete

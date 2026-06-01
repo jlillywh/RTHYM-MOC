@@ -6,12 +6,18 @@ import numpy as np
 from numpy.typing import NDArray
 
 
-class SimResultsDict(TypedDict):
+class _SimResultsRequired(TypedDict):
     time: NDArray[np.float64]
     node_head: dict[str, NDArray[np.float64]]
     node_pressure: dict[str, NDArray[np.float64]]
     node_cavitation: dict[str, NDArray[np.int_]]
     pipe_flow_gpm: dict[str, NDArray[np.float64]]
+
+
+class SimResultsDict(_SimResultsRequired, total=False):
+    node_cavity_volume: dict[str, NDArray[np.float64]]
+    node_cavity_active: dict[str, NDArray[np.int_]]
+    node_cavity_collapse_count: dict[str, NDArray[np.int_]]
     valve_position: dict[str, NDArray[np.float64]]
     valve_velocity: dict[str, NDArray[np.float64]]
     pump_speed: dict[str, NDArray[np.float64]]
@@ -74,6 +80,11 @@ class ControlType:
     PCV: ControlType
 
 
+class CavitationModel:
+    LegacyClamp: CavitationModel
+    DVCM: CavitationModel
+
+
 class ControlRuleInput:
     id: str
     type: ControlType
@@ -104,6 +115,8 @@ class MOCSolver:
     def get_node_pressure(self, id: str) -> float: ...
     def set_valve_setting(self, id: str, pct_open: float) -> None: ...
     def set_pump_speed(self, id: str, pct_speed: float) -> None: ...
+    def set_cavitation_model(self, cavitation_model: CavitationModel) -> None: ...
+    def get_cavitation_model(self) -> CavitationModel: ...
     def set_pump_power(self, id: str, has_power: bool) -> None: ...
     def set_node_demand(self, id: str, demand_gpm: float) -> None: ...
     def set_node_head(self, id: str, head_ft: float) -> None: ...
@@ -118,6 +131,7 @@ class MOCSolver:
         p_vapor_psi: float = -14.0,
         usf_tau: float = 0.5,
         k_bru: float = -1.0,
+        cavitation_model: CavitationModel | None = None,
     ) -> SimResultsDict: ...
 
 
