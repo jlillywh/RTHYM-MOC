@@ -175,7 +175,7 @@ def _get_option(sec: dict, key: str, default: str) -> str:
 # ── [RTHYM] section parser ────────────────────────────────────────────────────
 
 # NodeType strings that map to surge-control components
-_RTHYM_SURGE_TYPES = {"Standpipe", "HydropneumaticTank", "AirValve", "CheckValve"}
+_RTHYM_SURGE_TYPES = {"Standpipe", "HydropneumaticTank", "AirValve", "CheckValve", "Pump"}
 
 _RTHYM_LENGTH_KEYS = frozenset({"air_release_head"})
 _RTHYM_AREA_KEYS = frozenset({"tank_area"})
@@ -1058,6 +1058,9 @@ def load_inp(
                 override_node.closure_time = params["closure_time"]
             if "flipped" in params:
                 override_node.flipped = bool(params["flipped"])
+        elif ntype == "Pump":
+            if "ramp_time" in params:
+                override_node.ramp_time = params["ramp_time"]
 
     # ── Assemble solver ────────────────────────────────────────────────────────
     solver = MOCSolver()

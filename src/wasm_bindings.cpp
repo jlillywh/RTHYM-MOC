@@ -190,7 +190,8 @@ EMSCRIPTEN_BINDINGS(rthym_moc) {
         .property("flipped",          &NodeInput::flipped)
         .property("inertia_wr2",      &NodeInput::inertia_wr2)
         .property("speed_rpm",        &NodeInput::speed_rpm)
-        .property("efficiency",       &NodeInput::efficiency);
+        .property("efficiency",       &NodeInput::efficiency)
+        .property("ramp_time",        &NodeInput::ramp_time);
 
     class_<PipeInput>("PipeInput")
         .constructor<>()

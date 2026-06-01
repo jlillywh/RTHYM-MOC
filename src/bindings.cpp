@@ -211,6 +211,7 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def_readwrite("inertia_wr2",      &NodeInput::inertia_wr2)
         .def_readwrite("speed_rpm",        &NodeInput::speed_rpm)
         .def_readwrite("efficiency",       &NodeInput::efficiency)
+        .def_readwrite("ramp_time",        &NodeInput::ramp_time)
         .def_readwrite("current_setting",  &NodeInput::current_setting)
         .def_readwrite("design_head",      &NodeInput::design_head)
         .def_readwrite("design_flow",      &NodeInput::design_flow)

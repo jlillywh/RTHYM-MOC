@@ -341,6 +341,7 @@ node.demand           = 0.0           # GPM withdrawal (Junction, OutflowNode)
 node.current_setting  = 100.0         # % open (Valve, Turbine; 100 = fully open)
 node.diameter         = 8.0           # inches (Valve orifice / Turbine runner; <= 0 is sanitized to 0.01)
 node.current_speed    = 100.0         # % rated speed (Pump)
+node.ramp_time        = 0.0           # s — VFD pump speed acceleration/deceleration limit (0 = instant)
 node.has_power        = True          # electrical power available (Pump/Turbine; grid sync logic)
 node.design_head      = 50.0          # ft at BEP (Pump/Turbine design head; <= 0 is sanitized to 50.0)
 node.design_flow      = 100.0         # GPM at BEP (Pump/Turbine design flow; <= 0 is sanitized to 100.0)
@@ -860,6 +861,15 @@ solver.add_control_rule(rule)
 # Power outage: drop pump speed immediately while the valve still ramps closed on backup power.
 solver.set_pump_power("Pmp1", False)
 ```
+
+### VFD Pump Speed Ramping
+
+When a pump is controlled via an operational control rule (Threshold, Deadband, or PID) or a schedule, the computed target is written to the pump's `command_speed` rather than immediately altering its physical speed. The core solver then ramps `current_speed` toward `command_speed` at every timestep using the pump's VFD `ramp_time` (in seconds):
+
+- If the pump has power (`has_power == True`) and `current_speed` differs from `command_speed`, the maximum speed change per timestep is:
+  $$\Delta s_{\text{max}} = \left( \frac{100.0}{\text{ramp_time}} \right) \cdot dt$$
+- If `ramp_time <= 0.0` (default), the speed changes instantly.
+- If `has_power == False` (e.g., power lost), the pump's rotational inertia ($WR^2$) decay calculation takes precedence, and the pump spins down naturally under hydraulic loads.
 
 ---
 
