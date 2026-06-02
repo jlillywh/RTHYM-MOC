@@ -1352,6 +1352,7 @@ independent rthym_moc runs in separate Python processes. See
 |---|---|
 | How to run / interpret RTHYM vs TSNet | [docs/benchmarking.md](docs/benchmarking.md), `examples/benchmark_matrix.py` |
 | Timestep selection for DVCM mode | [docs/dvcm_timestep_guidance.md](docs/dvcm_timestep_guidance.md) |
+| Cavitation model comparison | [docs/dvcm_comparison.md](docs/dvcm_comparison.md) |
 | All three tools (time to complete the full run) | `examples/benchmark_ptsnet_vs_tsnet.py` |
 | Tabulated physics + timing results | [docs/appendix_b_verification.md](docs/appendix_b_verification.md) §B.6 |
 | Automated correctness regressions | [Validation](#validation) (TSNet is not a default pytest dependency) |
@@ -1419,6 +1420,7 @@ RTHYM-MOC/
 │   └── test_waterhammer.cpp                    # Standalone C++ unit test (BUILD_TESTS=ON)
 ├── docs/
 │   ├── dvcm_timestep_guidance.md   # Recommended timestep selection guidelines for DVCM mode
+│   ├── dvcm_comparison.md          # Cavitation model comparison guide (Legacy vs DVCM)
 │   ├── appendix_b_verification.md  # Long-form cross-engine verification appendix
 │   ├── validation.md               # Correctness test map, tolerances, reference assets
 │   ├── benchmarking.md             # TSNet performance comparison guide

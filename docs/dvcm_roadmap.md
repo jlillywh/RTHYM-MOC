@@ -151,7 +151,7 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 - [x] 6. Finalize public parameter names and defaults.
 - [x] 7. Update README cavitation section with explicit model options.
-- [ ] 8. Add docs page comparing Legacy Clamp vs DVCM behavior and cost.
+- [x] 8. Add docs page comparing Legacy Clamp vs DVCM behavior and cost. See [docs/dvcm_comparison.md](file:///wsl.localhost/Ubuntu/home/jason/RTHYM-MOC/docs/dvcm_comparison.md).
 - [ ] 9. Add migration notes for existing users.
 - [ ] 10. Add notebook/example showcasing DVCM scenarios and interpretation.
 
