@@ -36,6 +36,7 @@ Quick-start
 >>> head_J1 = results["node_head"]["J1"]   # head time series at junction (ft)
 """
 
+import warnings
 from ._rthym_moc import (
     CavitationModel,
     MOCSolver as _RawMOCSolver,
@@ -47,28 +48,6 @@ from ._rthym_moc import (
     GPM_TO_CFS,
     PSI_TO_FT,
 )
-import warnings
-
-class MOCSolver(_RawMOCSolver):
-    def set_cavitation_model(self, cavitation_model: CavitationModel) -> None:
-        if cavitation_model == CavitationModel.DVCM:
-            warnings.warn(
-                "The DVCM cavitation model is currently experimental and opt-in. "
-                "Ensure your timestep is sufficiently small (dt <= 0.001 s) to maintain numerical stability.",
-                UserWarning,
-                stacklevel=2
-            )
-        super().set_cavitation_model(cavitation_model)
-
-    def run(self, *args, **kwargs):
-        if kwargs.get("cavitation_model") == CavitationModel.DVCM:
-            warnings.warn(
-                "The DVCM cavitation model is currently experimental and opt-in. "
-                "Ensure your timestep is sufficiently small (dt <= 0.001 s) to maintain numerical stability.",
-                UserWarning,
-                stacklevel=2
-            )
-        return super().run(*args, **kwargs)
 from .epanet import load_inp, load_inp_si
 from .report import (
     cavitation_summary,
@@ -134,6 +113,27 @@ from .units import (
     volume_m3_to_ft3,
 )
 from ._version import __version__
+
+class MOCSolver(_RawMOCSolver):
+    def set_cavitation_model(self, cavitation_model: CavitationModel) -> None:
+        if cavitation_model == CavitationModel.DVCM:
+            warnings.warn(
+                "The DVCM cavitation model is currently experimental and opt-in. "
+                "Ensure your timestep is sufficiently small (dt <= 0.001 s) to maintain numerical stability.",
+                UserWarning,
+                stacklevel=2
+            )
+        super().set_cavitation_model(cavitation_model)
+
+    def run(self, *args, **kwargs):
+        if kwargs.get("cavitation_model") == CavitationModel.DVCM:
+            warnings.warn(
+                "The DVCM cavitation model is currently experimental and opt-in. "
+                "Ensure your timestep is sufficiently small (dt <= 0.001 s) to maintain numerical stability.",
+                UserWarning,
+                stacklevel=2
+            )
+        return super().run(*args, **kwargs)
 
 __all__ = [
     "CavitationModel",
