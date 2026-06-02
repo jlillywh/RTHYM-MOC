@@ -167,7 +167,7 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 ### Checklist
 
-- [ ] 11. Release as experimental or opt-in mode.
+- [x] 11. Release as experimental or opt-in mode.
 - [ ] 12. Collect feedback from internal and external users.
 - [ ] 13. Track defect reports and edge-case failures.
 - [ ] 14. Patch high-severity issues before broader recommendation.

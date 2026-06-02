@@ -38,7 +38,7 @@ Quick-start
 
 from ._rthym_moc import (
     CavitationModel,
-    MOCSolver,
+    MOCSolver as _RawMOCSolver,
     NodeInput,
     PipeInput,
     ControlType,
@@ -47,6 +47,28 @@ from ._rthym_moc import (
     GPM_TO_CFS,
     PSI_TO_FT,
 )
+import warnings
+
+class MOCSolver(_RawMOCSolver):
+    def set_cavitation_model(self, cavitation_model: CavitationModel) -> None:
+        if cavitation_model == CavitationModel.DVCM:
+            warnings.warn(
+                "The DVCM cavitation model is currently experimental and opt-in. "
+                "Ensure your timestep is sufficiently small (dt <= 0.001 s) to maintain numerical stability.",
+                UserWarning,
+                stacklevel=2
+            )
+        super().set_cavitation_model(cavitation_model)
+
+    def run(self, *args, **kwargs):
+        if kwargs.get("cavitation_model") == CavitationModel.DVCM:
+            warnings.warn(
+                "The DVCM cavitation model is currently experimental and opt-in. "
+                "Ensure your timestep is sufficiently small (dt <= 0.001 s) to maintain numerical stability.",
+                UserWarning,
+                stacklevel=2
+            )
+        return super().run(*args, **kwargs)
 from .epanet import load_inp, load_inp_si
 from .report import (
     cavitation_summary,
