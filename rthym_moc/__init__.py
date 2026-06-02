@@ -118,18 +118,31 @@ class MOCSolver(_RawMOCSolver):
     def set_cavitation_model(self, cavitation_model: CavitationModel) -> None:
         if cavitation_model == CavitationModel.DVCM:
             warnings.warn(
-                "The DVCM cavitation model is currently experimental and opt-in. "
-                "Ensure your timestep is sufficiently small (dt <= 0.001 s) to maintain numerical stability.",
+                "Ensure your timestep is sufficiently small (dt <= 0.001 s) to maintain numerical stability when using the DVCM cavitation model.",
                 UserWarning,
                 stacklevel=2
             )
         super().set_cavitation_model(cavitation_model)
 
     def run(self, *args, **kwargs):
-        if kwargs.get("cavitation_model") == CavitationModel.DVCM:
+        # Determine the cavitation model being used
+        cav_model = kwargs.get("cavitation_model")
+        if cav_model is None:
+            if len(args) > 5:
+                cav_model = args[5]
+            else:
+                cav_model = self.get_cavitation_model()
+
+        # Determine the timestep
+        dt = 0.01
+        if len(args) > 1:
+            dt = args[1]
+        elif "dt" in kwargs:
+            dt = kwargs["dt"]
+
+        if cav_model == CavitationModel.DVCM and dt > 0.001:
             warnings.warn(
-                "The DVCM cavitation model is currently experimental and opt-in. "
-                "Ensure your timestep is sufficiently small (dt <= 0.001 s) to maintain numerical stability.",
+                "Ensure your timestep is sufficiently small (dt <= 0.001 s) to maintain numerical stability when using the DVCM cavitation model.",
                 UserWarning,
                 stacklevel=2
             )
