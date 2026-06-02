@@ -58,7 +58,10 @@ from __future__ import annotations
 import math
 import os
 import warnings
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from . import MOCSolver
 
 from ._rthym_moc import NodeInput, PipeInput
 from .units import (
