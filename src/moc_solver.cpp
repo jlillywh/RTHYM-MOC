@@ -814,7 +814,7 @@ void MOCSolver::stepMOC() {
         } else {
             k_Bru_eff = k_Bru_;          // static (0 = no USF, >0 = calibrated)
         }
-        const double k_u = k_Bru_eff * B;             // unsteady-friction scale  [s]
+        const double k_u = k_Bru_eff * B * (dt_ / 0.01);             // unsteady-friction scale  [s]
 
         // ── IIR low-pass filter ───────────────────────────────────────────
         // V̄_j ← V̄_j + (V_j − V̄_j) · α
