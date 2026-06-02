@@ -8,18 +8,20 @@ versioning for package releases.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-02
+
 ### Added
-- documented maintainer/internal Emscripten/WASM binding build path
-  (`build_wasm.sh`) and CI smoke-test coverage
-- `examples/benchmark_matrix.py` performance matrix sweeping time step and
-  duration on the standard Joukowsky case (median timings vs TSNet)
+- **Discrete Vapor Cavity Model (DVCM)**: A physically consistent cavitation model that tracks vapor cavity volume growth and collapse at interior junctions, valves, check valves, pumps, and turbines.
+- **WASM Bindings Extension**: Exposed DVCM telemetry parameters (active cavity, cavity volume, collapse counts/flags) to Emscripten/WASM bindings.
+- **Jupyter Showcase Notebook**: Added `examples/dvcm_showcase.ipynb` to demonstrate column separation dynamics, timing shifts, and comparison against legacy clamping.
+- **Comprehensive Validation & Robustness Suite**: Added targeted unit/integration tests (`test_dvcm_*.py`) for the new physics model, along with timestep and stability guidance.
+- documented maintainer/internal Emscripten/WASM binding build path (`build_wasm.sh`) and CI smoke-test coverage
+- `examples/benchmark_matrix.py` performance matrix sweeping time step and duration on the standard Joukowsky case (median timings vs TSNet)
 
 ### Changed
-- migrated Python extension builds from legacy `setup.py` scaffolding to the
-  pyproject-native `scikit-build-core` backend
-- split correctness documentation (`docs/validation.md`) from TSNet performance
-  benchmarking (`docs/benchmarking.md`) and restructured README Validation and
-  Benchmarking sections accordingly
+- **Unsteady Friction Correction**: Scaled the unsteady friction damping coefficient `k_u` with `dt_` to ensure numerical convergence under grid refinement and timestep-independence.
+- migrated Python extension builds from legacy `setup.py` scaffolding to the pyproject-native `scikit-build-core` backend
+- split correctness documentation (`docs/validation.md`) from TSNet performance benchmarking (`docs/benchmarking.md`) and restructured README Validation and Benchmarking sections accordingly
 
 ## [0.2.0] - 2026-05-24
 
