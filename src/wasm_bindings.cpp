@@ -81,6 +81,10 @@ emscripten::val MOCSolver::get_step_results() const {
         node_res.set("actualDemandGPM", actualDemand);
         node_res.set("reverseFlowBlocked", reverseFlowBlocked);
         node_res.set("cavitation", upH <= n.elevation + p_vapor_ || downH <= n.elevation + p_vapor_);
+        node_res.set("cavityActive", ns.cavity_active);
+        node_res.set("cavityVolume", ns.cavity_volume_ft3);
+        node_res.set("cavityCollapseFlag", ns.cavity_collapsed_this_step);
+        node_res.set("cavityCollapseCount", ns.cavity_collapse_count);
         node_res.set("currentSpeed", ns.input.current_speed);
         node_res.set("currentSetting", ns.input.current_setting);
         if (n.type == NodeType::Pump || n.type == NodeType::Turbine) {
