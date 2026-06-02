@@ -2021,6 +2021,22 @@ void MOCSolver::recordStep(SimResults& results) const {
         const double P_psi   = (H - n.elevation) / PSI_TO_FT;
         const double P_vapor = p_vapor_ / PSI_TO_FT;
 
+        if (std::isnan(H) || std::isinf(H)) {
+            throw std::runtime_error("Numerical instability: NaN/Inf detected in head for node '" + n.id + "'");
+        }
+        if (std::isnan(ns.cavity_volume_ft3) || std::isinf(ns.cavity_volume_ft3)) {
+            throw std::runtime_error("Numerical instability: NaN/Inf detected in cavity volume for node '" + n.id + "'");
+        }
+        if (ns.cavity_volume_ft3 < -1e-9) {
+            throw std::runtime_error("Non-physical state: Negative cavity volume detected for node '" + n.id + "'");
+        }
+        if (std::isnan(ns.valve_position) || std::isinf(ns.valve_position)) {
+            throw std::runtime_error("Numerical instability: NaN/Inf detected in valve position for node '" + n.id + "'");
+        }
+        if (ns.valve_position < -1e-9 || ns.valve_position > 1.0 + 1e-9) {
+            throw std::runtime_error("Non-physical state: Valve position out of bounds for node '" + n.id + "'");
+        }
+
         results.node_head    [n.id].push_back(H);
         results.node_pressure[n.id].push_back(P_psi);
         results.node_cavitation[n.id].push_back(P_psi <= P_vapor ? 1 : 0);
@@ -2043,7 +2059,12 @@ void MOCSolver::recordStep(SimResults& results) const {
     for (int i = 0; i < static_cast<int>(pipes_.size()); ++i) {
         const auto& ps = pipes_[i];
         double avg_V = 0.0;
-        for (double v : ps.V) avg_V += v;
+        for (double v : ps.V) {
+            if (std::isnan(v) || std::isinf(v)) {
+                throw std::runtime_error("Numerical instability: NaN/Inf detected in flow velocity for pipe '" + pipe_inputs_[i].id + "'");
+            }
+            avg_V += v;
+        }
         avg_V /= ps.num_nodes;
         results.pipe_flow_gpm[pipe_inputs_[i].id].push_back(avg_V * ps.area / GPM_TO_CFS);
     }
@@ -2054,6 +2075,16 @@ void MOCSolver::recordStep(SimResults& results) const {
 SimResults MOCSolver::run(double total_time_s, double dt,
                           double p_vapor_psi, double usf_tau,
                           double k_bru, std::optional<CavitationModel> cavitation_model) {
+    if (dt <= 0.0) {
+        throw std::invalid_argument("Timestep dt must be strictly positive");
+    }
+    if (total_time_s < 0.0) {
+        throw std::invalid_argument("Total simulation time must be non-negative");
+    }
+    if (usf_tau <= 0.0) {
+        throw std::invalid_argument("Filter time constant usf_tau must be strictly positive");
+    }
+
     dt_      = dt;
     p_vapor_ = p_vapor_psi * PSI_TO_FT; // convert psi → ft
     if (cavitation_model.has_value()) {
