@@ -149,11 +149,11 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 ### Checklist
 
-- [ ] 6. Finalize public parameter names and defaults.
-- [ ] 7. Update README cavitation section with explicit model options.
-- [ ] 8. Add docs page comparing Legacy Clamp vs DVCM behavior and cost.
-- [ ] 9. Add migration notes for existing users.
-- [ ] 10. Add notebook/example showcasing DVCM scenarios and interpretation.
+- [x] 6. Finalize public parameter names and defaults.
+- [x] 7. Update README cavitation section with explicit model options.
+- [x] 8. Add docs page comparing Legacy Clamp vs DVCM behavior and cost. See [docs/dvcm_comparison.md](file:///wsl.localhost/Ubuntu/home/jason/RTHYM-MOC/docs/dvcm_comparison.md).
+- [x] 9. Add migration notes for existing users. See [docs/dvcm_migration.md](file:///wsl.localhost/Ubuntu/home/jason/RTHYM-MOC/docs/dvcm_migration.md).
+- [x] 10. Add notebook/example showcasing DVCM scenarios and interpretation. See [examples/dvcm_showcase.ipynb](file:///wsl.localhost/Ubuntu/home/jason/RTHYM-MOC/examples/dvcm_showcase.ipynb).
 
 ### Exit criteria
 
@@ -225,10 +225,10 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 - [x] Phase 3 complete
 - [x] Phase 4 complete
 - [x] 19. Phase 5 complete
-- [ ] 20. Phase 6 complete
+- [x] 20. Phase 6 complete
 - [ ] 21. Phase 7 complete
 - [ ] 22. Phase 8 complete
 - [ ] 23. Legacy mode unchanged and verified throughout rollout
 - [ ] 24. DVCM validation artifacts committed and reproducible
-- [ ] 25. User-facing docs and examples complete
+- [x] 25. User-facing docs and examples complete
 - [ ] 26. Final release decision documented
