@@ -150,7 +150,7 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 ### Checklist
 
 - [x] 6. Finalize public parameter names and defaults.
-- [ ] 7. Update README cavitation section with explicit model options.
+- [x] 7. Update README cavitation section with explicit model options.
 - [ ] 8. Add docs page comparing Legacy Clamp vs DVCM behavior and cost.
 - [ ] 9. Add migration notes for existing users.
 - [ ] 10. Add notebook/example showcasing DVCM scenarios and interpretation.
