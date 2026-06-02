@@ -58,9 +58,12 @@ from __future__ import annotations
 import math
 import os
 import warnings
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from . import MOCSolver, NodeInput, PipeInput
+if TYPE_CHECKING:
+    from . import MOCSolver
+
+from ._rthym_moc import NodeInput, PipeInput
 from .units import (
     area_m2_to_ft2,
     diameter_mm_to_in,
@@ -638,6 +641,7 @@ def load_inp(
     local-loss coefficient and distributed across the pipe for the transient
     resistance term.
     """
+    from . import MOCSolver
     if not os.path.isfile(path):
         raise FileNotFoundError(f"EPANET .inp file not found: {path!r}")
 

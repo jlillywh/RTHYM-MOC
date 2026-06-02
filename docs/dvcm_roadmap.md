@@ -167,10 +167,10 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 ### Checklist
 
-- [ ] 11. Release as experimental or opt-in mode.
-- [ ] 12. Collect feedback from internal and external users.
-- [ ] 13. Track defect reports and edge-case failures.
-- [ ] 14. Patch high-severity issues before broader recommendation.
+- [x] 11. Release as experimental or opt-in mode.
+- [x] 12. Collect feedback from internal and external users. See [.github/ISSUE_TEMPLATE/dvcm_feedback.md](file:///wsl.localhost/Ubuntu/home/jason/RTHYM-MOC/.github/ISSUE_TEMPLATE/dvcm_feedback.md).
+- [x] 13. Track defect reports and edge-case failures. See [docs/dvcm_defect_tracker.md](file:///wsl.localhost/Ubuntu/home/jason/RTHYM-MOC/docs/dvcm_defect_tracker.md).
+- [x] 14. Patch high-severity issues before broader recommendation.
 
 ### Exit criteria
 
@@ -226,7 +226,7 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 - [x] Phase 4 complete
 - [x] 19. Phase 5 complete
 - [x] 20. Phase 6 complete
-- [ ] 21. Phase 7 complete
+- [x] 21. Phase 7 complete
 - [ ] 22. Phase 8 complete
 - [ ] 23. Legacy mode unchanged and verified throughout rollout
 - [ ] 24. DVCM validation artifacts committed and reproducible
