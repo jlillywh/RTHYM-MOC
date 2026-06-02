@@ -169,7 +169,7 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 - [x] 11. Release as experimental or opt-in mode.
 - [x] 12. Collect feedback from internal and external users. See [.github/ISSUE_TEMPLATE/dvcm_feedback.md](file:///wsl.localhost/Ubuntu/home/jason/RTHYM-MOC/.github/ISSUE_TEMPLATE/dvcm_feedback.md).
-- [ ] 13. Track defect reports and edge-case failures.
+- [x] 13. Track defect reports and edge-case failures. See [docs/dvcm_defect_tracker.md](file:///wsl.localhost/Ubuntu/home/jason/RTHYM-MOC/docs/dvcm_defect_tracker.md).
 - [ ] 14. Patch high-severity issues before broader recommendation.
 
 ### Exit criteria
