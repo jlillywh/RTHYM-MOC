@@ -1,7 +1,8 @@
+import pytest
 import numpy as np
 import rthym_moc
 
-
+pytestmark = pytest.mark.dvcm
 def _build_air_valve_only_solver() -> rthym_moc.MOCSolver:
     solver = rthym_moc.MOCSolver()
 

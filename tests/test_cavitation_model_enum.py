@@ -1,5 +1,10 @@
+import pytest
+
 import rthym_moc
 from rthym_moc.units import run_si
+
+
+pytestmark = pytest.mark.dvcm
 
 
 def test_cavitation_model_enum_exposed() -> None:

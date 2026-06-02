@@ -72,6 +72,7 @@ files = ["rthym_moc"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
+    "dvcm: DVCM-focused tests and regression cases",
     "wasm_runtime: requires Emscripten-built WASM artifacts and Node.js",
 ]
 addopts = "-m 'not wasm_runtime'"

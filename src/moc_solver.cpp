@@ -1163,22 +1163,110 @@ void MOCSolver::stepMOC() {
                 double H_up = bndry[bIn].C_P  - (bndry[bIn].B  / bndry[bIn].area)  * Q;
                 double H_dn = bndry[bOut].C_M + (bndry[bOut].B / bndry[bOut].area) * Q;
 
-                // Cavitation checks...
-                if (H_dn < H_vap) {
-                    H_dn = H_vap;
-                    const double Bc  = bndry[bIn].B / bndry[bIn].area;
-                    Q    = quadratic_Q(K_eq, Bc, bndry[bIn].C_P - H_vap);
-                    if (n.flipped) Q = std::min(0.0, Q);
-                    else           Q = std::max(0.0, Q);
-                    H_up = bndry[bIn].C_P - Bc * Q;
+                double H_up_candidate = H_up;
+                double H_dn_candidate = H_dn;
+                double Q_candidate = Q;
+
+                if (cavitation_model_ == CavitationModel::DVCM) {
+                    constexpr double H_CAVITY_ENTER_TOL = 0.10 * PSI_TO_FT;
+                    constexpr double H_CAVITY_LEAVE_TOL = 0.50 * PSI_TO_FT;
+                    const bool enter_cavity = (H_up_candidate <= (H_vap - H_CAVITY_ENTER_TOL)) || (H_dn_candidate <= (H_vap - H_CAVITY_ENTER_TOL));
+                    const bool leave_cavity = (H_up_candidate >= (H_vap + H_CAVITY_LEAVE_TOL)) && (H_dn_candidate >= (H_vap + H_CAVITY_LEAVE_TOL));
+
+                    double H_up_clamped = H_up_candidate;
+                    double H_dn_clamped = H_dn_candidate;
+                    double Q_clamped = Q_candidate;
+
+                    if (H_dn_clamped < H_vap) {
+                        H_dn_clamped = H_vap;
+                        const double Bc  = bndry[bIn].B / bndry[bIn].area;
+                        Q_clamped    = quadratic_Q(K_eq, Bc, bndry[bIn].C_P - H_vap);
+                        if (n.flipped) Q_clamped = std::min(0.0, Q_clamped);
+                        else           Q_clamped = std::max(0.0, Q_clamped);
+                        H_up_clamped = bndry[bIn].C_P - Bc * Q_clamped;
+                    }
+                    if (H_up_clamped < H_vap) {
+                        H_up_clamped = H_vap;
+                        const double Bc  = bndry[bOut].B / bndry[bOut].area;
+                        Q_clamped    = quadratic_Q(K_eq, Bc, H_vap - bndry[bOut].C_M);
+                        if (n.flipped) Q_clamped = std::min(0.0, Q_clamped);
+                        else           Q_clamped = std::max(0.0, Q_clamped);
+                        H_dn_clamped = bndry[bOut].C_M + Bc * Q_clamped;
+                    }
+                    const double flow_in_vap = (bndry[bIn].C_P - H_vap) / (bndry[bIn].B / bndry[bIn].area);
+                    const double flow_out_vap = (H_vap - bndry[bOut].C_M) / (bndry[bOut].B / bndry[bOut].area);
+                    const double imbalance_cfs = std::abs(flow_in_vap - flow_out_vap);
+
+                    const double cavity_capacity_ft3 = 0.5 * pipes_[bIn].area * pipes_[bIn].L + 0.5 * pipes_[bOut].area * pipes_[bOut].L;
+                    const double max_step_delta_ft3 = 0.25 * cavity_capacity_ft3;
+                    const double bounded_step_delta_ft3 = std::min(imbalance_cfs * dt_, max_step_delta_ft3);
+
+                    ns.cavity_collapsed_this_step = false;
+
+                    switch (ns.cavity_regime) {
+                        case CavityRegime::LiquidFull:
+                            if (enter_cavity) {
+                                ns.cavity_regime = CavityRegime::CavityActive;
+                                ns.cavity_active = true;
+                                ns.cavity_volume_ft3 = std::min(
+                                    cavity_capacity_ft3,
+                                    std::max(0.0, ns.cavity_volume_ft3 + bounded_step_delta_ft3));
+                            } else {
+                                ns.cavity_active = false;
+                                ns.cavity_volume_ft3 = 0.0;
+                                ns.cavity_consecutive_collapses = 0;
+                            }
+                            break;
+                        case CavityRegime::CavityActive:
+                            if (leave_cavity) {
+                                ns.cavity_regime = CavityRegime::CollapseTransition;
+                                ns.cavity_active = false;
+                                ns.cavity_volume_ft3 = std::max(0.0, ns.cavity_volume_ft3 - bounded_step_delta_ft3);
+                                ns.cavity_collapsed_this_step = true;
+                                ns.cavity_collapse_count += 1;
+                                ns.cavity_consecutive_collapses += 1;
+                            } else {
+                                ns.cavity_active = true;
+                                ns.cavity_volume_ft3 = std::min(
+                                    cavity_capacity_ft3,
+                                    std::max(0.0, ns.cavity_volume_ft3 + bounded_step_delta_ft3));
+                            }
+                            break;
+                        case CavityRegime::CollapseTransition:
+                            if (ns.cavity_volume_ft3 <= bounded_step_delta_ft3 &&
+                                H_up_candidate >= (H_vap - H_CAVITY_ENTER_TOL) &&
+                                H_dn_candidate >= (H_vap - H_CAVITY_ENTER_TOL)) {
+                                ns.cavity_regime = CavityRegime::LiquidFull;
+                                ns.cavity_active = false;
+                                ns.cavity_volume_ft3 = 0.0;
+                                ns.cavity_consecutive_collapses = 0;
+                            } else {
+                                ns.cavity_active = false;
+                                ns.cavity_volume_ft3 = std::max(0.0, ns.cavity_volume_ft3 - bounded_step_delta_ft3);
+                            }
+                            break;
+                    }
                 }
-                if (H_up < H_vap) {
-                    H_up = H_vap;
-                    const double Bc  = bndry[bOut].B / bndry[bOut].area;
-                    Q    = quadratic_Q(K_eq, Bc, H_vap - bndry[bOut].C_M);
-                    if (n.flipped) Q = std::min(0.0, Q);
-                    else           Q = std::max(0.0, Q);
-                    H_dn = bndry[bOut].C_M + Bc * Q;
+
+                if (cavitation_model_ == CavitationModel::LegacyClamp ||
+                    (cavitation_model_ == CavitationModel::DVCM && ns.cavity_regime != CavityRegime::LiquidFull)) {
+                    // Cavitation checks...
+                    if (H_dn < H_vap) {
+                        H_dn = H_vap;
+                        const double Bc  = bndry[bIn].B / bndry[bIn].area;
+                        Q    = quadratic_Q(K_eq, Bc, bndry[bIn].C_P - H_vap);
+                        if (n.flipped) Q = std::min(0.0, Q);
+                        else           Q = std::max(0.0, Q);
+                        H_up = bndry[bIn].C_P - Bc * Q;
+                    }
+                    if (H_up < H_vap) {
+                        H_up = H_vap;
+                        const double Bc  = bndry[bOut].B / bndry[bOut].area;
+                        Q    = quadratic_Q(K_eq, Bc, H_vap - bndry[bOut].C_M);
+                        if (n.flipped) Q = std::min(0.0, Q);
+                        else           Q = std::max(0.0, Q);
+                        H_dn = bndry[bOut].C_M + Bc * Q;
+                    }
                 }
 
                 set_downstream(bIn,  H_up);
@@ -1343,19 +1431,103 @@ void MOCSolver::stepMOC() {
                 double H_up = bndry[bIn].C_P  - (bndry[bIn].B  / bndry[bIn].area)  * Q;
                 double H_dn = bndry[bOut].C_M + (bndry[bOut].B / bndry[bOut].area) * Q;
 
-                // Cavitation: downstream
-                if (H_dn < H_vap) {
-                    H_dn = H_vap;
-                    const double Bc  = bndry[bIn].B / bndry[bIn].area;
-                    Q    = quadratic_Q(K_eq, Bc, bndry[bIn].C_P - H_vap);
-                    H_up = bndry[bIn].C_P - Bc * Q;
+                double H_up_candidate = H_up;
+                double H_dn_candidate = H_dn;
+                double Q_candidate = Q;
+
+                if (cavitation_model_ == CavitationModel::DVCM) {
+                    constexpr double H_CAVITY_ENTER_TOL = 0.10 * PSI_TO_FT;
+                    constexpr double H_CAVITY_LEAVE_TOL = 0.50 * PSI_TO_FT;
+                    const bool enter_cavity = (H_up_candidate <= (H_vap - H_CAVITY_ENTER_TOL)) || (H_dn_candidate <= (H_vap - H_CAVITY_ENTER_TOL));
+                    const bool leave_cavity = (H_up_candidate >= (H_vap + H_CAVITY_LEAVE_TOL)) && (H_dn_candidate >= (H_vap + H_CAVITY_LEAVE_TOL));
+
+                    double H_up_clamped = H_up_candidate;
+                    double H_dn_clamped = H_dn_candidate;
+                    double Q_clamped = Q_candidate;
+
+                    if (H_dn_clamped < H_vap) {
+                        H_dn_clamped = H_vap;
+                        const double Bc  = bndry[bIn].B / bndry[bIn].area;
+                        Q_clamped    = quadratic_Q(K_eq, Bc, bndry[bIn].C_P - H_vap);
+                        H_up_clamped = bndry[bIn].C_P - Bc * Q_clamped;
+                    }
+                    if (H_up_clamped < H_vap) {
+                        H_up_clamped = H_vap;
+                        const double Bc  = bndry[bOut].B / bndry[bOut].area;
+                        Q_clamped    = quadratic_Q(K_eq, Bc, H_vap - bndry[bOut].C_M);
+                        H_dn_clamped = bndry[bOut].C_M + Bc * Q_clamped;
+                    }
+                    const double flow_in_vap = (bndry[bIn].C_P - H_vap) / (bndry[bIn].B / bndry[bIn].area);
+                    const double flow_out_vap = (H_vap - bndry[bOut].C_M) / (bndry[bOut].B / bndry[bOut].area);
+                    const double imbalance_cfs = std::abs(flow_in_vap - flow_out_vap);
+
+                    const double cavity_capacity_ft3 = 0.5 * pipes_[bIn].area * pipes_[bIn].L + 0.5 * pipes_[bOut].area * pipes_[bOut].L;
+                    const double max_step_delta_ft3 = 0.25 * cavity_capacity_ft3;
+                    const double bounded_step_delta_ft3 = std::min(imbalance_cfs * dt_, max_step_delta_ft3);
+
+                    ns.cavity_collapsed_this_step = false;
+
+                    switch (ns.cavity_regime) {
+                        case CavityRegime::LiquidFull:
+                            if (enter_cavity) {
+                                ns.cavity_regime = CavityRegime::CavityActive;
+                                ns.cavity_active = true;
+                                ns.cavity_volume_ft3 = std::min(
+                                    cavity_capacity_ft3,
+                                    std::max(0.0, ns.cavity_volume_ft3 + bounded_step_delta_ft3));
+                            } else {
+                                ns.cavity_active = false;
+                                ns.cavity_volume_ft3 = 0.0;
+                                ns.cavity_consecutive_collapses = 0;
+                            }
+                            break;
+                        case CavityRegime::CavityActive:
+                            if (leave_cavity) {
+                                ns.cavity_regime = CavityRegime::CollapseTransition;
+                                ns.cavity_active = false;
+                                ns.cavity_volume_ft3 = std::max(0.0, ns.cavity_volume_ft3 - bounded_step_delta_ft3);
+                                ns.cavity_collapsed_this_step = true;
+                                ns.cavity_collapse_count += 1;
+                                ns.cavity_consecutive_collapses += 1;
+                            } else {
+                                ns.cavity_active = true;
+                                ns.cavity_volume_ft3 = std::min(
+                                    cavity_capacity_ft3,
+                                    std::max(0.0, ns.cavity_volume_ft3 + bounded_step_delta_ft3));
+                            }
+                            break;
+                        case CavityRegime::CollapseTransition:
+                            if (ns.cavity_volume_ft3 <= bounded_step_delta_ft3 &&
+                                H_up_candidate >= (H_vap - H_CAVITY_ENTER_TOL) &&
+                                H_dn_candidate >= (H_vap - H_CAVITY_ENTER_TOL)) {
+                                ns.cavity_regime = CavityRegime::LiquidFull;
+                                ns.cavity_active = false;
+                                ns.cavity_volume_ft3 = 0.0;
+                                ns.cavity_consecutive_collapses = 0;
+                            } else {
+                                ns.cavity_active = false;
+                                ns.cavity_volume_ft3 = std::max(0.0, ns.cavity_volume_ft3 - bounded_step_delta_ft3);
+                            }
+                            break;
+                    }
                 }
-                // Cavitation: upstream
-                if (H_up < H_vap) {
-                    H_up = H_vap;
-                    const double Bc  = bndry[bOut].B / bndry[bOut].area;
-                    Q    = quadratic_Q(K_eq, Bc, H_vap - bndry[bOut].C_M);
-                    H_dn = bndry[bOut].C_M + Bc * Q;
+
+                if (cavitation_model_ == CavitationModel::LegacyClamp ||
+                    (cavitation_model_ == CavitationModel::DVCM && ns.cavity_regime != CavityRegime::LiquidFull)) {
+                    // Cavitation: downstream
+                    if (H_dn < H_vap) {
+                        H_dn = H_vap;
+                        const double Bc  = bndry[bIn].B / bndry[bIn].area;
+                        Q    = quadratic_Q(K_eq, Bc, bndry[bIn].C_P - H_vap);
+                        H_up = bndry[bIn].C_P - Bc * Q;
+                    }
+                    // Cavitation: upstream
+                    if (H_up < H_vap) {
+                        H_up = H_vap;
+                        const double Bc  = bndry[bOut].B / bndry[bOut].area;
+                        Q    = quadratic_Q(K_eq, Bc, H_vap - bndry[bOut].C_M);
+                        H_dn = bndry[bOut].C_M + Bc * Q;
+                    }
                 }
 
                 set_downstream(bIn,  H_up);
@@ -1428,25 +1600,6 @@ void MOCSolver::stepMOC() {
         //   β_cfs = β · 448.831²  (convert to CFS units)
         case NodeType::Pump: {
             const double spd = n.current_speed;
-            if (spd <= 0.0) {
-                // Pump off: dead-end (zero-velocity) boundary
-                for (int pi : in_pipes) {
-                    double H_P = bndry[pi].C_P;
-                    double V_P = 0.0;
-                    if (H_P < H_vap) { H_P = H_vap; V_P = (bndry[pi].C_P - H_vap) / bndry[pi].B; }
-                    set_downstream(pi, H_P);
-                    newV[pi][pipes_[pi].num_nodes - 1] = V_P;
-                }
-                for (int pi : out_pipes) {
-                    double H_P = bndry[pi].C_M;
-                    double V_P = 0.0;
-                    if (H_P < H_vap) { H_P = H_vap; V_P = (H_vap - bndry[pi].C_M) / bndry[pi].B; }
-                    set_upstream(pi, H_P);
-                    newV[pi][0] = V_P;
-                }
-                break;
-            }
-
             const double H_D   = n.design_head;
             const double Q_D   = n.design_flow;
             const double alpha  = (4.0 / 3.0) * H_D;            // ft
@@ -1454,75 +1607,184 @@ void MOCSolver::stepMOC() {
             const double beta_cfs = beta * 201449.26;            // 448.831² ≈ 201449
             const double s  = spd / 100.0;
             const double s2 = s * s;
-
             double Q = 0.0;
 
             if (in_pipes.size() == 1 && out_pipes.size() == 1) {
                 const int bIn  = in_pipes[0];
                 const int bOut = out_pipes[0];
-                const double B_eq = (bndry[bIn].B  / bndry[bIn].area)
-                                  + (bndry[bOut].B / bndry[bOut].area);
-                const double C_eq = bndry[bIn].C_P - bndry[bOut].C_M;
-
-                // Equation: beta_cfs·s²·Q² + B_eq·Q − (C_eq + alpha·s²) = 0
                 const double a_q = beta_cfs * s2;
-                const double b_q = B_eq;
-                const double c_q = -(C_eq + alpha * s2);
 
-                if (a_q < 1e-10) {
-                    Q = -c_q / b_q;
+                double H_up = 0.0;
+                double H_dn = 0.0;
+
+                if (spd <= 0.0) {
+                    H_up = bndry[bIn].C_P;
+                    H_dn = bndry[bOut].C_M;
+                    Q = 0.0;
                 } else {
-                    const double disc = b_q * b_q - 4.0 * a_q * c_q;
-                    if (disc >= 0.0)
-                        Q = (-b_q + std::sqrt(disc)) / (2.0 * a_q);
-                }
-                Q = std::max(0.0, Q); // pumps do not reverse (simplification)
+                    const double B_eq = (bndry[bIn].B  / bndry[bIn].area)
+                                      + (bndry[bOut].B / bndry[bOut].area);
+                    const double C_eq = bndry[bIn].C_P - bndry[bOut].C_M;
+                    const double c_q = -(C_eq + alpha * s2);
 
-                double H_up = bndry[bIn].C_P  - (bndry[bIn].B  / bndry[bIn].area)  * Q;
-                double H_dn = bndry[bOut].C_M + (bndry[bOut].B / bndry[bOut].area) * Q;
+                    if (a_q < 1e-10) {
+                        Q = -c_q / B_eq;
+                    } else {
+                        const double disc = B_eq * B_eq - 4.0 * a_q * c_q;
+                        if (disc >= 0.0)
+                            Q = (-B_eq + std::sqrt(disc)) / (2.0 * a_q);
+                    }
+                    Q = std::max(0.0, Q);
 
-                // Cavitation downstream
-                if (H_dn < H_vap) {
-                    H_dn = H_vap;
-                    const double bc  = bndry[bIn].B / bndry[bIn].area;
-                    const double cc  = -(bndry[bIn].C_P + alpha * s2 - H_vap);
-                    if (a_q < 1e-10) { Q = -cc / bc; }
-                    else {
-                        const double dc = bc * bc - 4.0 * a_q * cc;
-                        if (dc >= 0.0) Q = (-bc + std::sqrt(dc)) / (2.0 * a_q);
-                    }
-                    Q    = std::max(0.0, Q);
-                    H_up = bndry[bIn].C_P - (bndry[bIn].B / bndry[bIn].area) * Q;
-                }
-                // Cavitation upstream
-                if (H_up < H_vap) {
-                    H_up = H_vap;
-                    const double bc  = bndry[bOut].B / bndry[bOut].area;
-                    const double cc  = -(H_vap + alpha * s2 - bndry[bOut].C_M);
-                    if (a_q < 1e-10) { Q = -cc / bc; }
-                    else {
-                        const double dc = bc * bc - 4.0 * a_q * cc;
-                        if (dc >= 0.0) Q = (-bc + std::sqrt(dc)) / (2.0 * a_q);
-                    }
-                    Q    = std::max(0.0, Q);
+                    H_up = bndry[bIn].C_P  - (bndry[bIn].B  / bndry[bIn].area)  * Q;
                     H_dn = bndry[bOut].C_M + (bndry[bOut].B / bndry[bOut].area) * Q;
                 }
 
-                set_downstream(bIn,  H_up);
-                set_upstream  (bOut, H_dn);
-            } else {
-                // Multi-pipe pump: approximate with static head rise
-                const double H_base = getInitialHead(ns);
-                for (int pi : in_pipes)  set_downstream(pi, std::max(H_vap, H_base - alpha * s2));
-                for (int pi : out_pipes) set_upstream  (pi, std::max(H_vap, H_base + alpha * s2));
+                double H_up_candidate = H_up;
+                double H_dn_candidate = H_dn;
+                double Q_candidate = Q;
 
-                // Estimate Q for speed decay
-                double Q_sum = 0.0;
-                for (int pi : in_pipes) {
-                    int last = pipes_[pi].num_nodes - 1;
-                    Q_sum += newV[pi][last] * pipes_[pi].area;
+                if (cavitation_model_ == CavitationModel::DVCM) {
+                    constexpr double H_CAVITY_ENTER_TOL = 0.10 * PSI_TO_FT;
+                    constexpr double H_CAVITY_LEAVE_TOL = 0.50 * PSI_TO_FT;
+                    const bool enter_cavity = (H_up_candidate <= (H_vap - H_CAVITY_ENTER_TOL)) || (H_dn_candidate <= (H_vap - H_CAVITY_ENTER_TOL));
+                    const bool leave_cavity = (H_up_candidate >= (H_vap + H_CAVITY_LEAVE_TOL)) && (H_dn_candidate >= (H_vap + H_CAVITY_LEAVE_TOL));
+
+                    const double flow_in_vap = (bndry[bIn].C_P - H_vap) / (bndry[bIn].B / bndry[bIn].area);
+                    const double flow_out_vap = (H_vap - bndry[bOut].C_M) / (bndry[bOut].B / bndry[bOut].area);
+                    const double imbalance_cfs = std::abs(flow_in_vap - flow_out_vap);
+
+                    const double cavity_capacity_ft3 = 0.5 * pipes_[bIn].area * pipes_[bIn].L + 0.5 * pipes_[bOut].area * pipes_[bOut].L;
+                    const double max_step_delta_ft3 = 0.25 * cavity_capacity_ft3;
+                    const double bounded_step_delta_ft3 = std::min(imbalance_cfs * dt_, max_step_delta_ft3);
+
+                    ns.cavity_collapsed_this_step = false;
+
+                    switch (ns.cavity_regime) {
+                        case CavityRegime::LiquidFull:
+                            if (enter_cavity) {
+                                ns.cavity_regime = CavityRegime::CavityActive;
+                                ns.cavity_active = true;
+                                ns.cavity_volume_ft3 = std::min(
+                                    cavity_capacity_ft3,
+                                    std::max(0.0, ns.cavity_volume_ft3 + bounded_step_delta_ft3));
+                            } else {
+                                ns.cavity_active = false;
+                                ns.cavity_volume_ft3 = 0.0;
+                                ns.cavity_consecutive_collapses = 0;
+                            }
+                            break;
+                        case CavityRegime::CavityActive:
+                            if (leave_cavity) {
+                                ns.cavity_regime = CavityRegime::CollapseTransition;
+                                ns.cavity_active = false;
+                                ns.cavity_volume_ft3 = std::max(0.0, ns.cavity_volume_ft3 - bounded_step_delta_ft3);
+                                ns.cavity_collapsed_this_step = true;
+                                ns.cavity_collapse_count += 1;
+                                ns.cavity_consecutive_collapses += 1;
+                            } else {
+                                ns.cavity_active = true;
+                                ns.cavity_volume_ft3 = std::min(
+                                    cavity_capacity_ft3,
+                                    std::max(0.0, ns.cavity_volume_ft3 + bounded_step_delta_ft3));
+                            }
+                            break;
+                        case CavityRegime::CollapseTransition:
+                            if (ns.cavity_volume_ft3 <= bounded_step_delta_ft3 &&
+                                H_up_candidate >= (H_vap - H_CAVITY_ENTER_TOL) &&
+                                H_dn_candidate >= (H_vap - H_CAVITY_ENTER_TOL)) {
+                                ns.cavity_regime = CavityRegime::LiquidFull;
+                                ns.cavity_active = false;
+                                ns.cavity_volume_ft3 = 0.0;
+                                ns.cavity_consecutive_collapses = 0;
+                            } else {
+                                ns.cavity_active = false;
+                                ns.cavity_volume_ft3 = std::max(0.0, ns.cavity_volume_ft3 - bounded_step_delta_ft3);
+                            }
+                            break;
+                    }
                 }
-                Q = std::max(0.0, Q_sum);
+
+                if (cavitation_model_ == CavitationModel::LegacyClamp ||
+                    (cavitation_model_ == CavitationModel::DVCM && ns.cavity_regime != CavityRegime::LiquidFull)) {
+                    if (spd <= 0.0) {
+                        if (H_up < H_vap) H_up = H_vap;
+                        if (H_dn < H_vap) H_dn = H_vap;
+                    } else {
+                        // Cavitation downstream
+                        if (H_dn < H_vap) {
+                            H_dn = H_vap;
+                            const double bc  = bndry[bIn].B / bndry[bIn].area;
+                            const double cc  = -(bndry[bIn].C_P + alpha * s2 - H_vap);
+                            if (a_q < 1e-10) { Q = -cc / bc; }
+                            else {
+                                const double dc = bc * bc - 4.0 * a_q * cc;
+                                if (dc >= 0.0) Q = (-bc + std::sqrt(dc)) / (2.0 * a_q);
+                            }
+                            Q    = std::max(0.0, Q);
+                            H_up = bndry[bIn].C_P - (bndry[bIn].B / bndry[bIn].area) * Q;
+                        }
+                        // Cavitation upstream
+                        if (H_up < H_vap) {
+                            H_up = H_vap;
+                            const double bc  = bndry[bOut].B / bndry[bOut].area;
+                            const double cc  = -(H_vap + alpha * s2 - bndry[bOut].C_M);
+                            if (a_q < 1e-10) { Q = -cc / bc; }
+                            else {
+                                const double dc = bc * bc - 4.0 * a_q * cc;
+                                if (dc >= 0.0) Q = (-bc + std::sqrt(dc)) / (2.0 * a_q);
+                            }
+                            Q    = std::max(0.0, Q);
+                            H_dn = bndry[bOut].C_M + (bndry[bOut].B / bndry[bOut].area) * Q;
+                        }
+                    }
+                }
+
+                if (spd <= 0.0) {
+                    double V_up = 0.0;
+                    double V_dn = 0.0;
+                    if (H_up < H_vap + 1e-9) { H_up = H_vap; V_up = (bndry[bIn].C_P - H_vap) / bndry[bIn].B; }
+                    if (H_dn < H_vap + 1e-9) { H_dn = H_vap; V_dn = (H_vap - bndry[bOut].C_M) / bndry[bOut].B; }
+                    set_downstream(bIn, H_up);
+                    newV[bIn][pipes_[bIn].num_nodes - 1] = V_up;
+                    set_upstream(bOut, H_dn);
+                    newV[bOut][0] = V_dn;
+                } else {
+                    set_downstream(bIn,  H_up);
+                    set_upstream  (bOut, H_dn);
+                }
+
+            } else {
+                // Multi-pipe pump:
+                if (spd <= 0.0) {
+                    for (int pi : in_pipes) {
+                        double H_P = bndry[pi].C_P;
+                        double V_P = 0.0;
+                        if (H_P < H_vap) { H_P = H_vap; V_P = (bndry[pi].C_P - H_vap) / bndry[pi].B; }
+                        set_downstream(pi, H_P);
+                        newV[pi][pipes_[pi].num_nodes - 1] = V_P;
+                    }
+                    for (int pi : out_pipes) {
+                        double H_P = bndry[pi].C_M;
+                        double V_P = 0.0;
+                        if (H_P < H_vap) { H_P = H_vap; V_P = (H_vap - bndry[pi].C_M) / bndry[pi].B; }
+                        set_upstream(pi, H_P);
+                        newV[pi][0] = V_P;
+                    }
+                } else {
+                    // Multi-pipe pump: approximate with static head rise
+                    const double H_base = getInitialHead(ns);
+                    for (int pi : in_pipes)  set_downstream(pi, std::max(H_vap, H_base - alpha * s2));
+                    for (int pi : out_pipes) set_upstream  (pi, std::max(H_vap, H_base + alpha * s2));
+
+                    // Estimate Q for speed decay
+                    double Q_sum = 0.0;
+                    for (int pi : in_pipes) {
+                        int last = pipes_[pi].num_nodes - 1;
+                        Q_sum += newV[pi][last] * pipes_[pi].area;
+                    }
+                    Q = std::max(0.0, Q_sum);
+                }
             }
 
             // Integrate pump deceleration speed decay if power is lost and pump has inertia
@@ -1666,11 +1928,13 @@ void MOCSolver::stepMOC() {
         auto& ns = nodes_[ni];
         const auto& n = ns.input;
 
-        const bool is_junction_like =
+        const bool is_dvcm_supported =
             n.type == NodeType::Junction ||
             n.type == NodeType::InflowNode ||
-            n.type == NodeType::OutflowNode;
-        if (cavitation_model_ == CavitationModel::DVCM && is_junction_like) {
+            n.type == NodeType::OutflowNode ||
+            ((n.type == NodeType::Valve || n.type == NodeType::Turbine || n.type == NodeType::CheckValve || n.type == NodeType::Pump) &&
+             node_inflow_pipes_.at(n.id).size() == 1 && node_outflow_pipes_.at(n.id).size() == 1);
+        if (cavitation_model_ == CavitationModel::DVCM && is_dvcm_supported) {
             if (!ns.cavity_active) {
                 ns.cavity_volume_ft3 = std::max(ns.cavity_volume_ft3, 0.0);
             } else {

@@ -91,13 +91,13 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 ### Checklist
 
-- [ ] Add at least 3 canonical cavitation scenarios:
-- [ ] Rapid closure with cavity formation and collapse spike.
-- [ ] Reopening/pressure recovery case.
-- [ ] Long-run stability case with repeated events.
-- [ ] Define acceptance metrics (peak error, timing of collapse, RMS trace error).
-- [ ] Store reference artifacts for reproducible regression.
-- [ ] Add CI jobs/markers for DVCM tests.
+- [x] Add at least 3 canonical cavitation scenarios:
+- [x] Rapid closure with cavity formation and collapse spike.
+- [x] Reopening/pressure recovery case.
+- [x] Long-run stability case with repeated events.
+- [x] Define acceptance metrics (peak error, timing of collapse, RMS trace error).
+- [x] Store reference artifacts for reproducible regression.
+- [x] Add CI jobs/markers for DVCM tests.
 
 ### Exit criteria
 
@@ -111,11 +111,11 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 ### Checklist
 
-- [ ] Integrate with valve boundary logic (standard valves and check valves).
-- [ ] Integrate with pump trip/start and inertia behavior.
-- [ ] Evaluate interactions with standpipe and hydropneumatic tank dynamics.
-- [ ] Evaluate interactions with air valve compressible model.
-- [ ] Add targeted tests per boundary/device integration.
+- [x] Integrate with valve boundary logic (standard valves and check valves).
+- [x] Integrate with pump trip/start and inertia behavior.
+- [x] Evaluate interactions with standpipe and hydropneumatic tank dynamics.
+- [x] Evaluate interactions with air valve compressible model.
+- [x] Add targeted tests per boundary/device integration.
 
 ### Exit criteria
 
@@ -130,11 +130,11 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 ### Checklist
 
-- [ ] Stress test with small/large `dt`, short/long pipes, stiff networks.
-- [ ] Add guards for NaN/Inf propagation and non-physical states.
-- [ ] Profile DVCM hot paths and optimize key loops.
-- [ ] Set runtime overhead target (for example <= 25% on selected benchmarks).
-- [ ] Document recommended timestep guidance for DVCM mode.
+- [ ] 1. Stress test with small/large `dt`, short/long pipes, stiff networks.
+- [ ] 2. Add guards for NaN/Inf propagation and non-physical states.
+- [ ] 3. Profile DVCM hot paths and optimize key loops.
+- [ ] 4. Set runtime overhead target (for example <= 25% on selected benchmarks).
+- [ ] 5. Document recommended timestep guidance for DVCM mode.
 
 ### Exit criteria
 
@@ -149,11 +149,11 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 ### Checklist
 
-- [ ] Finalize public parameter names and defaults.
-- [ ] Update README cavitation section with explicit model options.
-- [ ] Add docs page comparing Legacy Clamp vs DVCM behavior and cost.
-- [ ] Add migration notes for existing users.
-- [ ] Add notebook/example showcasing DVCM scenarios and interpretation.
+- [ ] 6. Finalize public parameter names and defaults.
+- [ ] 7. Update README cavitation section with explicit model options.
+- [ ] 8. Add docs page comparing Legacy Clamp vs DVCM behavior and cost.
+- [ ] 9. Add migration notes for existing users.
+- [ ] 10. Add notebook/example showcasing DVCM scenarios and interpretation.
 
 ### Exit criteria
 
@@ -167,10 +167,10 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 ### Checklist
 
-- [ ] Release as experimental or opt-in mode.
-- [ ] Collect feedback from internal and external users.
-- [ ] Track defect reports and edge-case failures.
-- [ ] Patch high-severity issues before broader recommendation.
+- [ ] 11. Release as experimental or opt-in mode.
+- [ ] 12. Collect feedback from internal and external users.
+- [ ] 13. Track defect reports and edge-case failures.
+- [ ] 14. Patch high-severity issues before broader recommendation.
 
 ### Exit criteria
 
@@ -184,10 +184,10 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 ### Checklist
 
-- [ ] Review validation, stability, and performance evidence.
-- [ ] Confirm backward compatibility impact and migration burden.
-- [ ] Decide default mode and deprecation timeline (if any).
-- [ ] Publish release notes and upgrade guide.
+- [ ] 15. Review validation, stability, and performance evidence.
+- [ ] 16. Confirm backward compatibility impact and migration burden.
+- [ ] 17. Decide default mode and deprecation timeline (if any).
+- [ ] 18. Publish release notes and upgrade guide.
 
 ### Exit criteria
 
@@ -222,13 +222,13 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 - [x] Phase 0 complete
 - [x] Phase 1 complete
 - [x] Phase 2 complete
-- [ ] Phase 3 complete
-- [ ] Phase 4 complete
-- [ ] Phase 5 complete
-- [ ] Phase 6 complete
-- [ ] Phase 7 complete
-- [ ] Phase 8 complete
-- [ ] Legacy mode unchanged and verified throughout rollout
-- [ ] DVCM validation artifacts committed and reproducible
-- [ ] User-facing docs and examples complete
-- [ ] Final release decision documented
+- [x] Phase 3 complete
+- [x] Phase 4 complete
+- [ ] 19. Phase 5 complete
+- [ ] 20. Phase 6 complete
+- [ ] 21. Phase 7 complete
+- [ ] 22. Phase 8 complete
+- [ ] 23. Legacy mode unchanged and verified throughout rollout
+- [ ] 24. DVCM validation artifacts committed and reproducible
+- [ ] 25. User-facing docs and examples complete
+- [ ] 26. Final release decision documented
