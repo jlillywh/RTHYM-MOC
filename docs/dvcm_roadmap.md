@@ -91,13 +91,13 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 ### Checklist
 
-- [ ] Add at least 3 canonical cavitation scenarios:
-- [ ] Rapid closure with cavity formation and collapse spike.
-- [ ] Reopening/pressure recovery case.
-- [ ] Long-run stability case with repeated events.
-- [ ] Define acceptance metrics (peak error, timing of collapse, RMS trace error).
-- [ ] Store reference artifacts for reproducible regression.
-- [ ] Add CI jobs/markers for DVCM tests.
+- [x] Add at least 3 canonical cavitation scenarios:
+- [x] Rapid closure with cavity formation and collapse spike.
+- [x] Reopening/pressure recovery case.
+- [x] Long-run stability case with repeated events.
+- [x] Define acceptance metrics (peak error, timing of collapse, RMS trace error).
+- [x] Store reference artifacts for reproducible regression.
+- [x] Add CI jobs/markers for DVCM tests.
 
 ### Exit criteria
 

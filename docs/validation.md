@@ -26,6 +26,7 @@ Each validation case should provide the following where practical:
 | Cross-engine (R-THYM) | Heads, peaks, and traces match the production web-app engine | `test_joukowsky_rthym.py`, `test_long_pipe_valve.py` | Checked-in JSON/CSV exports |
 | Cross-engine (EPANET) | Imported steady state and trip directionality | `test_complex_topology_from_inp.py` | `tests/networks/complex_topology.inp` |
 | Analytical / regime | Joukowsky and slow-closure behavior vs theory | `test_gradual_closure_benchmark.py` | Joukowsky / Allievi expectations |
+| DVCM canonical cavitation | Junction-only cavity initiation, collapse/recovery, and repeated-event stability | `test_dvcm_canonical_scenarios.py` | Internal anchored junction geometries |
 | Surge-device physics | Monotonic sizing, placement, and mixed-device trends | `test_tank_size_benchmark.py`, `test_hydropneumatic_size_benchmark.py`, `test_device_placement_benchmark.py`, `test_pipe_length_benchmark.py`, `test_multi_device_placement_benchmark.py`, `test_mixed_device_interaction_benchmark.py`, `test_air_valve_dominant_*.py` | Internal anchored geometries |
 | Broader regression | Cavitation, controls, INP import, materials, losses | `test_column_separation_and_stability.py`, `test_operational_controls.py`, `test_pump_valve_transients_from_inp.py`, and others under `tests/` | Module docstrings |
 
@@ -43,6 +44,7 @@ Representative headline results (automated in CI):
 | `tests/test_long_pipe_valve.py` | Equal-percentage closure network should match R-THYM heads, peaks, and pressure traces | R-THYM web app export | nodes and trace quantities only | R-THYM web app |
 | `tests/test_complex_topology_from_inp.py` | Imported complex network should match EPANET operating point and pump-trip directionality | EPANET/wntr steady state | per-node and per-pipe parametrization | wntr / EPANET |
 | `tests/test_gradual_closure_benchmark.py` | Closure-time sweep should reproduce rapid-closure Joukowsky behavior and slow-closure suppression | Analytical Joukowsky / Allievi regime expectations | closure time (`0.5 s`, `3.0 s`, `150 s`) | no |
+| `tests/test_dvcm_canonical_scenarios.py` | Rapid collapse-spike, pressure-recovery, and repeated-event junction cavitation scenarios should remain stable and quantitatively match anchored DVCM traces | Internal anchored junction geometries | three canonical schedules with peak-head, collapse-timing, and RMS-trace tolerances | no |
 | `tests/test_tank_size_benchmark.py` | Increasing standpipe size should monotonically reduce the protected-node closure peak | Internal anchored geometry | standpipe area (`1`, `2`, `5`, `10`, `20 ft²`) | no |
 | `tests/test_hydropneumatic_size_benchmark.py` | Larger vessels at fixed precharge ratio should improve trip recovery | Internal anchored geometry | vessel size (`2`–`20 ft³`, `gas_volume/tank_volume = 0.4`) | no |
 | `tests/test_device_placement_benchmark.py` | Moving protection farther from pump discharge should weaken trip protection | Internal anchored geometry | distance (`40`, `120`, `300`, `600 ft`) | no |
@@ -76,6 +78,14 @@ Current metrics include:
 - first-step and peak-pressure error in `ft` or `psi`
 - RMS trace mismatch over a declared time window
 - bounded late-time envelopes for stability-focused transients
+- DVCM collapse timing error in `s` for anchored junction cavitation cases
+
+For `tests/test_dvcm_canonical_scenarios.py`, the current explicit acceptance
+metrics are:
+
+- peak-head error `<= 0.05 ft` against the anchored case peak
+- first collapse timing error `<= 1e-9 s`
+- RMS trace error `<= 1e-9 ft` against the anchored junction-head trace
 
 Tolerance values are expressed in one of three explicit forms in the suite:
 
@@ -111,6 +121,9 @@ against relative trends.
 | `tests/R-THYM_Joukowsky_Traces.csv` | CSV | R-THYM web-app time-series trace for the same case | `tests/test_joukowsky_rthym.py` |
 | `tests/R-THYM_MOC_Verification.json` | JSON | R-THYM web-app export for the long-pipe valve case | `tests/test_long_pipe_valve.py` |
 | `tests/R-THYM_MOC_Traces.csv` | CSV | R-THYM web-app time-series trace for the long-pipe valve case | `tests/test_long_pipe_valve.py` |
+| `tests/dvcm_rapid_closure_reference.json` | JSON | Anchored DVCM rapid-collapse regression trace | `tests/test_dvcm_canonical_scenarios.py` |
+| `tests/dvcm_pressure_recovery_reference.json` | JSON | Anchored DVCM pressure-recovery regression trace | `tests/test_dvcm_canonical_scenarios.py` |
+| `tests/dvcm_long_run_reference.json` | JSON | Anchored DVCM repeated-event regression trace | `tests/test_dvcm_canonical_scenarios.py` |
 | `tests/Joukowsky Benchmark.inp` | INP | EPANET-style geometry for the Joukowsky cross-engine study | `tests/test_joukowsky_rthym.py` |
 | `tests/Long Pipe Valve.inp` | INP | EPANET-style geometry for the long-pipe valve study | `tests/test_long_pipe_valve.py` |
 | `tests/networks/complex_topology.inp` | INP | Multi-node network for EPANET/wntr steady-state checks | `tests/test_complex_topology_from_inp.py` |
