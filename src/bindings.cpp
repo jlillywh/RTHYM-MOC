@@ -533,11 +533,11 @@ PYBIND11_MODULE(_rthym_moc, m) {
               "node_cavitation"  : dict[node_id] → numpy.ndarray (num_steps,)  0/1
               "pipe_flow_gpm"    : dict[pipe_id] → numpy.ndarray (num_steps,)  GPM
 
-                        Optional additive keys (experimental cavity scaffolding):
-                            "node_cavity_volume" : dict[node_id] → numpy.ndarray (num_steps,)  ft³
-                            "node_cavity_active" : dict[node_id] → numpy.ndarray (num_steps,)  0/1
-                            "node_cavity_collapse_flag" : dict[node_id] → numpy.ndarray (num_steps,)  0/1 this step
-                            "node_cavity_collapse_count" : dict[node_id] → numpy.ndarray (num_steps,)  cumulative count
+              Diagnostic keys (populated when simulating with DVCM):
+                  "node_cavity_volume" : dict[node_id] → numpy.ndarray (num_steps,)  ft³
+                  "node_cavity_active" : dict[node_id] → numpy.ndarray (num_steps,)  0/1
+                  "node_cavity_collapse_flag" : dict[node_id] → numpy.ndarray (num_steps,)  0/1 this step
+                  "node_cavity_collapse_count" : dict[node_id] → numpy.ndarray (num_steps,)  cumulative count
             )pbdoc");
 
     // ── Module-level convenience constants ────────────────────────────────

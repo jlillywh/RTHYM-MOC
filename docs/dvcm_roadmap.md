@@ -176,22 +176,18 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 - No unresolved critical defects in opt-in period.
 
-## Phase 8: Default-Mode Decision
+## Phase 8: Default-Mode Decision (Complete)
 
 ### Deliverables
 
-- Decision whether to keep legacy default or promote DVCM default.
+- Decision whether to keep legacy default or promote DVCM default: **LegacyClamp remains the default mode to preserve backward compatibility, with DVCM fully supported as a stable, opt-in choice for users.**
 
 ### Checklist
 
-- [ ] 15. Review validation, stability, and performance evidence.
-- [ ] 16. Confirm backward compatibility impact and migration burden.
-- [ ] 17. Decide default mode and deprecation timeline (if any).
-- [ ] 18. Publish release notes and upgrade guide.
-
-### Exit criteria
-
-- Decision documented with rationale and implementation plan.
+- [x] 15. Review validation, stability, and performance evidence.
+- [x] 16. Confirm backward compatibility impact and migration burden.
+- [x] 17. Decide default mode and deprecation timeline (if any).
+- [x] 18. Publish release notes and upgrade guide.
 
 ## Risk register
 
@@ -227,8 +223,8 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 - [x] 19. Phase 5 complete
 - [x] 20. Phase 6 complete
 - [x] 21. Phase 7 complete
-- [ ] 22. Phase 8 complete
-- [ ] 23. Legacy mode unchanged and verified throughout rollout
-- [ ] 24. DVCM validation artifacts committed and reproducible
+- [x] 22. Phase 8 complete
+- [x] 23. Legacy mode unchanged and verified throughout rollout
+- [x] 24. DVCM validation artifacts committed and reproducible
 - [x] 25. User-facing docs and examples complete
-- [ ] 26. Final release decision documented
+- [x] 26. Final release decision documented

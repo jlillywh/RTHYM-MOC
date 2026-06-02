@@ -50,7 +50,9 @@ RTHYM-MOC solves the 1-D water-hammer equations using the Method of Characterist
 
 - **Network-capable**: arbitrary topologies of pipes, junctions, reservoirs, air valves, valves, pumps, standpipe surge tanks, hydropneumatic tanks, and turbines.
 - **Time-varying events**: valve schedules, pump trip/start, demand changes — specified either as discrete step changes between `run()` calls or as continuous piecewise-linear schedules registered before `run()`.
-- **Cavitation detection**: integrates a column-separation flag (pressure < vapour pressure) at each node. *Note: This is a first-order head-clamping model. It does not integrate or track vapor cavity volume over time or simulate column separation collapse surges (water column collision). For severe cavitation, a Discrete Vapor Cavity Model (DVCM) is recommended (see [docs/dvcm_timestep_guidance.md](docs/dvcm_timestep_guidance.md) for recommended timestep selection).*
+- **Cavitation detection**: supports two cavitation models (configured via `set_cavitation_model()` or the `cavitation_model` parameter):
+  - **`LegacyClamp` (Default)**: A first-order head-clamping model. Clamps HGL at the vapor floor, best for mild transient systems where cavitation is minor.
+  - **`DVCM`**: A Discrete Vapor Cavity Model. Tracks the growth, expansion, and collapse of discrete vapor cavities, simulating secondary pressure surges upon column collision (requires small timesteps, see [docs/dvcm_timestep_guidance.md](docs/dvcm_timestep_guidance.md)).
 - **Study summaries**: built-in helpers turn raw time series into node/pipe
   envelopes, cavitation duration, and CSV/JSON exports — see [Post-processing &
   study reports](#post-processing--study-reports).
@@ -303,17 +305,19 @@ The repository includes runnable scripts and a notebook under `examples/`:
 | `test_gradual_closure.py` | Joukowsky criterion and K-model valve closure |
 | `test_surge_tank.py` | Standpipe mass oscillation and pressure mitigation |
 | `verify_rthym_webapp.py` | Cross-check against R-THYM web-app export artifacts |
+| `dvcm_showcase.ipynb` | Showcase of DVCM cavitation scenarios and physics validation |
 
 For an interactive walkthrough focused on reproducibility and deterministic
-solver behavior, see `examples/quickstart_notebook.ipynb`.
+solver behavior, see `examples/quickstart_notebook.ipynb`. To see the Discrete Vapor Cavity Model (DVCM) in action with physical transient scenarios, see `examples/dvcm_showcase.ipynb`.
 
-Students and first-time users can launch that notebook in a browser via Binder
+Students and first-time users can launch these notebooks in a browser via Binder
 without installing Jupyter locally:
 
-[![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fquickstart_notebook.ipynb)
+- **Quickstart Notebook**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fquickstart_notebook.ipynb)
+- **DVCM Showcase**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fdvcm_showcase.ipynb)
 
 The first Binder launch can take a few minutes while the environment builds the
-compiled extension. After it opens, users can run the notebook directly in
+compiled extension. After it opens, users can run the notebooks directly in
 JupyterLab.
 
 ## Contributing
@@ -515,10 +519,10 @@ H_node      = np.array(results["node_head"]["NODE_ID"])     # (N,) float64, ft
 P_node      = np.array(results["node_pressure"]["NODE_ID"]) # (N,) float64, psi
 Q_pipe      = np.array(results["pipe_flow_gpm"]["PIPE_ID"]) # (N,) float64, GPM
 cav_flag    = np.array(results["node_cavitation"]["NODE_ID"])# (N,) int32, 0 or 1
-cav_vol     = np.array(results["node_cavity_volume"]["NODE_ID"])         # (N,) float64, ft^3 (optional, experimental)
-cav_active  = np.array(results["node_cavity_active"]["NODE_ID"])         # (N,) int32, 0/1 (optional, experimental)
-cav_coll_fl = np.array(results["node_cavity_collapse_flag"]["NODE_ID"])  # (N,) int32, 0/1 this step (optional, experimental)
-cav_coll    = np.array(results["node_cavity_collapse_count"]["NODE_ID"]) # (N,) int32, cumulative (optional, experimental)
+cav_vol     = np.array(results["node_cavity_volume"]["NODE_ID"])         # (N,) float64, ft^3 (populated when using DVCM)
+cav_active  = np.array(results["node_cavity_active"]["NODE_ID"])         # (N,) int32, 0/1 (populated when using DVCM)
+cav_coll_fl = np.array(results["node_cavity_collapse_flag"]["NODE_ID"])  # (N,) int32, 0/1 this step (populated when using DVCM)
+cav_coll    = np.array(results["node_cavity_collapse_count"]["NODE_ID"]) # (N,) int32, cumulative (populated when using DVCM)
 valve_pct   = np.array(results["valve_setting"]["V1"])      # (N,) float64, % open (Valve/Turbine)
 valve_pos   = np.array(results["valve_position"]["CV1"])    # (N,) float64, 0–1 (CheckValve position)
 valve_vel   = np.array(results["valve_velocity"]["CV1"])   # (N,) float64, ft/s (CheckValve disc velocity)
@@ -528,7 +532,7 @@ turbine_speed = np.array(results["turbine_speed"]["T1"])    # (N,) float64, % ra
 
 Every node and every pipe that was added to the solver has a corresponding key in the respective sub-dictionary.  `node_head` records the hydraulic grade line (HGL) at each node.  `node_cavitation` is 1 for any time step at which the computed pressure fell below `p_vapor`.
 
-The cavity channels (`node_cavity_volume`, `node_cavity_active`, `node_cavity_collapse_flag`, `node_cavity_collapse_count`) are optional additive outputs introduced during the DVCM rollout. They are experimental and may evolve as full DVCM physics is implemented.
+The cavity channels (`node_cavity_volume`, `node_cavity_active`, `node_cavity_collapse_flag`, `node_cavity_collapse_count`) are standard diagnostic outputs populated when simulating with the `DVCM` model.
 
 `valve_setting` is recorded for `Valve` and `Turbine` nodes.  `valve_position` and `valve_velocity` are recorded for `CheckValve` nodes during slam dynamics.  `pump_speed` is recorded for `Pump` nodes.  `turbine_speed` is recorded for `Turbine` nodes.
 
@@ -1055,6 +1059,7 @@ RTHYM-MOC supports two cavitation modeling strategies to simulate transient vapo
      When $V_c$ collapses back to zero, the solver returns to the liquid-full regime, generating a secondary water-hammer collision pressure spike.
    - **Use Case**: Recommended for pump trip transients, fast valve closures, and systems vulnerable to column-separation and severe water hammer.
    - **Guidance**: Requires choosing a smaller timestep (typically $dt \le 0.001\text{ s}$ or $0.0001\text{ s}$) to prevent numerical volume integration overshoot. See [docs/dvcm_timestep_guidance.md](docs/dvcm_timestep_guidance.md).
+   - **Showcase**: Run the showcase notebook interactively on Binder to see DVCM in action: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fdvcm_showcase.ipynb)
 
 ### Configuring the Cavitation Model
 
