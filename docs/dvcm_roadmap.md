@@ -132,9 +132,9 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 - [x] 1. Stress test with small/large `dt`, short/long pipes, stiff networks.
 - [x] 2. Add guards for NaN/Inf propagation and non-physical states.
-- [ ] 3. Profile DVCM hot paths and optimize key loops.
-- [ ] 4. Set runtime overhead target (for example <= 25% on selected benchmarks).
-- [ ] 5. Document recommended timestep guidance for DVCM mode.
+- [x] 3. Profile DVCM hot paths and optimize key loops.
+- [x] 4. Set runtime overhead target (for example <= 25% on selected benchmarks).
+- [x] 5. Document recommended timestep guidance for DVCM mode. See [docs/dvcm_timestep_guidance.md](file:///wsl.localhost/Ubuntu/home/jason/RTHYM-MOC/docs/dvcm_timestep_guidance.md).
 
 ### Exit criteria
 
@@ -224,7 +224,7 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 - [x] Phase 2 complete
 - [x] Phase 3 complete
 - [x] Phase 4 complete
-- [ ] 19. Phase 5 complete
+- [x] 19. Phase 5 complete
 - [ ] 20. Phase 6 complete
 - [ ] 21. Phase 7 complete
 - [ ] 22. Phase 8 complete

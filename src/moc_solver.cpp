@@ -209,6 +209,21 @@ double MOCSolver::get_node_pressure(const std::string& id) const {
     return (get_node_head(id) - ns.input.elevation) / PSI_TO_FT;
 }
 
+double MOCSolver::get_node_head_by_idx(int idx) const {
+    const auto& ns = nodes_[idx];
+    if (!ns.inflow_pipes.empty()) {
+        return pipes_[ns.inflow_pipes[0]].H.back();
+    } else if (!ns.outflow_pipes.empty()) {
+        return pipes_[ns.outflow_pipes[0]].H.front();
+    }
+    return getInitialHead(ns);
+}
+
+double MOCSolver::get_node_pressure_by_idx(int idx) const {
+    const auto& ns = nodes_[idx];
+    return (get_node_head_by_idx(idx) - ns.input.elevation) / PSI_TO_FT;
+}
+
 double MOCSolver::get_node_gas_volume(const std::string& id) const {
     auto it = node_idx_map_.find(id);
     if (it == node_idx_map_.end()) {
@@ -622,6 +637,12 @@ void MOCSolver::initGrid() {
         auto p_it = node_idx_map_.find(rule.monitored_node);
         auto v_it = node_idx_map_.find(rule.controlled_node);
 
+        // Resolve and cache indices for speed
+        auto mon_pipe_it = pipe_idx_map_.find(rule.monitored_pipe);
+        state.monitored_pipe_idx = (mon_pipe_it != pipe_idx_map_.end()) ? mon_pipe_it->second : -1;
+        state.monitored_node_idx = (p_it != node_idx_map_.end()) ? p_it->second : -1;
+        state.action_node_idx = (v_it != node_idx_map_.end()) ? v_it->second : -1;
+
         if (rule.type == ControlType::PCV) {
             bool pump_on = false;
             if (p_it != node_idx_map_.end() && nodes_[p_it->second].input.type == NodeType::Pump) {
@@ -670,6 +691,45 @@ void MOCSolver::initGrid() {
 
         control_rule_states_.push_back(state);
     }
+
+    // Populate O(1) indices directly in NodeState
+    for (int i = 0; i < static_cast<int>(nodes_.size()); ++i) {
+        auto& ns = nodes_[i];
+        ns.inflow_pipes = node_inflow_pipes_[ns.input.id];
+        ns.outflow_pipes = node_outflow_pipes_[ns.input.id];
+    }
+
+    // Resolve schedule maps to index-based ResolvedSchedule lists
+    resolved_valve_schedules_.clear();
+    for (const auto& [vid, sched] : valve_schedules_) {
+        auto it = node_idx_map_.find(vid);
+        if (it != node_idx_map_.end()) resolved_valve_schedules_.push_back({it->second, sched});
+    }
+    resolved_pump_schedules_.clear();
+    for (const auto& [pid, sched] : pump_schedules_) {
+        auto it = node_idx_map_.find(pid);
+        if (it != node_idx_map_.end()) resolved_pump_schedules_.push_back({it->second, sched});
+    }
+    resolved_demand_schedules_.clear();
+    for (const auto& [nid, sched] : demand_schedules_) {
+        auto it = node_idx_map_.find(nid);
+        if (it != node_idx_map_.end()) resolved_demand_schedules_.push_back({it->second, sched});
+    }
+    resolved_head_schedules_.clear();
+    for (const auto& [nid, sched] : head_schedules_) {
+        auto it = node_idx_map_.find(nid);
+        if (it != node_idx_map_.end()) resolved_head_schedules_.push_back({it->second, sched});
+    }
+
+    // Pre-allocate newH_, newV_, and bndry_ to avoid per-timestep allocation overhead
+    const int num_pipes = static_cast<int>(pipes_.size());
+    newH_.resize(num_pipes);
+    newV_.resize(num_pipes);
+    for (int i = 0; i < num_pipes; ++i) {
+        newH_[i].resize(pipes_[i].num_nodes);
+        newV_[i].resize(pipes_[i].num_nodes);
+    }
+    bndry_.resize(num_pipes);
 }
 
 // ── Single MOC time step ──────────────────────────────────────────────────────
@@ -679,12 +739,13 @@ void MOCSolver::stepMOC() {
     evaluateControlRules(t_now_);
 
     // Enforce VFD Pump Speed acceleration/deceleration limits
-    for (auto& ns : nodes_) {
+    for (int ni = 0; ni < static_cast<int>(nodes_.size()); ++ni) {
+        auto& ns = nodes_[ni];
         if (ns.input.type == NodeType::Pump) {
             bool under_pcv_close = false;
             for (const auto& state : control_rule_states_) {
                 if (state.input.type == ControlType::PCV &&
-                    state.input.monitored_node == ns.input.id &&
+                    state.monitored_node_idx == ni &&
                     state.pcv_phase == "closing") {
                     under_pcv_close = true;
                     break;
@@ -718,23 +779,12 @@ void MOCSolver::stepMOC() {
     const int num_pipes = static_cast<int>(pipes_.size());
     const int num_nodes = static_cast<int>(nodes_.size());
 
-    // Allocate output arrays (avoids aliasing during computation)
-    std::vector<std::vector<double>> newH(num_pipes), newV(num_pipes);
-    for (int i = 0; i < num_pipes; ++i) {
-        newH[i].resize(pipes_[i].num_nodes);
-        newV[i].resize(pipes_[i].num_nodes);
-    }
+    // Use class-level pre-allocated vectors to avoid per-timestep allocation overhead
+    auto& newH = newH_;
+    auto& newV = newV_;
+    auto& bndry = bndry_;
 
     // ── Per-pipe: IIR filter + interior C± equations + boundary chars ────────
-
-    // Boundary characteristics arriving at each pipe end
-    struct PipeBndry {
-        double area;   // ft²
-        double B;      // a/g  (pipe impedance)
-        double C_P;    // C+ at downstream end  (→ to_node)
-        double C_M;    // C- at upstream end    (→ from_node)
-    };
-    std::vector<PipeBndry> bndry(num_pipes);
 
     for (int i = 0; i < num_pipes; ++i) {
         auto& ps  = pipes_[i];
@@ -807,8 +857,8 @@ void MOCSolver::stepMOC() {
         auto& ns = nodes_[ni];
         auto& n  = ns.input;
 
-        const auto& in_pipes  = node_inflow_pipes_ [n.id]; // pipes arriving
-        const auto& out_pipes = node_outflow_pipes_[n.id]; // pipes leaving
+        const auto& in_pipes  = ns.inflow_pipes; // pipes arriving
+        const auto& out_pipes = ns.outflow_pipes; // pipes leaving
 
         if (in_pipes.empty() && out_pipes.empty()) continue;
 
@@ -1916,8 +1966,8 @@ void MOCSolver::stepMOC() {
 
     // Commit new state
     for (int i = 0; i < num_pipes; ++i) {
-        pipes_[i].H = std::move(newH[i]);
-        pipes_[i].V = std::move(newV[i]);
+        pipes_[i].H.swap(newH[i]);
+        pipes_[i].V.swap(newV[i]);
     }
 
     // Update cavity-state scaffolding from the committed hydraulic state.
@@ -1933,7 +1983,7 @@ void MOCSolver::stepMOC() {
             n.type == NodeType::InflowNode ||
             n.type == NodeType::OutflowNode ||
             ((n.type == NodeType::Valve || n.type == NodeType::Turbine || n.type == NodeType::CheckValve || n.type == NodeType::Pump) &&
-             node_inflow_pipes_.at(n.id).size() == 1 && node_outflow_pipes_.at(n.id).size() == 1);
+             ns.inflow_pipes.size() == 1 && ns.outflow_pipes.size() == 1);
         if (cavitation_model_ == CavitationModel::DVCM && is_dvcm_supported) {
             if (!ns.cavity_active) {
                 ns.cavity_volume_ft3 = std::max(ns.cavity_volume_ft3, 0.0);
@@ -1944,8 +1994,8 @@ void MOCSolver::stepMOC() {
         }
 
         double H = getInitialHead(ns);
-        const auto& in_p = node_inflow_pipes_.at(n.id);
-        const auto& out_p = node_outflow_pipes_.at(n.id);
+        const auto& in_p = ns.inflow_pipes;
+        const auto& out_p = ns.outflow_pipes;
 
         if (n.type == NodeType::PRV || n.type == NodeType::PBV) {
             if (!out_p.empty()) {
@@ -1999,8 +2049,8 @@ void MOCSolver::recordStep(SimResults& results) const {
         // Head telemetry: default to downstream inflow end, else outflow upstream end.
         // Pressure-control valves report the regulated face (PRV/PSV/PBV).
         double H = getInitialHead(ns);
-        const auto& in_p  = node_inflow_pipes_ .at(n.id);   // guaranteed to exist after init
-        const auto& out_p = node_outflow_pipes_.at(n.id);
+        const auto& in_p  = ns.inflow_pipes;
+        const auto& out_p = ns.outflow_pipes;
 
         if (n.type == NodeType::PRV || n.type == NodeType::PBV) {
             if (!out_p.empty())
@@ -2122,41 +2172,28 @@ SimResults MOCSolver::run(double total_time_s, double dt,
     for (int step = 0; step < num_steps; ++step) {
         // Apply scheduled valve settings at the START of this step
         // (setting in effect during step N corresponds to t = N*dt)
-        if (!valve_schedules_.empty()) {
+        if (!resolved_valve_schedules_.empty()) {
             const double t_now = static_cast<double>(step) * dt;
-            for (auto& [vid, sched] : valve_schedules_) {
-                auto nit = node_idx_map_.find(vid);
-                if (nit != node_idx_map_.end())
-                    nodes_[nit->second].input.current_setting =
-                        interpSchedule(sched, t_now);
+            for (auto& rs : resolved_valve_schedules_) {
+                nodes_[rs.node_idx].input.current_setting = interpSchedule(rs.schedule, t_now);
             }
         }
-        if (!pump_schedules_.empty()) {
+        if (!resolved_pump_schedules_.empty()) {
             const double t_now = static_cast<double>(step) * dt;
-            for (auto& [pid, sched] : pump_schedules_) {
-                auto nit = node_idx_map_.find(pid);
-                if (nit != node_idx_map_.end()) {
-                    const double val = interpSchedule(sched, t_now);
-                    nodes_[nit->second].command_speed = val;
-                }
+            for (auto& rs : resolved_pump_schedules_) {
+                nodes_[rs.node_idx].command_speed = interpSchedule(rs.schedule, t_now);
             }
         }
-        if (!demand_schedules_.empty()) {
+        if (!resolved_demand_schedules_.empty()) {
             const double t_now = static_cast<double>(step) * dt;
-            for (auto& [nid, sched] : demand_schedules_) {
-                auto nit = node_idx_map_.find(nid);
-                if (nit != node_idx_map_.end())
-                    nodes_[nit->second].input.demand =
-                        interpSchedule(sched, t_now);
+            for (auto& rs : resolved_demand_schedules_) {
+                nodes_[rs.node_idx].input.demand = interpSchedule(rs.schedule, t_now);
             }
         }
-        if (!head_schedules_.empty()) {
+        if (!resolved_head_schedules_.empty()) {
             const double t_now = static_cast<double>(step) * dt;
-            for (auto& [nid, sched] : head_schedules_) {
-                auto nit = node_idx_map_.find(nid);
-                if (nit != node_idx_map_.end())
-                    nodes_[nit->second].input.head =
-                        interpSchedule(sched, t_now);
+            for (auto& rs : resolved_head_schedules_) {
+                nodes_[rs.node_idx].input.head = interpSchedule(rs.schedule, t_now);
             }
         }
         stepMOC();
@@ -2176,25 +2213,23 @@ void MOCSolver::evaluateControlRules(double t_now) {
         // 1. Get the monitored value
         double monitored_val = 0.0;
         if (rule.monitored_quantity == "flow") {
-            auto it = pipe_idx_map_.find(rule.monitored_pipe);
-            if (it != pipe_idx_map_.end()) {
-                const auto& ps = pipes_[it->second];
+            if (state.monitored_pipe_idx != -1) {
+                const auto& ps = pipes_[state.monitored_pipe_idx];
                 double avg_V = 0.0;
                 for (double v : ps.V) avg_V += v;
                 avg_V /= ps.num_nodes;
                 monitored_val = avg_V * ps.area / GPM_TO_CFS; // GPM (signed)
             }
         } else {
-            auto it = node_idx_map_.find(rule.monitored_node);
-            if (it != node_idx_map_.end()) {
-                const auto& ns = nodes_[it->second];
+            if (state.monitored_node_idx != -1) {
+                const auto& ns = nodes_[state.monitored_node_idx];
                 const auto& n = ns.input;
                 if (rule.monitored_quantity == "pressure") {
-                    monitored_val = get_node_pressure(n.id);
+                    monitored_val = get_node_pressure_by_idx(state.monitored_node_idx);
                 } else if (rule.monitored_quantity == "head") {
-                    monitored_val = get_node_head(n.id);
+                    monitored_val = get_node_head_by_idx(state.monitored_node_idx);
                 } else if (rule.monitored_quantity == "level") {
-                    double H = get_node_head(n.id);
+                    double H = get_node_head_by_idx(state.monitored_node_idx);
                     monitored_val = (n.max_level > 1e-6) 
                         ? 100.0 * (H - n.elevation) / n.max_level 
                         : 0.0;
@@ -2212,9 +2247,8 @@ void MOCSolver::evaluateControlRules(double t_now) {
             }
             
             if (condition_met) {
-                auto it = node_idx_map_.find(rule.controlled_node);
-                if (it != node_idx_map_.end()) {
-                    auto& ns = nodes_[it->second];
+                if (state.action_node_idx != -1) {
+                    auto& ns = nodes_[state.action_node_idx];
                     if (ns.input.type == NodeType::Pump) {
                         const double spd = std::clamp(rule.target, 0.0, 100.0);
                         ns.command_speed = spd;
@@ -2224,9 +2258,8 @@ void MOCSolver::evaluateControlRules(double t_now) {
                 }
                 state.last_active = true;
             } else {
-                auto it = node_idx_map_.find(rule.controlled_node);
-                if (it != node_idx_map_.end()) {
-                    auto& ns = nodes_[it->second];
+                if (state.action_node_idx != -1) {
+                    auto& ns = nodes_[state.action_node_idx];
                     if (ns.input.type == NodeType::Pump) {
                         ns.command_speed = 0.0;
                     } else if (ns.input.type == NodeType::Valve || ns.input.type == NodeType::Turbine) {
@@ -2262,9 +2295,8 @@ void MOCSolver::evaluateControlRules(double t_now) {
             if (turn_off) active = false;
             state.last_active = active;
             
-            auto it = node_idx_map_.find(rule.controlled_node);
-            if (it != node_idx_map_.end()) {
-                auto& ns = nodes_[it->second];
+            if (state.action_node_idx != -1) {
+                auto& ns = nodes_[state.action_node_idx];
                 double target_val = active ? 100.0 : 0.0;
                 if (ns.input.type == NodeType::Pump) {
                     ns.command_speed = target_val;
@@ -2299,9 +2331,8 @@ void MOCSolver::evaluateControlRules(double t_now) {
                 }
             }
             
-            auto it = node_idx_map_.find(rule.controlled_node);
-            if (it != node_idx_map_.end()) {
-                auto& ns = nodes_[it->second];
+            if (state.action_node_idx != -1) {
+                auto& ns = nodes_[state.action_node_idx];
                 if (ns.input.type == NodeType::Pump) {
                     ns.command_speed = clamped_output;
                 } else if (ns.input.type == NodeType::Valve || ns.input.type == NodeType::Turbine) {
@@ -2310,12 +2341,9 @@ void MOCSolver::evaluateControlRules(double t_now) {
             }
         } 
         else if (rule.type == ControlType::PCV) {
-            auto p_it = node_idx_map_.find(rule.monitored_node);
-            auto v_it = node_idx_map_.find(rule.controlled_node);
-            
-            if (p_it != node_idx_map_.end() && v_it != node_idx_map_.end()) {
-                auto& pump = nodes_[p_it->second];
-                auto& valve = nodes_[v_it->second];
+            if (state.monitored_node_idx != -1 && state.action_node_idx != -1) {
+                auto& pump = nodes_[state.monitored_node_idx];
+                auto& valve = nodes_[state.action_node_idx];
                 
                 double cmd_speed = pump.command_speed;
                 double ramp_open = std::max(1e-6, rule.threshold);

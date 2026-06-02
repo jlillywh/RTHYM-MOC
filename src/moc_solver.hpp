@@ -189,6 +189,10 @@ struct ControlRuleState {
     // PCV state
     double pcv_timer = -1.0;
     std::string pcv_phase = "idle";
+
+    int monitored_pipe_idx = -1;
+    int monitored_node_idx = -1;
+    int action_node_idx = -1;
 };
 
 // ── Internal pipe runtime state ──────────────────────────────────────────────
@@ -237,6 +241,9 @@ struct NodeState {
     double gas_pressure_psi = 0.0;
     double tank_flow_gpm = 0.0;
     double rated_torque_ftlb = 0.0; // steady-state design torque (lb·ft)
+
+    std::vector<int> inflow_pipes;
+    std::vector<int> outflow_pipes;
 };
 
 // ── Main MOC solver class ────────────────────────────────────────────────────
@@ -343,7 +350,29 @@ private:
     std::vector<ControlRuleState> control_rule_states_;
     double t_now_ = 0.0;
 
+    struct PipeBndry {
+        double area;   // ft²
+        double B;      // a/g  (pipe impedance)
+        double C_P;    // C+ at downstream end  (→ to_node)
+        double C_M;    // C- at upstream end    (→ from_node)
+    };
+    std::vector<std::vector<double>> newH_;
+    std::vector<std::vector<double>> newV_;
+    std::vector<PipeBndry> bndry_;
+
+    struct ResolvedSchedule {
+        int node_idx;
+        std::vector<std::pair<double, double>> schedule;
+    };
+    std::vector<ResolvedSchedule> resolved_valve_schedules_;
+    std::vector<ResolvedSchedule> resolved_pump_schedules_;
+    std::vector<ResolvedSchedule> resolved_demand_schedules_;
+    std::vector<ResolvedSchedule> resolved_head_schedules_;
+
     void evaluateControlRules(double t_now);
+
+    double get_node_head_by_idx(int idx) const;
+    double get_node_pressure_by_idx(int idx) const;
 
     double getInitialHead(const NodeState& ns) const;
     void   recordStep(SimResults& results) const;

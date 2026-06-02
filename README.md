@@ -50,7 +50,7 @@ RTHYM-MOC solves the 1-D water-hammer equations using the Method of Characterist
 
 - **Network-capable**: arbitrary topologies of pipes, junctions, reservoirs, air valves, valves, pumps, standpipe surge tanks, hydropneumatic tanks, and turbines.
 - **Time-varying events**: valve schedules, pump trip/start, demand changes — specified either as discrete step changes between `run()` calls or as continuous piecewise-linear schedules registered before `run()`.
-- **Cavitation detection**: integrates a column-separation flag (pressure < vapour pressure) at each node. *Note: This is a first-order head-clamping model. It does not integrate or track vapor cavity volume over time or simulate column separation collapse surges (water column collision). For severe cavitation, a Discrete Vapor Cavity Model (DVCM) is recommended.*
+- **Cavitation detection**: integrates a column-separation flag (pressure < vapour pressure) at each node. *Note: This is a first-order head-clamping model. It does not integrate or track vapor cavity volume over time or simulate column separation collapse surges (water column collision). For severe cavitation, a Discrete Vapor Cavity Model (DVCM) is recommended (see [docs/dvcm_timestep_guidance.md](docs/dvcm_timestep_guidance.md) for recommended timestep selection).*
 - **Study summaries**: built-in helpers turn raw time series into node/pipe
   envelopes, cavitation duration, and CSV/JSON exports — see [Post-processing &
   study reports](#post-processing--study-reports).
@@ -1287,6 +1287,7 @@ independent rthym_moc runs in separate Python processes. See
 | Topic | Documentation |
 |---|---|
 | How to run / interpret RTHYM vs TSNet | [docs/benchmarking.md](docs/benchmarking.md), `examples/benchmark_matrix.py` |
+| Timestep selection for DVCM mode | [docs/dvcm_timestep_guidance.md](docs/dvcm_timestep_guidance.md) |
 | All three tools (time to complete the full run) | `examples/benchmark_ptsnet_vs_tsnet.py` |
 | Tabulated physics + timing results | [docs/appendix_b_verification.md](docs/appendix_b_verification.md) §B.6 |
 | Automated correctness regressions | [Validation](#validation) (TSNet is not a default pytest dependency) |
@@ -1353,6 +1354,7 @@ RTHYM-MOC/
 │   ├── networks/                               # Benchmark INP fixtures
 │   └── test_waterhammer.cpp                    # Standalone C++ unit test (BUILD_TESTS=ON)
 ├── docs/
+│   ├── dvcm_timestep_guidance.md   # Recommended timestep selection guidelines for DVCM mode
 │   ├── appendix_b_verification.md  # Long-form cross-engine verification appendix
 │   ├── validation.md               # Correctness test map, tolerances, reference assets
 │   ├── benchmarking.md             # TSNet performance comparison guide
