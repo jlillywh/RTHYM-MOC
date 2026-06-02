@@ -130,7 +130,7 @@ Use gated phases with explicit exit criteria. Legacy clamp stays default until D
 
 ### Checklist
 
-- [ ] 1. Stress test with small/large `dt`, short/long pipes, stiff networks.
+- [x] 1. Stress test with small/large `dt`, short/long pipes, stiff networks.
 - [ ] 2. Add guards for NaN/Inf propagation and non-physical states.
 - [ ] 3. Profile DVCM hot paths and optimize key loops.
 - [ ] 4. Set runtime overhead target (for example <= 25% on selected benchmarks).
