@@ -4,3 +4,4 @@ matplotlib>=3.8
 numpy>=1.21
 pybind11>=2.11
 scikit-build-core>=0.10
+cmake
