@@ -884,7 +884,7 @@ solver.set_pump_power("Pmp1", False)
 When a pump is controlled via an operational control rule (Threshold, Deadband, or PID) or a schedule, the computed target is written to the pump's `command_speed` rather than immediately altering its physical speed. The core solver then ramps `current_speed` toward `command_speed` at every timestep using the pump's VFD `ramp_time` (in seconds):
 
 - If the pump has power (`has_power == True`) and `current_speed` differs from `command_speed`, the maximum speed change per timestep is:
-  $$\Delta s_{\text{max}} = \left( \frac{100.0}{\text{ramp_time}} \right) \cdot dt$$
+  $$\Delta s_{\text{max}} = \left( \frac{100.0}{\text{ramp\_time}} \right) \cdot dt$$
 - If `ramp_time <= 0.0` (default), the speed changes instantly.
 - If `has_power == False` (e.g., power lost), the pump's rotational inertia ($WR^2$) decay calculation takes precedence, and the pump spins down naturally under hydraulic loads.
 
