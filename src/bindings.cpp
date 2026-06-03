@@ -364,6 +364,9 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def("set_valve_setting", &MOCSolver::set_valve_setting,
             py::arg("id"), py::arg("pct_open"),
             "Update a valve's opening (0=closed, 100=fully open) mid-simulation.")
+        .def("set_node_type", &MOCSolver::set_node_type,
+            py::arg("id"), py::arg("type_str"),
+            "Update a node's type mid-simulation.")
         .def("set_pump_speed", &MOCSolver::set_pump_speed,
             py::arg("id"), py::arg("pct_speed"),
             "Update a pump's speed (0=off, 100=rated speed) mid-simulation.")

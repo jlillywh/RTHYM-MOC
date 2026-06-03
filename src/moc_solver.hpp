@@ -263,6 +263,7 @@ public:
 
     // Adjust boundary conditions between calls to run() for scripted transients
     void set_valve_setting(const std::string& id, double pct_open);
+    void set_node_type    (const std::string& id, const std::string& type_str);
     void set_pump_speed   (const std::string& id, double pct_speed);
     void set_pump_command_speed(const std::string& id, double pct_speed);
     void set_pump_power   (const std::string& id, bool has_power);

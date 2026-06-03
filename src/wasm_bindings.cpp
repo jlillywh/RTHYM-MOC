@@ -252,6 +252,7 @@ EMSCRIPTEN_BINDINGS(rthym_moc) {
         .function("set_generator_connected", &MOCSolver::set_pump_power)
         .function("set_node_demand", &MOCSolver::set_node_demand)
         .function("set_node_head", &MOCSolver::set_node_head)
+        .function("set_node_type", &MOCSolver::set_node_type)
         .function("initGrid", &MOCSolver::initGrid)
         .function("stepMOC", &MOCSolver::stepMOC)
         .function("set_dt", &MOCSolver::set_dt)

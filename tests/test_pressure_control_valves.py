@@ -437,3 +437,41 @@ def test_pbv_closed_state_prevents_reverse_flow():
     flows = np.asarray(results["pipe_flow_gpm"]["P1"])
     assert np.all(np.abs(flows) < 1e-3), f"Expected no reverse flow through PBV, got {flows}"
 
+
+def test_regulating_valve_mechanical_closure():
+    """A PRV should close completely (flow stays at zero) when its setting is 0%, even with head difference."""
+    solver = m.MOCSolver()
+    solver.add_node(_make_node("R1", "PressureBoundary", head=150.0))
+    solver.add_node(_make_node("PRV1", "PRV", head=120.0, diameter=12.0, current_setting=0.0))
+    solver.add_node(_make_node("R2", "PressureBoundary", head=100.0))
+    solver.add_pipe(_make_pipe("P1", "R1", "PRV1", flow_gpm=0.0))
+    solver.add_pipe(_make_pipe("P2", "PRV1", "R2", flow_gpm=0.0))
+
+    res = solver.run(total_time=0.2, dt=0.01)
+    flows = np.asarray(res["pipe_flow_gpm"]["P1"])
+    assert np.all(np.abs(flows) < 1e-3), f"Expected flow to remain zero, got {flows}"
+
+
+def test_dynamic_set_node_type():
+    """A node's type can be dynamically changed mid-simulation, e.g. from PRV to TCV (Valve)."""
+    solver = m.MOCSolver()
+    solver.add_node(_make_node("R1", "PressureBoundary", head=150.0))
+    solver.add_node(_make_node("PRV1", "PRV", head=110.0, diameter=12.0, current_setting=100.0))
+    solver.add_node(_make_node("R2", "PressureBoundary", head=100.0))
+    solver.add_pipe(_make_pipe("P1", "R1", "PRV1", flow_gpm=100.0))
+    solver.add_pipe(_make_pipe("P2", "PRV1", "R2", flow_gpm=100.0))
+
+    # Run as PRV
+    res1 = solver.run(total_time=0.15, dt=0.01)
+    prv_heads = np.asarray(res1["node_head"]["PRV1"])
+    assert prv_heads[-1] <= 112.0, f"PRV downstream head should be regulated near 110, got {prv_heads[-1]}"
+
+    # Dynamically change type to Valve (TCV)
+    solver.set_node_type("PRV1", "Valve")
+    res2 = solver.run(total_time=0.15, dt=0.01)
+    
+    # Under Valve type (TCV 100% open), it should no longer regulate downstream head.
+    valve_heads = np.asarray(res2["node_head"]["PRV1"])
+    assert valve_heads[-1] > 120.0, f"Fully open Valve head should rise above setpoint, got {valve_heads[-1]}"
+
+
