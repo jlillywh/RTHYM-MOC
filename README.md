@@ -306,15 +306,17 @@ The repository includes runnable scripts and a notebook under `examples/`:
 | `test_surge_tank.py` | Standpipe mass oscillation and pressure mitigation |
 | `verify_rthym_webapp.py` | Cross-check against R-THYM web-app export artifacts |
 | `dvcm_showcase.ipynb` | Showcase of DVCM cavitation scenarios and physics validation |
+| `dvcm_physical_verification.ipynb` | Interactive DVCM mass-conservation and collapse-spike checks (Binder-ready) |
 
 For an interactive walkthrough focused on reproducibility and deterministic
-solver behavior, see `examples/quickstart_notebook.ipynb`. To see the Discrete Vapor Cavity Model (DVCM) in action with physical transient scenarios, see `examples/dvcm_showcase.ipynb`.
+solver behavior, see `examples/quickstart_notebook.ipynb`. To see the Discrete Vapor Cavity Model (DVCM) in action with physical transient scenarios, see `examples/dvcm_showcase.ipynb`. For independent mass-balance and collapse-spike metrics with charts, see `examples/dvcm_physical_verification.ipynb`.
 
 Students and first-time users can launch these notebooks in a browser via Binder
 without installing Jupyter locally:
 
 - **Quickstart Notebook**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fquickstart_notebook.ipynb)
 - **DVCM Showcase**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fdvcm_showcase.ipynb)
+- **DVCM Physical Verification**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fdvcm_physical_verification.ipynb)
 
 The first Binder launch can take a few minutes while the environment builds the
 compiled extension. After it opens, users can run the notebooks directly in

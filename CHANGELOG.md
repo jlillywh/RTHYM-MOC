@@ -8,6 +8,10 @@ versioning for package releases.
 
 ## [Unreleased]
 
+### Added
+- DVCM independent physical verification (`tests/test_dvcm_physical_verification.py`) for junction mass-balance step checks and post-collapse head-rise estimates.
+- Binder-ready notebook `examples/dvcm_physical_verification.ipynb` with charts and pass/fail metrics aligned to the pytest tolerances.
+
 ## [0.4.0] - 2026-06-02
 
 ### Added
