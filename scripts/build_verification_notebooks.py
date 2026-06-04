@@ -338,7 +338,7 @@ write(
             "        f\"{CASE_LABELS[case_id]:<44} {m.peak_head_error_ft:10.3e} {m.collapse_time_error_s:12.3e} \"\n"
             "        f\"{m.rms_head_error_ft:12.3e} {str(m.passed_extra):>6} {str(m.passed):>6}\"\n"
             "    )\n"
-            "print(f\"\\nTolerances: peak ≤ {PEAK_ERROR_MAX_FT} ft, collapse time ≤ {COLLAPSE_TIME_ERROR_MAX_S:g} s, RMS ≤ {RMS_TRACE_ERROR_MAX_FT:g} ft\")\n"
+            "print(f\"\\nTolerances: peak <= {PEAK_ERROR_MAX_FT} ft, collapse time <= {COLLAPSE_TIME_ERROR_MAX_S:g} s, RMS <= {RMS_TRACE_ERROR_MAX_FT:g} ft\")\n"
             "all_pass = all(case_results[c][2].passed for c in CASES)\n"
             "print(\"Overall:\", \"PASS\" if all_pass else \"FAIL\")"
         ),
@@ -370,7 +370,7 @@ write(
             "results = run_physical_verification_case(dt=DEFAULT_DT_S)\n"
             "mass = evaluate_mass_conservation(results, dt=DEFAULT_DT_S, atol_ft3=MASS_STEP_ATOL_FT3)\n"
             "spike = evaluate_collapse_spike(results, dt=DEFAULT_DT_S, rtol=COLLAPSE_SPIKE_RTOL)\n"
-            "print(f\"Mass conservation: PASS={mass.passed} ({mass.n_steps_checked} steps, max err {mass.max_abs_step_error_ft3:.3e} ft³)\")\n"
+            "print(f\"Mass conservation: PASS={mass.passed} ({mass.n_steps_checked} steps, max err {mass.max_abs_step_error_ft3:.3e} ft^3)\")\n"
             "print(f\"Collapse spike: PASS={spike.passed} rel_err={spike.relative_error:.3f}\")"
         ),
         md("## 3. Cavity volume and junction head"),
@@ -687,7 +687,7 @@ write(
             "ax.legend()\n"
             "fig.tight_layout()\n"
             "plt.show()\n"
-            "print(f\"Flows {summary.flow_passed}/{summary.flow_total} PASS — overall {summary.passed}\")"
+            "print(f\"Flows {summary.flow_passed}/{summary.flow_total} PASS - overall {summary.passed}\")"
         ),
     ],
 )

@@ -34,8 +34,8 @@ def test_dvcm_mass_conservation_invariant() -> None:
     assert metrics.n_steps_checked > 0, "Expected cavity growth steps during the transient."
     assert metrics.passed, (
         "Mass-conservation growth-step mismatch: "
-        f"max_abs={metrics.max_abs_step_error_ft3:.3e} ft³ "
-        f"(limit {MASS_STEP_ATOL_FT3:g} ft³), "
+        f"max_abs={metrics.max_abs_step_error_ft3:.3e} ft^3 "
+        f"(limit {MASS_STEP_ATOL_FT3:g} ft^3), "
         f"{metrics.n_steps_checked} growth steps checked"
     )
 
