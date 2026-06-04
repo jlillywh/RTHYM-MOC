@@ -3,7 +3,7 @@
 [![Tests](https://github.com/jlillywh/RTHYM-MOC/actions/workflows/tests.yml/badge.svg)](https://github.com/jlillywh/RTHYM-MOC/actions/workflows/tests.yml)
 [![Coverage](https://codecov.io/gh/jlillywh/RTHYM-MOC/branch/main/graph/badge.svg)](https://codecov.io/gh/jlillywh/RTHYM-MOC)
 [![PyPI](https://img.shields.io/pypi/v/rthym-moc)](https://pypi.org/project/rthym-moc/)
-[![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fquickstart_notebook.ipynb)
+[![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fvalidation_notebooks_index.ipynb)
 
 A high-performance tool for simulating water hammer and other pressure surges
 in pipe networks. It uses a C++17 core with a Python API, and it was originally
@@ -19,6 +19,7 @@ library for research, design studies, and automated validation.
 - [Quickstart](#quickstart)
 - [Testing](#testing)
 - [Examples](#examples)
+- [Validation](#validation)
 - [API Reference](#api-reference)
   - [NodeInput](#nodeinput)
   - [PipeInput](#pipeinput)
@@ -35,7 +36,6 @@ library for research, design studies, and automated validation.
 - [Scripted multi-event transients](#scripted-multi-event-transients)
 - [Loading from EPANET (.inp)](#loading-from-epanet-inp)
 - [Numerical method](#numerical-method)
-- [Validation](#validation)
 - [Benchmarking](#benchmarking)
 - [Repository layout](#repository-layout)
 - [Dependencies](#dependencies)
@@ -195,8 +195,9 @@ It validates the binding contract only, not a downstream application integration
 ## Quickstart
 
 > [!TIP]
-> You can run the quickstart and visual valve-closure verification interactively in your browser via Binder:
-> [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fquickstart_notebook.ipynb)
+> The Python snippet below is the fastest way to try the solver. For an interactive
+> cross-engine check against checked-in R-THYM traces (same tolerances as CI), see
+> [Validation](#validation) and the Binder quickstart notebook there.
 
 ```python
 import numpy as np
@@ -259,6 +260,9 @@ print(f"Joukowsky peak at V1: {H_V1.max():.1f} ft  at t = {t[H_V1.argmax()]:.3f}
 
 ## Testing
 
+How to run checks locally. For **what** is being asserted (tolerances, cross-engine
+cases, Binder mirrors), see [Validation](#validation).
+
 Run the automated test suite from the repository root:
 
 ```bash
@@ -290,58 +294,113 @@ pre-commit run --all-files
 
 ## Examples
 
-**Validation notebooks:** start with [`docs/validation_notebooks.md`](docs/validation_notebooks.md) or the Binder index [`examples/validation_notebooks_index.ipynb`](examples/validation_notebooks_index.ipynb) — which notebook to open first, what each proves, pytest mirrors, and expected runtimes (e.g. `dvcm_showcase` at `dt=1e-4` is ~100k steps over 10 s).
+Runnable **demos and benchmarks** under `examples/` — how to call the API, explore
+physics, compare speed to TSNet/PTSNet, and export study reports. These scripts are
+for learning and ad hoc runs; they are **not** the CI regression suite.
 
-The repository includes runnable scripts and notebooks under `examples/`:
+> **Looking for correctness gates?** Pytest lives in `tests/`. Interactive
+> walkthroughs that mirror those tests are listed under
+> [Validation](#validation) (notebook files still sit in `examples/` so Binder URLs
+> stay stable).
 
-| Script / notebook | Purpose |
+| Script | Purpose |
 |---|---|
-| `validation_notebooks_index.ipynb` | **Start here (Binder):** navigation only — no simulations |
-| `basic_example.py` | Minimal Joukowsky quickstart with optional plotting |
-| `quickstart_notebook.ipynb` | Interactive reproducibility walkthrough (Binder-ready; Joukowsky R-THYM case) |
-| `long_pipe_valve_verification.ipynb` | Long Pipe Valve vs R-THYM JSON/CSV (second cross-engine study; ~3 min run) |
-| `epanet_import_verification.ipynb` | `complex_topology.inp` import + EPANET steady-state overlay (needs `wntr`) |
-| `gradual_closure_verification.ipynb` | Closure-time sweep vs Joukowsky / Allievi (`test_gradual_closure_benchmark.py`) |
+| `basic_example.py` | Minimal Joukowsky case with optional plotting |
 | `load_from_inp.py` | EPANET `.inp` import and transient event |
 | `transient_study_report.py` | Run a transient and export study summaries (CSV/JSON) |
 | `benchmark_vs_tsnet.py` | Single-case TSNet timing comparison |
 | `benchmark_matrix.py` | Multi grid-size TSNet performance matrix |
-| `benchmark_ptsnet_vs_tsnet.py` | rthym_moc vs TSNet vs PTSNet on the MPI-safe TNET3 case, with optional small surge cases |
-| `test_wave_reflections.py` | Wave period and damping verification |
-| `test_gradual_closure.py` | Joukowsky criterion and K-model valve closure |
-| `test_surge_tank.py` | Standpipe mass oscillation and pressure mitigation |
-| `verify_rthym_webapp.py` | Cross-check against R-THYM web-app export artifacts |
-| `dvcm_showcase.ipynb` | Showcase of DVCM cavitation scenarios and physics validation |
-| `dvcm_canonical_verification.ipynb` | **DVCM regression:** simulated vs `tests/dvcm_*_reference.json` (rapid / recovery / long-run; same tolerances as canonical pytest) |
-| `dvcm_physical_verification.ipynb` | Interactive DVCM mass-conservation and collapse-spike checks (Binder-ready) |
-| `surge_device_verification.ipynb` | Standpipe, hydropneumatic, and air-valve checks vs analytical/anchored references (Binder-ready) |
-| `surge_design_rules_verification.ipynb` | Standpipe size + HPT placement sweeps (partial mirror of surge benchmarks) |
+| `benchmark_ptsnet_vs_tsnet.py` | rthym_moc vs TSNet vs PTSNet (TNET3 + optional surge cases) |
+| `test_wave_reflections.py` | Wave period and damping vs analytical $T_0 = 4L/a$ (tutorial script, not `tests/`) |
+| `test_gradual_closure.py` | Joukowsky criterion and K-model valve closure (tutorial script, not `tests/`) |
+| `test_surge_tank.py` | Standpipe mass oscillation and pressure mitigation (tutorial script, not `tests/`) |
+| `verify_rthym_webapp.py` | Ad hoc cross-check against R-THYM web-app exports |
 
-For an interactive walkthrough focused on reproducibility and deterministic
-solver behavior, see `examples/quickstart_notebook.ipynb`. For the second major
-R-THYM cross-engine study (five-pipe valve closure), see
-`examples/long_pipe_valve_verification.ipynb`. For EPANET import fidelity on
-`complex_topology.inp`, see `examples/epanet_import_verification.ipynb`. For the
-gradual-closure Joukowsky sweep, see `examples/gradual_closure_verification.ipynb`.
-To see the Discrete Vapor Cavity Model (DVCM) in action with physical transient scenarios, see `examples/dvcm_showcase.ipynb`. For the **DVCM regression** walkthrough (three JSON-anchored junction traces, quickstart-style overlays), see `examples/dvcm_canonical_verification.ipynb`. For independent mass-balance and collapse-spike metrics with charts, see `examples/dvcm_physical_verification.ipynb`. For surge sizing/placement trends, see `examples/surge_design_rules_verification.ipynb`. A full pytest↔notebook map is in [`docs/validation_notebook_coverage.md`](docs/validation_notebook_coverage.md).
+Pedagogy-only notebook (slow, not a pytest mirror): `dvcm_showcase.ipynb` — Legacy
+vs DVCM at a valve. See [Validation](#validation) for regression-style DVCM notebooks.
 
-Students and first-time users can launch these notebooks in a browser via Binder
-without installing Jupyter locally:
+---
 
-- **Validation index (start here)**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fvalidation_notebooks_index.ipynb)
-- **Quickstart Notebook**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fquickstart_notebook.ipynb)
-- **Long Pipe Valve (R-THYM)**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Flong_pipe_valve_verification.ipynb)
-- **EPANET Import**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fepanet_import_verification.ipynb)
-- **Gradual Closure**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fgradual_closure_verification.ipynb)
-- **DVCM Showcase**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fdvcm_showcase.ipynb)
-- **DVCM Canonical Traces**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fdvcm_canonical_verification.ipynb)
-- **DVCM Physical Verification**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fdvcm_physical_verification.ipynb)
-- **Surge Device Verification**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fsurge_device_verification.ipynb)
-- **Surge Design Rules**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fsurge_design_rules_verification.ipynb)
+## Validation
+
+Validation answers: **is the MOC solver producing the right physics?** This is
+separate from [Examples](#examples): examples teach usage; validation proves
+correctness against references with explicit tolerances.
+
+| Layer | Role | Where |
+|---|---|---|
+| **Automated regressions** | Source of truth for CI; numeric pass/fail | `tests/` + [docs/validation.md](docs/validation.md) |
+| **Verification notebooks** | Interactive replay of the same cases (Binder) | `examples/*_verification*.ipynb`, `quickstart_notebook.ipynb` — index in [docs/validation_notebooks.md](docs/validation_notebooks.md) |
+
+### Automated regression tests
+
+Run the full suite:
+
+```bash
+pytest -q
+```
+
+Run the headline cross-engine checks:
+
+```bash
+pytest tests/test_joukowsky_rthym.py tests/test_long_pipe_valve.py -q
+```
+
+### Validation at a glance
+
+| Category | What it proves | Key tests |
+|---|---|---|
+| Cross-engine (R-THYM) | Heads, peaks, and traces match the production web-app engine | `test_joukowsky_rthym.py`, `test_long_pipe_valve.py` |
+| Cross-engine (EPANET) | Imported steady state and trip directionality | `test_complex_topology_from_inp.py` |
+| Analytical / regime | Joukowsky and slow-closure behavior | `test_gradual_closure_benchmark.py` |
+| Surge-device physics | Sizing, placement, and mixed-device trends | `test_tank_size_benchmark.py`, `test_hydropneumatic_size_benchmark.py`, `test_device_placement_benchmark.py`, `test_air_valve_dominant_*.py`, and related modules |
+| Broader regression | Cavitation, controls, INP import, materials, losses | remaining modules under `tests/` |
+
+Headline automated results:
+
+- Joukowsky first-step surge vs analytical: **< 0.05 %** (`test_joukowsky_rthym.py`)
+- R-THYM pressure trace RMS (early post-closure window): **≤ 4 psi** (`test_joukowsky_rthym.py`)
+- Wave oscillation period vs $T_0 = 4L/a$: **< 0.2 %** (see `examples/test_wave_reflections.py`)
+
+Full test map, tolerance policy, and reference-artifact inventory:
+[docs/validation.md](docs/validation.md). Pytest↔notebook coverage:
+[docs/validation_notebook_coverage.md](docs/validation_notebook_coverage.md).
+
+Long-form cross-engine narratives:
+[docs/appendix_b_verification.md](docs/appendix_b_verification.md).
+
+### Interactive verification notebooks (Binder)
+
+**Start here:** [`docs/validation_notebooks.md`](docs/validation_notebooks.md) or
+[`examples/validation_notebooks_index.ipynb`](examples/validation_notebooks_index.ipynb)
+(recommended order, runtimes, pytest mirrors).
+
+| Notebook | Purpose |
+|---|---|
+| `validation_notebooks_index.ipynb` | Navigation only — pick a walkthrough |
+| `quickstart_notebook.ipynb` | R-THYM Joukowsky cross-engine + reproducibility pattern |
+| `cross_engine_surge_verification.ipynb` | TSNet standpipe B.8 + EPANET pre-trip vs MOC |
+| `long_pipe_valve_verification.ipynb` | Five-pipe equal-% closure vs R-THYM JSON/CSV (~3 min) |
+| `epanet_import_verification.ipynb` | `complex_topology.inp` import + steady-state overlay (`wntr`) |
+| `gradual_closure_verification.ipynb` | Closure-time sweep vs Joukowsky / Allievi |
+| `dvcm_canonical_verification.ipynb` | DVCM regression vs `tests/dvcm_*_reference.json` |
+| `dvcm_physical_verification.ipynb` | Mass-balance steps + collapse ΔH formulas |
+| `surge_device_verification.ipynb` | Standpipe, HPT, air valve vs anchored references |
+| `surge_design_rules_verification.ipynb` | Standpipe size + HPT placement sweeps |
+
+[![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fvalidation_notebooks_index.ipynb)
+Index ·
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fquickstart_notebook.ipynb)
+Quickstart ·
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fcross_engine_surge_verification.ipynb)
+Cross-engine surge ·
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fdvcm_canonical_verification.ipynb)
+DVCM traces ·
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fsurge_device_verification.ipynb)
+Surge devices
 
 The first Binder launch can take a few minutes while the environment builds the
-compiled extension. After it opens, users can run the notebooks directly in
-JupyterLab.
+compiled extension.
 
 ## Contributing
 
@@ -1301,51 +1360,6 @@ where $B = a/g$ (ft·s²/ft = s²) is the pipe impedance and $R = f \Delta x / (
 
 ---
 
-## Validation
-
-Validation answers: **is the MOC solver producing the right physics?** The
-automated suite under `tests/` uses explicit numeric tolerances, checked-in
-reference artifacts, and module docstrings — not visual inspection.
-
-Run the full regression suite:
-
-```bash
-pytest -q
-```
-
-Run the headline cross-engine checks:
-
-```bash
-pytest tests/test_joukowsky_rthym.py tests/test_long_pipe_valve.py -q
-```
-
-The [quickstart notebook](examples/quickstart_notebook.ipynb) overlays the
-checked-in R-THYM Joukowsky trace with the same RMS/peak tolerances used in CI.
-
-### Validation at a glance
-
-| Category | What it proves | Key tests |
-|---|---|---|
-| Cross-engine (R-THYM) | Heads, peaks, and traces match the production web-app engine | `test_joukowsky_rthym.py`, `test_long_pipe_valve.py` |
-| Cross-engine (EPANET) | Imported steady state and trip directionality | `test_complex_topology_from_inp.py` |
-| Analytical / regime | Joukowsky and slow-closure behavior | `test_gradual_closure_benchmark.py` |
-| Surge-device physics | Sizing, placement, and mixed-device trends | `test_tank_size_benchmark.py`, `test_hydropneumatic_size_benchmark.py`, `test_device_placement_benchmark.py`, `test_air_valve_dominant_*.py`, and related modules |
-| Broader regression | Cavitation, controls, INP import, materials, losses | remaining modules under `tests/` |
-
-Headline automated results:
-
-- Joukowsky first-step surge vs analytical: **< 0.05 %** (`test_joukowsky_rthym.py`)
-- R-THYM pressure trace RMS (early post-closure window): **≤ 4 psi** (`test_joukowsky_rthym.py`)
-- Wave oscillation period vs $T_0 = 4L/a$: **< 0.2 %** (see `examples/test_wave_reflections.py`)
-
-Full test map, tolerance policy, and reference-artifact inventory:
-[docs/validation.md](docs/validation.md).
-
-Long-form cross-engine narratives:
-[docs/appendix_b_verification.md](docs/appendix_b_verification.md).
-
----
-
 ## Benchmarking
 
 Benchmarking answers: **how much faster is the C++ core than TSNet and PTSNet?**
@@ -1389,7 +1403,7 @@ independent rthym_moc runs in separate Python processes. See
 | DVCM defect and issue tracker | [docs/dvcm_defect_tracker.md](docs/dvcm_defect_tracker.md) |
 | All three tools (time to complete the full run) | `examples/benchmark_ptsnet_vs_tsnet.py` |
 | Tabulated physics + timing results | [docs/appendix_b_verification.md](docs/appendix_b_verification.md) §B.6 |
-| Automated correctness regressions | [Validation](#validation) (TSNet is not a default pytest dependency) |
+| Automated correctness regressions | [Validation](#validation) — `tests/` (TSNet is not a default pytest dependency) |
 
 ---
 
@@ -1423,16 +1437,10 @@ RTHYM-MOC/
 │   ├── report.py          # Study summaries and CSV/JSON export
 │   └── _rthym_moc*.so     # Compiled extension (generated by build)
 ├── examples/
-│   ├── basic_example.py            # Minimal Joukowsky quickstart
-│   ├── benchmark_vs_tsnet.py       # Single-case TSNet timing comparison
-│   ├── benchmark_matrix.py         # Multi grid-size TSNet performance matrix
-│   ├── benchmark_ptsnet_vs_tsnet.py # rthym vs TSNet vs PTSNet surge timing
-│   ├── transient_study_report.py   # Post-processing export workflow
-│   ├── test_wave_reflections.py    # Wave period & damping verification
-│   ├── test_gradual_closure.py     # Joukowsky criterion, K-model valve
-│   ├── test_surge_tank.py          # Standpipe mass-oscillation & pressure mitigation
-│   ├── load_from_inp.py            # EPANET .inp import example
-│   └── verify_rthym_webapp.py      # R-THYM web-app cross-check
+│   ├── …                           # Demo scripts (see README § Examples)
+│   ├── *_verification*.ipynb       # Binder mirrors of tests/ (see README § Validation)
+│   ├── quickstart_notebook.ipynb   # R-THYM cross-engine walkthrough (Validation)
+│   └── validation_notebooks_index.ipynb
 ├── tests/
 │   ├── test_joukowsky_rthym.py                 # R-THYM web-app vs solver benchmark
 │   ├── test_long_pipe_valve.py                 # Cross-engine valve-closure benchmark
@@ -1458,7 +1466,9 @@ RTHYM-MOC/
 │   ├── dvcm_migration.md           # Migration notes for upgrading users
 │   ├── dvcm_defect_tracker.md      # DVCM defect and issue tracker log
 │   ├── appendix_b_verification.md  # Long-form cross-engine verification appendix
-│   ├── validation.md               # Correctness test map, tolerances, reference assets
+│   ├── validation.md               # Pytest map, tolerances, reference assets
+│   ├── validation_notebooks.md     # Binder notebook index (mirrors tests/)
+│   ├── validation_notebook_coverage.md  # Pytest ↔ notebook matrix
 │   ├── benchmarking.md             # TSNet performance comparison guide
 │   ├── import_fidelity.md          # EPANET import scope and limitations
 │   └── appendix_hydraulic_reference.md
