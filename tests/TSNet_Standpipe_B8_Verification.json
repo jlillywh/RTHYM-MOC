@@ -1,0 +1,12 @@
+{
+  "source": "TSNet MOCSimulator (Appendix B.8.5). Scalars archived from docs/appendix_b_verification.md; time series in TSNet_Standpipe_B8_Traces.csv (regenerate with scripts/export_tsnet_standpipe_reference.py).",
+  "compare_window_s": [0.0, 20.0],
+  "node_id": "J1",
+  "rthym_node_id": "SP1",
+  "steady_state_head_ft": 147.95,
+  "peak_head_ft": 160.64,
+  "rthym_peak_head_ft": 160.78,
+  "peak_diff_ft": 0.14,
+  "rms_head_ft": 0.1,
+  "reference_ss_head_ft": 147.9
+}

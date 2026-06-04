@@ -11,6 +11,12 @@ versioning for package releases.
 ### Added
 - DVCM independent physical verification (`tests/test_dvcm_physical_verification.py`) for junction mass-balance step checks and post-collapse head-rise estimates.
 - Binder-ready notebook `examples/dvcm_physical_verification.ipynb` with charts and pass/fail metrics aligned to the pytest tolerances.
+- DVCM regression notebook `examples/dvcm_canonical_verification.ipynb` (quickstart-style overlays vs all three `tests/dvcm_*_reference.json` anchors); shared `tests/dvcm_canonical_verification_utils.py`; gate `scripts/verify_dvcm_canonical.py`.
+- Validation notebooks index: `docs/validation_notebooks.md` and Binder entry `examples/validation_notebooks_index.ipynb` (start here, pytest mirrors, expected runtimes).
+- Validation notebook coverage map (`docs/validation_notebook_coverage.md`) and Binder mirrors for long-pipe R-THYM, EPANET `complex_topology.inp`, gradual-closure sweep, and partial surge design-rule sweeps (`examples/*_verification.ipynb` + `tests/*_verification_utils.py`).
+- Expanded `examples/surge_device_verification.ipynb` and `tests/surge_device_verification_utils.py`: valve-side standpipe/HPT closure, air-valve restart, TSNet §B.8.5 overlay (optional), sizing preview; `tests/test_surge_device_verification.py`; local gate `scripts/verify_surge_bundle.py` (~90 s smoke + pytest).
+- Operational quality: PR CI `verification-notebooks` job (regenerate notebooks + `tests/test_verification_notebooks_smoke.py`), weekly slow-notebook workflow, `examples/_verification_notebook_setup.py` bootstrap, and operational guidance in `docs/validation_notebooks.md` (Binder `[inp]`, pass/fail semantics, script-only wave/surge-tank demos).
+- Cross-engine surge notebook `examples/cross_engine_surge_verification.ipynb` with checked-in `tests/TSNet_Standpipe_B8_*` (TSNet B.8 standpipe) and EPANET pre-trip vs MOC; `tests/cross_engine_verification_utils.py`, `scripts/export_tsnet_standpipe_reference.py`.
 
 ## [0.4.1] - 2026-06-03
 

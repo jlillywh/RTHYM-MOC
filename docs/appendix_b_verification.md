@@ -15,6 +15,15 @@ solution:
    instant valve closure with column separation and downstream stub-pipe
    resonance.  All 7 automated tests pass.
 
+4. **DVCM junction physics** (§B.9): independent checks of cavity mass-balance
+   step updates and post-collapse head-rise estimates for the Discrete Vapor
+   Cavity Model (not a cross-engine comparison).  See also
+   [docs/validation.md](validation.md) and `tests/test_dvcm_physical_verification.py`.
+
+5. **DVCM canonical traces**: junction head overlays against the three checked-in
+   `tests/dvcm_*_reference.json` anchors (`tests/test_dvcm_canonical_scenarios.py`;
+   interactive charts in `examples/dvcm_canonical_verification.ipynb`).
+
 ---
 
 ## B.1 Network Description
@@ -571,3 +580,93 @@ as a benchmark study rather than a default pytest dependency.
 
 These results confirm that the `Standpipe` boundary condition in `rthym-moc`
 is physically correct and cross-validated against an independent MOC solver.
+
+---
+
+## B.9 DVCM Junction Physics Verification
+
+### B.9.1 Purpose
+
+Sections B.1–B.8 compare `rthym-moc` against external references (R-THYM,
+TSNet, or analytical formulas).  Section B.7 discusses column separation and
+cavity-collapse peaks using the engines' default cavitation handling on a
+valve network.  This section documents a complementary check for the
+**Discrete Vapor Cavity Model (DVCM)**: independent physics invariants on a
+small symmetric junction geometry, without a second-engine trace export.
+
+The goal is to confirm that DVCM cavity volume bookkeeping and the secondary
+water-hammer spike after collapse are consistent with the continuity and
+collision relationships documented in
+[docs/dvcm_timestep_guidance.md](dvcm_timestep_guidance.md).
+
+### B.9.2 Network and transient
+
+```
+Tank R1 (H = 100 ft) ──[P1: 40 ft, 8 in]──► Junction J1 ──[P2: 40 ft, 8 in]──► Tank R2 (H = 100 ft)
+```
+
+Both reservoir heads follow the anchored **rapid-recovery** schedule in
+`tests/dvcm_rapid_closure_reference.json`: hold at 100 ft, then step to 165 ft
+at $t = 0.04$ s.  Simulation duration 0.1 s, $dt = 0.01$ s, $P_{\text{vap}} = 50$ psi,
+`CavitationModel.DVCM`.
+
+This is the same geometry used by `tests/test_dvcm_canonical_scenarios.py`; the
+physical-verification tests add **formula-based** acceptance criteria rather
+than comparing to a stored head trace.
+
+### B.9.3 Checks and tolerances
+
+| Check | Basis | Tolerance | Test |
+|---|---|---|---|
+| Cavity growth steps | $ \Delta V \approx \min(|Q_{\text{out}} - Q_{\text{in}}| \cdot \Delta t,\; 0.25\,V_{\text{cap}}) $ during active growth | $\leq 5 \times 10^{-4}$ ft³ per step | `test_dvcm_mass_conservation_invariant` |
+| Post-collapse head rise | $ \Delta H \approx a' V_{\text{before}} / (g A \Delta t) $ at primary collapse | relative error $\leq 15\%$ | `test_dvcm_analytical_collapse_spike_verification` |
+| Volume bounds | $0 \leq V_c \leq V_{\text{cap}}$, clears by end of run | exact / anchored | same module |
+
+Here $a'$ is the Courant-adjusted wave speed on the 40 ft reach, $A$ is the
+pipe area, and $V_{\text{before}}$ is the cavity volume immediately before the
+first collapse event with $V_{\text{before}} \leq 0.25\,V_{\text{cap}}$.
+
+Growth-step checks intentionally exclude collapse-transition steps, where the
+junction solver updates volume from $| \sum AB \cdot (H_{\text{candidate}} - H_{\text{vap}}) |$
+rather than directly from reported pipe flows.
+
+### B.9.4 Interactive review
+
+Charts and pass/fail metrics for the same case are available in
+`examples/dvcm_physical_verification.ipynb` (Binder link in the repository
+README).  The tighter per-step head trace regression against
+`tests/dvcm_*_reference.json` is visualized in
+`examples/dvcm_canonical_verification.ipynb`.  Automated regressions run under
+the `dvcm` pytest marker with the rest of the DVCM suite.
+
+### B.9.5 Summary
+
+DVCM junction physics verification confirms that:
+
+- tracked cavity volume increments during growth match bounded continuity
+  from pipe flows within $5 \times 10^{-4}$ ft³ per step on the canonical case;
+- the primary collapse produces a secondary head rise consistent with the
+  discrete collision estimate within 15 % on the same case.
+
+These tests do not replace cross-engine agreement in §B.7; they provide
+independent physics checks specific to the DVCM regime-switching model.
+
+---
+
+## B.10 Surge Control Device Verification (Notebook)
+
+Section B.8 documents the **standpipe** cross-engine and analytical study.
+Sections B.1–B.7 focus on valve/Joukowsky comparisons.  For an interactive
+walkthrough of all three implemented passive devices — **Standpipe**,
+**HydropneumaticTank**, and **AirValve** — with pass/fail metrics aligned to
+`tests/test_surge_device_verification.py`, see
+`examples/surge_device_verification.ipynb` (Binder link in the repository
+README).
+
+| Device | Primary reference | Notebook section |
+|---|---|---|
+| Standpipe | Joukowsky + Wylie & Streeter §9.1 (§B.8); TSNet §B.8.5 | §2–§3 |
+| Standpipe / HPT at valve | `test_surge_device_mitigation` closure limits | §4 |
+| HydropneumaticTank | Polytropic precharge; pump-trip (`test_hydropneumatic_size_benchmark`) | §5 |
+| AirValve | Trip vacuum floor + restart trapped-air (`test_air_valve`) | §6–§7 |
+| Sizing / placement | `test_tank_size_benchmark`, `test_device_placement_benchmark` | §8 + `surge_design_rules_verification.ipynb` |

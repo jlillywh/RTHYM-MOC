@@ -22,10 +22,21 @@ classifiers = [
 
 [project.optional-dependencies]
 inp  = [
+    # wntr still imports pkg_resources (removed in setuptools>=82)
+    "setuptools>=65,<81",
     "wntr>=0.4,<1.4; python_version < '3.10'",
     "wntr>=0.4; python_version >= '3.10'",
 ]
-dev  = ["pytest", "pytest-cov", "ruff", "mypy", "pre-commit", "numpy", "matplotlib"]
+dev  = [
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+    "pre-commit",
+    "numpy",
+    "matplotlib",
+    "setuptools>=65,<81",
+]
 docs = ["sphinx", "numpydoc"]
 benchmark = [
     "tsnet==0.3.1",
