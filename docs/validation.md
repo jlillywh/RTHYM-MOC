@@ -5,6 +5,17 @@ references, quantitative tolerances, automated pytest regressions, and versioned
 artifacts. It does not cover **runtime performance** comparisons; those live in
 [docs/benchmarking.md](benchmarking.md).
 
+## Notebook mirrors vs pytest
+
+The full automated validation program lives under `tests/`. Binder notebooks are
+an **interactive sampler**, not a complete map of every regression.
+
+- **Navigation (new users):** [validation_notebooks.md](validation_notebooks.md) and
+  [examples/validation_notebooks_index.ipynb](../examples/validation_notebooks_index.ipynb)
+  (includes [operational quality](validation_notebooks.md#operational-quality): CI notebook smoke, Binder bootstrap, pass/fail semantics)
+- **Full matrix:** [validation_notebook_coverage.md](validation_notebook_coverage.md)
+  (Full / Partial / Script / None) and shared `tests/*_verification_utils.py` helpers
+
 ## Structure Rules
 
 Each validation case should provide the following where practical:
@@ -41,14 +52,15 @@ Representative headline results (automated in CI):
 | Test module | Scenario / expected outcome | Reference solution | Parameterized coverage | Cross-engine |
 |---|---|---|---|---|
 | `tests/test_joukowsky_rthym.py` | Instant closure with downstream stub and column-separation dynamics should match R-THYM export | R-THYM web app + analytical Joukowsky constraints | no | R-THYM web app |
-| `tests/test_long_pipe_valve.py` | Equal-percentage closure network should match R-THYM heads, peaks, and pressure traces | R-THYM web app export | nodes and trace quantities only | R-THYM web app |
-| `tests/test_complex_topology_from_inp.py` | Imported complex network should match EPANET operating point and pump-trip directionality | EPANET/wntr steady state | per-node and per-pipe parametrization | wntr / EPANET |
-| `tests/test_gradual_closure_benchmark.py` | Closure-time sweep should reproduce rapid-closure Joukowsky behavior and slow-closure suppression | Analytical Joukowsky / Allievi regime expectations | closure time (`0.5 s`, `3.0 s`, `150 s`) | no |
-| `tests/test_dvcm_canonical_scenarios.py` | Rapid collapse-spike, pressure-recovery, and repeated-event junction cavitation scenarios should remain stable and quantitatively match anchored DVCM traces | Internal anchored junction geometries | three canonical schedules with peak-head, collapse-timing, and RMS-trace tolerances | no |
+| `tests/test_long_pipe_valve.py` | Equal-percentage closure network should match R-THYM heads, peaks, and pressure traces | R-THYM web app export | nodes and trace quantities only | R-THYM web app; `examples/long_pipe_valve_verification.ipynb` |
+| `tests/test_complex_topology_from_inp.py` | Imported complex network should match EPANET operating point and pump-trip directionality | EPANET/wntr steady state | per-node and per-pipe parametrization | wntr / EPANET; `examples/epanet_import_verification.ipynb` |
+| `tests/test_gradual_closure_benchmark.py` | Closure-time sweep should reproduce rapid-closure Joukowsky behavior and slow-closure suppression | Analytical Joukowsky / Allievi regime expectations | closure time (`0.5 s`, `3.0 s`, `150 s`) | `examples/gradual_closure_verification.ipynb` |
+| `tests/test_dvcm_canonical_scenarios.py` | Rapid collapse-spike, pressure-recovery, and repeated-event junction cavitation scenarios should remain stable and quantitatively match anchored DVCM traces | Internal anchored junction geometries (`tests/dvcm_*_reference.json`); interactive overlays in `examples/dvcm_canonical_verification.ipynb` | three canonical schedules with peak-head, collapse-timing, and RMS-trace tolerances | no |
 | `tests/test_dvcm_physical_verification.py` | Junction cavity volume step changes should match bounded `(Q_out − Q_in)` integration; post-collapse head rise should match the discrete collision estimate | Wylie continuity + `docs/dvcm_timestep_guidance.md` collision formula | symmetric reservoir–junction column-separation schedule; interactive charts in `examples/dvcm_physical_verification.ipynb` | no |
-| `tests/test_tank_size_benchmark.py` | Increasing standpipe size should monotonically reduce the protected-node closure peak | Internal anchored geometry | standpipe area (`1`, `2`, `5`, `10`, `20 ft²`) | no |
+| `tests/test_surge_device_verification.py` | Standpipe limits closure surge per Joukowsky + mass-oscillation refs; hydropneumatic and air-valve pump-trip cases meet anchored low-pressure floors | Appendix B.8 (standpipe), polytropic precharge law, `test_air_valve.py` / size benchmarks | valve-closure standpipe + pump-trip protection geometries; `examples/surge_device_verification.ipynb` | TSNet standpipe (documented in appendix, not default pytest) |
+| `tests/test_tank_size_benchmark.py` | Increasing standpipe size should monotonically reduce the protected-node closure peak | Internal anchored geometry | standpipe area (`1`, `2`, `5`, `10`, `20 ft²`) | partial: `examples/surge_design_rules_verification.ipynb` |
 | `tests/test_hydropneumatic_size_benchmark.py` | Larger vessels at fixed precharge ratio should improve trip recovery | Internal anchored geometry | vessel size (`2`–`20 ft³`, `gas_volume/tank_volume = 0.4`) | no |
-| `tests/test_device_placement_benchmark.py` | Moving protection farther from pump discharge should weaken trip protection | Internal anchored geometry | distance (`40`, `120`, `300`, `600 ft`) | no |
+| `tests/test_device_placement_benchmark.py` | Moving protection farther from pump discharge should weaken trip protection | Internal anchored geometry | distance (`40`, `120`, `300`, `600 ft`) | partial: `examples/surge_design_rules_verification.ipynb` |
 | `tests/test_pipe_length_benchmark.py` | Discharge-main length should shift near-pump vessel effectiveness | Internal anchored geometry | length (`500`–`8000 ft`) | no |
 | `tests/test_multi_device_placement_benchmark.py` | Split capacity protects well only if one vessel stays near the pump | Internal anchored geometry | two-vessel placement pairs | no |
 | `tests/test_mixed_device_interaction_benchmark.py` | Vessel + air valve should beat either device alone on low-pressure exposure | Internal anchored geometry | protection mode (`none`, `air`, `vessel`, `both`) | no |
@@ -67,7 +79,8 @@ Scenario documentation is provided in two layers:
 - test-module docstrings describe the network, schematic, references, and
   expected metrics directly beside the automated checks
 - [docs/appendix_b_verification.md](appendix_b_verification.md)
-  provides the long-form narrative for the primary cross-engine studies
+  provides the long-form narrative for the primary cross-engine studies and
+  §B.9 for DVCM junction physics verification
 
 ## Quantitative Tolerances
 
@@ -128,6 +141,8 @@ against relative trends.
 | `tests/Joukowsky Benchmark.inp` | INP | EPANET-style geometry for the Joukowsky cross-engine study | `tests/test_joukowsky_rthym.py` |
 | `tests/Long Pipe Valve.inp` | INP | EPANET-style geometry for the long-pipe valve study | `tests/test_long_pipe_valve.py` |
 | `tests/networks/complex_topology.inp` | INP | Multi-node network for EPANET/wntr steady-state checks | `tests/test_complex_topology_from_inp.py` |
+| `tests/TSNet_Standpipe_B8_Verification.json` | JSON | TSNet appendix B.8.5 standpipe peaks / RMS metadata | `tests/test_tsnet_standpipe_cross_engine.py` |
+| `tests/TSNet_Standpipe_B8_Traces.csv` | CSV | TSNet J1 head time series for B.8 standpipe | `tests/test_tsnet_standpipe_cross_engine.py`, `examples/cross_engine_surge_verification.ipynb` |
 | `tests/networks/pump_valve_benchmark.inp` | INP | Pump/valve network for trip, restart, and closure regressions | `tests/test_pump_valve_transients_from_inp.py` |
 
 ## Reference Data Policy
@@ -160,3 +175,14 @@ Wall-clock performance comparisons against TSNet are documented separately in
 - Long-form documentation focuses on the main cross-engine studies; newer
   validation regressions are documented primarily in module docstrings and this
   guide.
+- **Local surge bundle check** (smoke + pytest + optional notebook exec, ~1–2 min):
+  ``.venv/bin/python3 scripts/verify_surge_bundle.py`` (add ``--smoke-only`` or
+  ``--skip-notebook`` to shorten). TSNet overlay in the surge notebook stays
+  off by default (`RUN_TSNET = False`).
+- **Notebook coverage** is tracked explicitly in
+  [validation_notebook_coverage.md](validation_notebook_coverage.md). Major
+  gaps filled by Binder walkthroughs include the long-pipe R-THYM study,
+  EPANET `complex_topology.inp` import, gradual-closure sweep, DVCM canonical
+  JSON traces, and partial surge design-rule sweeps. Operational controls,
+  check valves, PRV/PSV, pump inertia, and SI-only regressions remain
+  pytest-only until dedicated notebooks are added.

@@ -290,12 +290,18 @@ pre-commit run --all-files
 
 ## Examples
 
-The repository includes runnable scripts and a notebook under `examples/`:
+**Validation notebooks:** start with [`docs/validation_notebooks.md`](docs/validation_notebooks.md) or the Binder index [`examples/validation_notebooks_index.ipynb`](examples/validation_notebooks_index.ipynb) — which notebook to open first, what each proves, pytest mirrors, and expected runtimes (e.g. `dvcm_showcase` at `dt=1e-4` is ~100k steps over 10 s).
+
+The repository includes runnable scripts and notebooks under `examples/`:
 
 | Script / notebook | Purpose |
 |---|---|
+| `validation_notebooks_index.ipynb` | **Start here (Binder):** navigation only — no simulations |
 | `basic_example.py` | Minimal Joukowsky quickstart with optional plotting |
-| `quickstart_notebook.ipynb` | Interactive reproducibility walkthrough (Binder-ready) |
+| `quickstart_notebook.ipynb` | Interactive reproducibility walkthrough (Binder-ready; Joukowsky R-THYM case) |
+| `long_pipe_valve_verification.ipynb` | Long Pipe Valve vs R-THYM JSON/CSV (second cross-engine study; ~3 min run) |
+| `epanet_import_verification.ipynb` | `complex_topology.inp` import + EPANET steady-state overlay (needs `wntr`) |
+| `gradual_closure_verification.ipynb` | Closure-time sweep vs Joukowsky / Allievi (`test_gradual_closure_benchmark.py`) |
 | `load_from_inp.py` | EPANET `.inp` import and transient event |
 | `transient_study_report.py` | Run a transient and export study summaries (CSV/JSON) |
 | `benchmark_vs_tsnet.py` | Single-case TSNet timing comparison |
@@ -306,17 +312,32 @@ The repository includes runnable scripts and a notebook under `examples/`:
 | `test_surge_tank.py` | Standpipe mass oscillation and pressure mitigation |
 | `verify_rthym_webapp.py` | Cross-check against R-THYM web-app export artifacts |
 | `dvcm_showcase.ipynb` | Showcase of DVCM cavitation scenarios and physics validation |
+| `dvcm_canonical_verification.ipynb` | **DVCM regression:** simulated vs `tests/dvcm_*_reference.json` (rapid / recovery / long-run; same tolerances as canonical pytest) |
 | `dvcm_physical_verification.ipynb` | Interactive DVCM mass-conservation and collapse-spike checks (Binder-ready) |
+| `surge_device_verification.ipynb` | Standpipe, hydropneumatic, and air-valve checks vs analytical/anchored references (Binder-ready) |
+| `surge_design_rules_verification.ipynb` | Standpipe size + HPT placement sweeps (partial mirror of surge benchmarks) |
 
 For an interactive walkthrough focused on reproducibility and deterministic
-solver behavior, see `examples/quickstart_notebook.ipynb`. To see the Discrete Vapor Cavity Model (DVCM) in action with physical transient scenarios, see `examples/dvcm_showcase.ipynb`. For independent mass-balance and collapse-spike metrics with charts, see `examples/dvcm_physical_verification.ipynb`.
+solver behavior, see `examples/quickstart_notebook.ipynb`. For the second major
+R-THYM cross-engine study (five-pipe valve closure), see
+`examples/long_pipe_valve_verification.ipynb`. For EPANET import fidelity on
+`complex_topology.inp`, see `examples/epanet_import_verification.ipynb`. For the
+gradual-closure Joukowsky sweep, see `examples/gradual_closure_verification.ipynb`.
+To see the Discrete Vapor Cavity Model (DVCM) in action with physical transient scenarios, see `examples/dvcm_showcase.ipynb`. For the **DVCM regression** walkthrough (three JSON-anchored junction traces, quickstart-style overlays), see `examples/dvcm_canonical_verification.ipynb`. For independent mass-balance and collapse-spike metrics with charts, see `examples/dvcm_physical_verification.ipynb`. For surge sizing/placement trends, see `examples/surge_design_rules_verification.ipynb`. A full pytest↔notebook map is in [`docs/validation_notebook_coverage.md`](docs/validation_notebook_coverage.md).
 
 Students and first-time users can launch these notebooks in a browser via Binder
 without installing Jupyter locally:
 
+- **Validation index (start here)**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fvalidation_notebooks_index.ipynb)
 - **Quickstart Notebook**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fquickstart_notebook.ipynb)
+- **Long Pipe Valve (R-THYM)**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Flong_pipe_valve_verification.ipynb)
+- **EPANET Import**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fepanet_import_verification.ipynb)
+- **Gradual Closure**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fgradual_closure_verification.ipynb)
 - **DVCM Showcase**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fdvcm_showcase.ipynb)
+- **DVCM Canonical Traces**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fdvcm_canonical_verification.ipynb)
 - **DVCM Physical Verification**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fdvcm_physical_verification.ipynb)
+- **Surge Device Verification**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fsurge_device_verification.ipynb)
+- **Surge Design Rules**: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fsurge_design_rules_verification.ipynb)
 
 The first Binder launch can take a few minutes while the environment builds the
 compiled extension. After it opens, users can run the notebooks directly in
@@ -886,7 +907,11 @@ solver.set_pump_power("Pmp1", False)
 When a pump is controlled via an operational control rule (Threshold, Deadband, or PID) or a schedule, the computed target is written to the pump's `command_speed` rather than immediately altering its physical speed. The core solver then ramps `current_speed` toward `command_speed` at every timestep using the pump's VFD `ramp_time` (in seconds):
 
 - If the pump has power (`has_power == True`) and `current_speed` differs from `command_speed`, the maximum speed change per timestep is:
-  $$\Delta s_{\text{max}} = \left( \frac{100.0}{\text{ramp\_time}} \right) \cdot dt$$
+
+$$\Delta s_{\max} = \frac{100}{t_{\mathrm{ramp}}} \cdot \Delta t$$
+
+where $t_{\mathrm{ramp}}$ is `ramp_time` in seconds and $\Delta t$ is the solver timestep.
+
 - If `ramp_time <= 0.0` (default), the speed changes instantly.
 - If `has_power == False` (e.g., power lost), the pump's rotational inertia ($WR^2$) decay calculation takes precedence, and the pump spins down naturally under hydraulic loads.
 
