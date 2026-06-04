@@ -182,7 +182,7 @@ write(
             "    run_all_closure_cases,\n"
             ")\n\n"
             "cases = run_all_closure_cases()\n"
-            "print(f\"2L/a = {T_WAVE_S:.2f} s, Joukowsky ΔH = {JOUKOWSKY_DH_FT:.1f} ft\")\n"
+            "print(f\"2L/a = {T_WAVE_S:.2f} s, Joukowsky dH = {JOUKOWSKY_DH_FT:.1f} ft\")\n"
             "for c in cases:\n"
             "    print(f\"  {c.label}: fraction={c.observed_fraction:.3f} PASS={c.passed}\")"
         ),
@@ -194,7 +194,7 @@ write(
             "for ax, c in zip(axes, cases):\n"
             "    ax.plot(c.time_s, c.valve_head_ft, label=\"V1 head\")\n"
             "    ax.axhline(c.observed_dh_ft + c.valve_head_ft.min(), color=\"gray\", linestyle=\":\", alpha=0.5)\n"
-            "    ax.set_title(f\"{c.label}: ΔH fraction {c.observed_fraction:.2f} (PASS={c.passed})\")\n"
+            "    ax.set_title(f\"{c.label}: dH fraction {c.observed_fraction:.2f} (PASS={c.passed})\")\n"
             "    ax.set_ylabel(\"Head (ft)\")\n"
             "    ax.grid(True, alpha=0.3)\n"
             "axes[-1].set_xlabel(\"Time (s)\")\n"
@@ -330,7 +330,7 @@ write(
         ),
         md("## 5. Pass/fail summary (pytest tolerances)"),
         code(
-            "print(f\"{'Case':<44} {'Peak err':>10} {'Δt_coll':>12} {'RMS err':>12} {'Extra':>6} {'PASS':>6}\")\n"
+            "print(f\"{'Case':<44} {'Peak err':>10} {'dt_coll':>12} {'RMS err':>12} {'Extra':>6} {'PASS':>6}\")\n"
             "print(\"-\" * 92)\n"
             "for case_id in CASES:\n"
             "    m = case_results[case_id][2]\n"
@@ -709,7 +709,7 @@ write(
             "NOTEBOOKS = [\n"
             "    ('quickstart_notebook.ipynb', 'R-THYM Joukowsky cross-engine'),\n"
             "    ('dvcm_canonical_verification.ipynb', 'DVCM JSON regression'),\n"
-            "    ('dvcm_physical_verification.ipynb', 'DVCM mass step + collapse ΔH'),\n"
+            "    ('dvcm_physical_verification.ipynb', 'DVCM mass step + collapse dH'),\n"
             "    ('cross_engine_surge_verification.ipynb', 'TSNet + EPANET cross-engine'),\n"
             "    ('surge_device_verification.ipynb', 'Standpipe / HPT / air valve'),\n"
             "    ('epanet_import_verification.ipynb', 'complex_topology.inp + pump trip'),\n"

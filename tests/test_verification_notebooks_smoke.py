@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -31,9 +32,11 @@ def test_verification_notebook_runs_headless(notebook: str) -> None:
     """Each fast verification notebook should execute without error (Agg backend)."""
     path = EXAMPLES / notebook
     assert path.is_file(), f"Missing {path}"
+    env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
     subprocess.run(
         [sys.executable, str(EXECUTOR), str(path)],
         cwd=REPO,
         check=True,
         timeout=600,
+        env=env,
     )
