@@ -18,6 +18,29 @@ _WNTR_NOTEBOOKS = frozenset(
 )
 
 
+def sanitize_notebook_for_git(nb: dict) -> None:
+    """Ensure nbformat 5 metadata and clear outputs so GitHub/Binder can render the file.
+
+    Stream outputs saved without a ``name`` field (legacy) fail GitHub's nbconvert
+    validator with ``'name' is a required property``.
+    """
+    meta = nb.setdefault("metadata", {})
+    ks = meta.setdefault("kernelspec", {})
+    ks.setdefault("name", "python3")
+    ks.setdefault("display_name", "Python 3")
+    ks.setdefault("language", "python")
+    li = meta.setdefault("language_info", {})
+    li.setdefault("name", "python")
+    li.setdefault("mimetype", "text/x-python")
+    li.setdefault("pygments_lexer", "ipython3")
+    li.setdefault("nbconvert_exporter", "python")
+    for cell in nb.get("cells", []):
+        if cell.get("cell_type") != "code":
+            continue
+        cell["outputs"] = []
+        cell["execution_count"] = None
+
+
 def _configure_stdio_utf8() -> None:
     """Windows cp1252 consoles cannot encode notebook Unicode; prefer UTF-8."""
     os.environ.setdefault("PYTHONUTF8", "1")
@@ -58,6 +81,7 @@ def run_notebook(path: Path) -> None:
         exec(compile(src, f"{path.name}:cell_{i}", "exec"), g, g)
         plt.close("all")
 
+    sanitize_notebook_for_git(nb)
     path.write_text(json.dumps(nb, indent=1) + "\n", encoding="utf-8")
     print(f"Executed {path}")
 
