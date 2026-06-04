@@ -33,7 +33,7 @@ jobs:
           cache: pip
 
       - name: Upgrade packaging tools
-        run: python -m pip install --upgrade pip setuptools wheel
+        run: python -m pip install --upgrade pip wheel "setuptools>=65,<81"
 
       - name: Install package and test dependencies
         run: python -m pip install -e ".[dev,inp]"
@@ -58,7 +58,7 @@ jobs:
           cache: pip
 
       - name: Upgrade packaging tools
-        run: python -m pip install --upgrade pip setuptools wheel
+        run: python -m pip install --upgrade pip wheel "setuptools>=65,<81"
 
       - name: Install package and coverage dependencies
         run: python -m pip install -e ".[dev,inp]"
@@ -89,7 +89,7 @@ jobs:
           cache: pip
 
       - name: Upgrade packaging tools
-        run: python -m pip install --upgrade pip setuptools wheel
+        run: python -m pip install --upgrade pip wheel "setuptools>=65,<81"
 
       - name: Install lint and type-check dependencies
         run: python -m pip install -e ".[dev,inp]"
@@ -115,7 +115,7 @@ jobs:
           cache: pip
 
       - name: Upgrade packaging tools
-        run: python -m pip install --upgrade pip setuptools wheel
+        run: python -m pip install --upgrade pip wheel "setuptools>=65,<81"
 
       - name: Install package and DVCM test dependencies
         run: python -m pip install -e ".[dev,inp]"
@@ -138,7 +138,7 @@ jobs:
           cache: pip
 
       - name: Upgrade packaging tools
-        run: python -m pip install --upgrade pip setuptools wheel
+        run: python -m pip install --upgrade pip wheel "setuptools>=65,<81"
 
       - name: Install package and benchmark-gate dependencies
         run: python -m pip install -e ".[dev,inp]"
@@ -161,7 +161,7 @@ jobs:
           cache: pip
 
       - name: Upgrade packaging tools
-        run: python -m pip install --upgrade pip setuptools wheel
+        run: python -m pip install --upgrade pip wheel "setuptools>=65,<81"
 
       - name: Install package and notebook smoke dependencies
         run: python -m pip install -e ".[dev,inp]"

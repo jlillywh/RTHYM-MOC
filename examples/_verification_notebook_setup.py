@@ -41,7 +41,11 @@ def bootstrap_verification_notebook(*, require_wntr: bool = False) -> tuple[Path
         try:
             import wntr  # noqa: F401
         except ImportError as exc:
-            raise ImportError(
-                "This notebook needs EPANET/wntr. Install with: pip install 'rthym-moc[inp]' or pip install wntr"
-            ) from exc
+            msg = (
+                "This notebook needs EPANET/wntr. Install with: "
+                "pip install 'rthym-moc[inp]' (includes setuptools<81 for pkg_resources)."
+            )
+            if "pkg_resources" in str(exc):
+                msg += " On Python 3.9–3.11 also ensure setuptools<81: pip install 'setuptools>=65,<81'."
+            raise ImportError(msg) from exc
     return root, tests
