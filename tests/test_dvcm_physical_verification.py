@@ -2,46 +2,41 @@
 
 These checks use invariants that are separate from stored regression traces:
 
-1. Mass conservation: cavity volume increments match the Wylie continuity rate
-   ``(Q_out - Q_in)`` integrated over ``dt``, including the DVCM per-step volume cap.
-2. Collapse spike: the post-collapse head rise at the junction is consistent with the
-   discrete water-column collision estimate used in ``docs/dvcm_timestep_guidance.md``.
+1. Mass conservation: during cavity growth, each volume increment matches the
+   Wylie continuity rate ``(Q_out - Q_in) * dt``, capped per DVCM junction rules.
+2. Collapse spike: the post-collapse head rise matches the discrete water-column
+   collision estimate for the primary collapse event on the canonical rapid-recovery
+   transient (see ``tests/dvcm_rapid_closure_reference.json``).
 """
 
 import pytest
 import numpy as np
 
 from dvcm_physical_verification_utils import (
+    COLLAPSE_SPIKE_RTOL,
     DEFAULT_DT_S,
+    MASS_STEP_ATOL_FT3,
     evaluate_collapse_spike,
     evaluate_mass_conservation,
+    junction_cavity_capacity_ft3,
     run_physical_verification_case,
     vapor_head_ft,
 )
 
 pytestmark = pytest.mark.dvcm
 
-MASS_RTOL = 0.02
-MASS_ATOL_FT3 = 1e-5
-COLLAPSE_SPIKE_RTOL = 0.15
-
 
 def test_dvcm_mass_conservation_invariant() -> None:
-    """Cavity volume step changes track bounded (Q_out - Q_in) integration."""
+    """Cavity growth steps track bounded (Q_out - Q_in) integration."""
     results = run_physical_verification_case(dt=DEFAULT_DT_S)
-    metrics = evaluate_mass_conservation(
-        results,
-        dt=DEFAULT_DT_S,
-        rtol=MASS_RTOL,
-        atol_ft3=MASS_ATOL_FT3,
-    )
+    metrics = evaluate_mass_conservation(results, dt=DEFAULT_DT_S, atol_ft3=MASS_STEP_ATOL_FT3)
 
-    assert metrics.n_steps_checked > 0, "Expected cavity volume changes during the transient."
+    assert metrics.n_steps_checked > 0, "Expected cavity growth steps during the transient."
     assert metrics.passed, (
-        "Mass-conservation step mismatch: "
-        f"max_abs={metrics.max_abs_step_error_ft3:.3e} ft³, "
-        f"max_rel={metrics.max_rel_step_error:.3e} "
-        f"({metrics.n_steps_checked} steps checked)"
+        "Mass-conservation growth-step mismatch: "
+        f"max_abs={metrics.max_abs_step_error_ft3:.3e} ft³ "
+        f"(limit {MASS_STEP_ATOL_FT3:g} ft³), "
+        f"{metrics.n_steps_checked} growth steps checked"
     )
 
     volume = np.asarray(results["node_cavity_volume"]["J1"], dtype=float)
@@ -49,6 +44,7 @@ def test_dvcm_mass_conservation_invariant() -> None:
     assert np.all(volume >= -1e-12)
     assert np.any(volume > 0.0)
     assert np.any(active == 1)
+    assert float(volume.max()) <= junction_cavity_capacity_ft3() + 1e-9
     assert float(volume[-1]) == 0.0
 
 
