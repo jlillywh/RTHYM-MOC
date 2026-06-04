@@ -12,6 +12,16 @@ versioning for package releases.
 - DVCM independent physical verification (`tests/test_dvcm_physical_verification.py`) for junction mass-balance step checks and post-collapse head-rise estimates.
 - Binder-ready notebook `examples/dvcm_physical_verification.ipynb` with charts and pass/fail metrics aligned to the pytest tolerances.
 
+## [0.4.1] - 2026-06-03
+
+### Added
+- **Regulating Valve Throttling & Closure**: Added support for mechanical closure (GPM = 0) and dynamic throttling for regulating valves (PRV, PSV, PBV) when settings drop below 99.9%.
+- **Dynamic Node Switching**: Added `set_node_type` method to `MOCSolver` to allow dynamically switching node types (e.g. PRV to TCV) mid-simulation.
+- Added comprehensive unit tests for regulating valve mechanical closure and dynamic type switching.
+
+### Fixed
+- **Windows GHA Timeout**: Fixed Windows GitHub Actions build timeouts by disabling Windows Defender real-time scanning on Windows runner environments.
+
 ## [0.4.0] - 2026-06-02
 
 ### Added
