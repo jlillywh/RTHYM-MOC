@@ -2,6 +2,8 @@
 
 Uses archived ``tests/TSNet_Standpipe_B8_*`` artifacts (not a live TSNet import in CI).
 """
+import pytest
+
 
 from cross_engine_verification_utils import (
     TSNET_PEAK_DIFF_TOL_FT,

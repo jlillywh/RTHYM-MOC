@@ -304,7 +304,7 @@ def evaluate_hydropneumatic_precharge() -> tuple[dict, dict, HptTripMetrics, Hpt
     improvement = jd_hpt - jd_none
     trip = HptTripMetrics(jd_hpt, improvement, HPT_TRIP_FLOOR_FT, jd_hpt >= HPT_TRIP_FLOOR_FT and improvement >= HPT_IMPROVEMENT_MIN_FT)
     design_h = 160.0 - 33.9  # README polytropic reference form at precharge
-    poly_h = float(np.asarray(res_hpt["node_head"]["HPT1"])[0])
+    poly_h = float(np.asarray(res_hpt["node_head"]["HPT1"])[0]) - 33.9  # gauge head (README: 33.9 ft = 1 atm)
     pre = HptPrechargeMetrics(design_h, poly_h, abs(poly_h - design_h) < 5.0)
     return res_none, res_hpt, trip, pre
 

@@ -9,6 +9,10 @@ import rthym_moc as m
 
 DT_S = 0.01
 TOTAL_TIME_S = 12.0
+TRIP_START_S = 5.2
+TRIP_END_S = 6.0
+HEAD_BOUND_TOL_FT = 1.0
+PLACEMENT_TRIP_FLOORS_FT = {40.0: 180.0, 120.0: 100.0, 300.0: -5.0, 600.0: -20.0}
 
 STANDPIPE_AREA_CASES: tuple[tuple[float, float], ...] = (
     (1.0, 160.0),
@@ -94,7 +98,10 @@ def run_hpt_placement_case(distance_ft: float, vessel_ft3: float = 10.0) -> dict
             head=215.0,
             tank_volume=vessel_ft3,
             gas_volume=0.4 * vessel_ft3,
-            precharge_head=180.0,
+            diameter=4.0,
+            polytropic_n=1.2,
+            loss_coeff_in=0.7,
+            loss_coeff_out=0.7,
         )
     )
     solver.add_node(_make_node("R2", "PressureBoundary", head=180.0))
@@ -104,7 +111,7 @@ def run_hpt_placement_case(distance_ft: float, vessel_ft3: float = 10.0) -> dict
     solver.add_pipe(_make_pipe("P4", "HPT1", "R2", 500.0, flow_gpm=0.0))
     solver.set_pump_schedule(
         "Pump_A",
-        [(0.0, 100.0), (0.5 - DT_S, 100.0), (0.5, 0.0), (TOTAL_TIME_S, 0.0)],
+        [(0.0, 100.0), (4.99, 100.0), (5.0, 0.0), (TOTAL_TIME_S, 0.0)],
     )
     return solver.run(total_time=TOTAL_TIME_S, dt=DT_S)
 
@@ -112,7 +119,9 @@ def run_hpt_placement_case(distance_ft: float, vessel_ft3: float = 10.0) -> dict
 @dataclass(frozen=True)
 class PlacementSweepPoint:
     distance_ft: float
-    mean_head_ft: float
+    trip_mean_head_ft: float
+    trip_head_floor_ft: float
+    passed: bool
 
 
 def evaluate_placement_sweep() -> list[PlacementSweepPoint]:
@@ -120,7 +129,16 @@ def evaluate_placement_sweep() -> list[PlacementSweepPoint]:
     for dist in PLACEMENT_DISTANCES_FT:
         data = run_hpt_placement_case(dist)
         t = np.asarray(data["time"], dtype=float)
-        mask = (t >= 2.0) & (t <= 8.0)
-        mean_h = float(np.mean(np.asarray(data["node_head"]["J1"])[mask]))
-        out.append(PlacementSweepPoint(distance_ft=dist, mean_head_ft=mean_h))
+        heads = np.asarray(data["node_head"]["J1"], dtype=float)
+        trip_mask = (t >= TRIP_START_S) & (t <= TRIP_END_S)
+        trip_mean = float(np.mean(heads[trip_mask]))
+        floor = PLACEMENT_TRIP_FLOORS_FT[dist]
+        out.append(
+            PlacementSweepPoint(
+                distance_ft=dist,
+                trip_mean_head_ft=trip_mean,
+                trip_head_floor_ft=floor,
+                passed=trip_mean >= floor - HEAD_BOUND_TOL_FT,
+            )
+        )
     return out
