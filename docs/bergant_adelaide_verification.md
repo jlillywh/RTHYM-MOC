@@ -13,6 +13,8 @@ traces from an earlier solver run.
 
 Helpers: `tests/bergant_adelaide_verification_utils.py`.
 
+**Binder (overlay plot):** [`examples/bergant_adelaide_verification.ipynb`](../examples/bergant_adelaide_verification.ipynb) — [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fbergant_adelaide_verification.ipynb)
+
 ## Complete the trace task (checklist)
 
 You are **one CSV away** from enabling `test_dvcm_bergant_adelaide_trace.py`.

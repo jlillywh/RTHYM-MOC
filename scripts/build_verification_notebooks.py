@@ -408,7 +408,9 @@ write(
             "not golden rthym-moc JSON.\n\n"
             "Mirrors **`tests/test_dvcm_bergant_adelaide_experiment.py`** (scalar peaks) and "
             "**`tests/test_dvcm_bergant_adelaide_trace.py`** (digitized experimental trace, peak-window gauge check).\n\n"
-            "Details: [`docs/bergant_adelaide_verification.md`](../docs/bergant_adelaide_verification.md)"
+            "Details: [`docs/bergant_adelaide_verification.md`](../docs/bergant_adelaide_verification.md)\n\n"
+            "[![Launch Binder](https://mybinder.org/badge_logo.svg)]"
+            "(https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fbergant_adelaide_verification.ipynb)"
         ),
         md("## 1. Setup"),
         code(SETUP),
