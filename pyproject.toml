@@ -84,9 +84,10 @@ files = ["rthym_moc"]
 testpaths = ["tests"]
 markers = [
     "dvcm: DVCM-focused tests and regression cases",
+    "slow: long-running regression probes (e.g. LP-PERF-01); run with pytest -m slow",
     "wasm_runtime: requires Emscripten-built WASM artifacts and Node.js",
 ]
-addopts = "-m 'not wasm_runtime'"
+addopts = "-m 'not wasm_runtime and not slow'"
 
 [tool.cibuildwheel]
 build = "cp39-* cp310-* cp311-* cp312-*"

@@ -1,0 +1,15 @@
+{
+  "case_id": "LP-PERF-01",
+  "description": "20-mile rigid pipe, dt=0.001 s, T=60 s, profile export disabled (pre-Phase-1 timing snapshot)",
+  "length_mi": 20.0,
+  "length_ft": 105600.0,
+  "dt_s": 0.001,
+  "total_time_s": 60.0,
+  "segments": 26400,
+  "steps": 60000,
+  "record_pipe_profiles": false,
+  "elapsed_s": 3.438,
+  "tolerance_ratio": 0.05,
+  "captured_on": "2026-06-05",
+  "notes": "Median of 5 single-run samples on WSL dev laptop (pip install -e .); test uses median of 3 timed reps. Recalibrate with scripts/benchmark_long_pipeline_budget.py."
+}

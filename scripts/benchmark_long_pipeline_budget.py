@@ -38,19 +38,26 @@ def main() -> None:
     n_steps = int(args.total_time / args.dt)
 
     solver = m.MOCSolver()
-    solver.add_node(m.NodeInput(id="R1", type="PressureBoundary", head=500.0))
-    solver.add_node(m.NodeInput(id="R2", type="PressureBoundary", head=100.0))
-    solver.add_pipe(
-        m.PipeInput(
-            id="P1",
-            from_node="R1",
-            to_node="R2",
-            length=length_ft,
-            diameter=24.0,
-            roughness=130.0,
-            flow_gpm=3000.0,
-        )
-    )
+    r1 = m.NodeInput()
+    r1.id = "R1"
+    r1.type = "PressureBoundary"
+    r1.head = 500.0
+    r2 = m.NodeInput()
+    r2.id = "R2"
+    r2.type = "PressureBoundary"
+    r2.head = 100.0
+    pipe = m.PipeInput()
+    pipe.id = "P1"
+    pipe.from_node = "R1"
+    pipe.to_node = "R2"
+    pipe.length = length_ft
+    pipe.diameter = 24.0
+    pipe.roughness = 130.0
+    pipe.flow_gpm = 3000.0
+    pipe.youngs_modulus = 0.0
+    solver.add_node(r1)
+    solver.add_node(r2)
+    solver.add_pipe(pipe)
     # Steady run — measures raw MOC step cost (no valve / transient event required).
 
     # Warmup (grid build + one short run)

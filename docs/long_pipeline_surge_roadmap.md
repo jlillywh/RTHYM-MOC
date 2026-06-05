@@ -133,6 +133,9 @@ flowchart LR
 
 ## Phase 1: Pipe Profile Export (Tier 1)
 
+**Status:** Complete — [#81](https://github.com/jlillywh/RTHYM-MOC/issues/81),
+[#88](https://github.com/jlillywh/RTHYM-MOC/pull/88).
+
 **Priority:** Highest — immediate value for R-THYM visualization; no new physics.
 
 ### Deliverables
@@ -172,10 +175,13 @@ results = solver.run(..., record_pipe_profiles=True, profile_stride=4)
 
 ### Exit criteria
 
-- Profile export is opt-in; legacy `run()` output unchanged when flag is false.
-- Mid-pipe head on a single-pipe Joukowsky case matches analytical within
-  existing project tolerances.
-- No measurable slowdown (&lt; 5%) when profile export is disabled.
+- [x] Profile export is opt-in; legacy `run()` output unchanged when flag is false
+      (`test_profile_export_disabled_by_default`).
+- [x] Mid-pipe head on a single-pipe Joukowsky case matches analytical within
+      existing project tolerances (`test_midpipe_head_matches_joukowsky_after_downstream_closure`,
+      ±5 ft, solver-adjusted wave speed, frictionless run).
+- [x] No measurable slowdown (&lt; 5%) when profile export is disabled
+      (`tests/test_long_pipeline_perf.py` vs `tests/long_pipeline_perf_baseline.json`, `pytest -m slow`).
 
 ---
 
@@ -488,7 +494,7 @@ separation regimes; He et al. / Adelaide rig for severe collapse (loose anchor).
 ## Master checklist
 
 - [x] Phase 0 complete (baseline docs + epic #79)
-- [ ] Phase 1 complete — profile export
+- [x] Phase 1 complete — profile export ([#81](https://github.com/jlillywh/RTHYM-MOC/issues/81), [#88](https://github.com/jlillywh/RTHYM-MOC/pull/88))
 - [ ] Phase 2 complete — elevation profile
 - [ ] Phase 3 complete — interior DVCM
 - [ ] Phase 4 complete — grid scaling
@@ -517,3 +523,4 @@ separation regimes; He et al. / Adelaide rig for severe collapse (loose anchor).
 |------|--------|
 | 2026-06-05 | Initial roadmap from long-line surge engine-gap analysis |
 | 2026-06-05 | Phase 0 baseline + tracking epic [#79](https://github.com/jlillywh/RTHYM-MOC/issues/79) |
+| 2026-06-05 | Phase 1 complete ([#81](https://github.com/jlillywh/RTHYM-MOC/issues/81), [#88](https://github.com/jlillywh/RTHYM-MOC/pull/88)); exit-criteria tests in follow-up PR |

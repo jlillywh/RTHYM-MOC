@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import math
-import time
 
 import numpy as np
 import pytest
 
 import rthym_moc as m
+from tests.dvcm_physical_verification_utils import adjusted_wave_speed_ft_s
 
 G_FT_S2 = m.G_FT_S2
 GPM_TO_CFS = m.GPM_TO_CFS
-MIDPIPE_JOUKOWSKY_TOL_FT = 25.0
+# Matches test_standpipe_surge_protection.py::_TOL_JOUKOWSKY_FT for analytical head checks.
+MIDPIPE_JOUKOWSKY_TOL_FT = 5.0
+# Sample the first upsurge after the wave reaches mid-pipe (not a 0.5 s extrema window).
+JOUKOWSKY_POST_ARRIVAL_WINDOW_S = 0.05
 
 
 def _make_node(node_id: str, node_type: str, **kwargs) -> m.NodeInput:
@@ -197,13 +200,24 @@ def test_midpipe_head_rises_after_wave_arrival() -> None:
 
 
 def test_midpipe_head_matches_joukowsky_after_downstream_closure() -> None:
-    """Interior midpoint upsurge should match ΔH = a·V₀/g within project tolerances."""
+    """Interior midpoint upsurge should match ΔH = a·V₀/g within ±5 ft.
+
+    Uses the solver's Courant-adjusted wave speed (``adjusted_wave_speed_ft_s``) and
+    a frictionless run (``k_bru=0``, ``usf_tau=dt``) so the comparison matches the
+    ideal Joukowsky head rise. Default unsteady friction overshoots by ~18 ft on this
+    case; the post-arrival sampling window avoids picking a later reflected peak.
+    """
     length_ft = 3000.0
     diameter_in = 12.0
     flow_gpm = 500.0
-    wave_speed_fps = 4000.0
+    design_wave_speed_fps = 4000.0
     dt = 0.01
 
+    wave_speed_fps = adjusted_wave_speed_ft_s(
+        length_ft=length_ft,
+        dt=dt,
+        design_wave_speed_ft_s=design_wave_speed_fps,
+    )
     area_ft2 = math.pi * (diameter_in / 12.0 / 2.0) ** 2
     v0_fps = flow_gpm * GPM_TO_CFS / area_ft2
     dh_jouk_ft = wave_speed_fps * v0_fps / G_FT_S2
@@ -236,17 +250,29 @@ def test_midpipe_head_matches_joukowsky_after_downstream_closure() -> None:
     )
 
     arrival_s = (length_ft / 2.0) / wave_speed_fps
-    total_time = arrival_s + 1.0
-    results = solver.run(total_time=total_time, dt=dt, record_pipe_profiles=True)
+    total_time = arrival_s + JOUKOWSKY_POST_ARRIVAL_WINDOW_S + dt
+    results = solver.run(
+        total_time=total_time,
+        dt=dt,
+        record_pipe_profiles=True,
+        usf_tau=dt,
+        k_bru=0.0,
+    )
 
     time_s = np.asarray(results["time"])
     chainage = np.asarray(results["pipe_profile_chainage_ft"]["P1"])
     head_p1 = np.asarray(results["pipe_profile_head"]["P1"])
     mid_idx = int(np.argmin(np.abs(chainage - length_ft / 2.0)))
+    n_segments = chainage.size - 1
+    wave_speed_from_grid_fps = length_ft / (n_segments * dt)
 
     delta_series_ft = head_p1[:, mid_idx] - head_p1[0, mid_idx]
-    first_transit_mask = time_s <= arrival_s + 0.5
-    peak_delta_ft = float(np.max(delta_series_ft[first_transit_mask]))
+    post_arrival_mask = (time_s >= arrival_s) & (
+        time_s <= arrival_s + JOUKOWSKY_POST_ARRIVAL_WINDOW_S
+    )
+    peak_delta_ft = float(np.max(delta_series_ft[post_arrival_mask]))
+
+    assert wave_speed_from_grid_fps == pytest.approx(wave_speed_fps, rel=1e-9)
     assert peak_delta_ft == pytest.approx(dh_jouk_ft, abs=MIDPIPE_JOUKOWSKY_TOL_FT)
 
 
@@ -279,18 +305,28 @@ def test_multi_pipe_profile_export() -> None:
         assert chainage[-1] == pytest.approx(length_ft, rel=1e-3)
 
 
-def test_profile_export_disabled_faster_than_enabled() -> None:
-    """Phase 1 exit: disabled export must not dominate runtime vs enabled runs."""
+def test_profile_export_enabled_materializes_interior_grids() -> None:
+    """Enabled export adds interior profile arrays; disabled path omits them.
+
+    Wall-clock overhead is gated by ``tests/test_long_pipeline_perf.py`` (LP-PERF-01).
+    Sub-millisecond micro-benchmarks on short pipes are too noisy for CI.
+    """
     solver = _single_pipe_solver()
-    reps = 4
+    disabled = solver.run(total_time=0.2, dt=0.01, record_pipe_profiles=False)
+    enabled = solver.run(total_time=0.2, dt=0.01, record_pipe_profiles=True)
 
-    def _elapsed(record: bool) -> float:
-        start = time.perf_counter()
-        for _ in range(reps):
-            solver.run(total_time=0.2, dt=0.01, record_pipe_profiles=record)
-        return time.perf_counter() - start
+    profile_keys = (
+        "pipe_profile_chainage_ft",
+        "pipe_profile_head",
+        "pipe_profile_pressure",
+        "pipe_profile_velocity_fps",
+    )
+    for key in profile_keys:
+        assert key not in disabled
+        assert key in enabled
 
-    t_disabled = _elapsed(False)
-    t_enabled = _elapsed(True)
-    assert t_disabled < t_enabled
-    assert t_enabled / t_disabled > 1.0
+    enabled_bytes = sum(
+        int(np.asarray(enabled[key]["P1"]).nbytes) for key in profile_keys
+    )
+    assert enabled_bytes > 0
+    assert np.asarray(enabled["pipe_profile_head"]["P1"]).shape[0] == len(enabled["time"])
