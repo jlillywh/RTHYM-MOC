@@ -541,14 +541,14 @@ lands; `budget_met` should become `True`.
 
 | Date | Git ref | `N` | Steps | Elapsed (s) | Grid cap | `budget_met` |
 |------|---------|-----|-------|-------------|----------|--------------|
-| — | — | 26400 | 60000 | *pending* | none | *pending* |
+| 2026-06-05 | pre-Phase-1 | 26400 | 60000 | **3.438** (median, 5 runs) | none | yes (≪ 30 s) |
 | — | — | 2000 | 60000 | *pending* | Phase 4 | *pending* |
 
 ### CI / regression policy
 
 | Stage | Policy |
 |-------|--------|
-| **Now (Phases 0–3)** | No CI gate on `LP-PERF-01`; optional local script only |
+| **Now (Phases 0–3)** | Opt-in `pytest -m slow tests/test_long_pipeline_perf.py` vs `tests/long_pipeline_perf_baseline.json` (±5 %); default CI excludes `slow` |
 | **Phase 4 complete** | Add `tests/test_long_pipeline_perf.py` with `@pytest.mark.slow`; fail if elapsed &gt; 30 s on capped grid |
 | **DVCM long-line** | Separate budget at `dt ≤ 10⁻⁴` — out of scope for this 30 s gate |
 
