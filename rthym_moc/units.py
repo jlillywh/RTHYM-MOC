@@ -555,5 +555,9 @@ def results_to_si(results: Mapping[str, Any]) -> dict[str, Any]:
         out["pipe_profile_pressure_kpa"] = _convert_series_dict(results["pipe_profile_pressure"], PSI_TO_KPA)
     if "pipe_profile_velocity_fps" in results:
         out["pipe_profile_velocity_m_s"] = _convert_series_dict(results["pipe_profile_velocity_fps"], FTS_TO_MS)
+    if "pipe_profile_cavitation" in results:
+        out["pipe_profile_cavitation"] = {
+            str(key): np.asarray(value, dtype=int) for key, value in results["pipe_profile_cavitation"].items()
+        }
 
     return out

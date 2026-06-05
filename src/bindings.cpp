@@ -59,6 +59,26 @@ static py::array_t<int> to_numpy_int(std::vector<int>&& v) {
     );
 }
 
+static py::array_t<int> to_numpy_2d_int(std::vector<std::vector<int>>&& rows) {
+    const py::ssize_t nrows = static_cast<py::ssize_t>(rows.size());
+    const py::ssize_t ncols = rows.empty() ? 0 : static_cast<py::ssize_t>(rows[0].size());
+    auto* data = new std::vector<int>(static_cast<std::size_t>(nrows * ncols));
+    for (py::ssize_t r = 0; r < nrows; ++r) {
+        for (py::ssize_t c = 0; c < ncols; ++c) {
+            (*data)[static_cast<std::size_t>(r * ncols + c)] = rows[r][static_cast<std::size_t>(c)];
+        }
+    }
+    auto capsule = py::capsule(data, [](void* p) {
+        delete reinterpret_cast<std::vector<int>*>(p);
+    });
+    return py::array_t<int>(
+        {nrows, ncols},
+        {ncols * static_cast<py::ssize_t>(sizeof(int)), static_cast<py::ssize_t>(sizeof(int))},
+        data->data(),
+        capsule
+    );
+}
+
 static py::array_t<double> to_numpy_2d(std::vector<std::vector<double>>&& rows) {
     const py::ssize_t nrows = static_cast<py::ssize_t>(rows.size());
     const py::ssize_t ncols = rows.empty() ? 0 : static_cast<py::ssize_t>(rows[0].size());
@@ -175,6 +195,12 @@ static py::dict results_to_dict(SimResults&& r) {
             velocity_profiles[k.c_str()] = to_numpy_2d(std::move(v));
         }
         out["pipe_profile_velocity_fps"] = velocity_profiles;
+
+        py::dict cavitation_profiles;
+        for (auto& [k, v] : r.pipe_profile_cavitation) {
+            cavitation_profiles[k.c_str()] = to_numpy_2d_int(std::move(v));
+        }
+        out["pipe_profile_cavitation"] = cavitation_profiles;
     }
 
     return out;
@@ -597,6 +623,8 @@ PYBIND11_MODULE(_rthym_moc, m) {
                   "pipe_profile_head"        : dict[pipe_id] → numpy.ndarray (num_steps, num_profile_points)  ft
                   "pipe_profile_pressure"    : dict[pipe_id] → numpy.ndarray (num_steps, num_profile_points)  psi
                   "pipe_profile_velocity_fps": dict[pipe_id] → numpy.ndarray (num_steps, num_profile_points)  ft/s
+                  "pipe_profile_cavitation"  : dict[pipe_id] → numpy.ndarray (num_steps, num_profile_points)  0/1
+                      (gauge pressure <= vapor pressure at local z(x); pre-DVCM screening)
 
               Diagnostic keys (populated when simulating with DVCM):
                   "node_cavity_volume" : dict[node_id] → numpy.ndarray (num_steps,)  ft³

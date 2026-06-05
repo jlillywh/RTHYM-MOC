@@ -845,8 +845,21 @@ void MOCSolver::stepMOC() {
             const double C_P = H_A + B*V_A  - (R*V_A*std::abs(V_A) + k_u*vt_A);
             const double C_M = H_B - B*V_B  + (R*V_B*std::abs(V_B) + k_u*vt_B);
 
-            newH[i][j] = (C_P + C_M) / 2.0;
-            newV[i][j] = (C_P - C_M) / (2.0 * B);
+            double Hj = (C_P + C_M) / 2.0;
+            double Vj = (C_P - C_M) / (2.0 * B);
+
+            // LegacyClamp on terrain reaches: vapor floor uses local z[j], not node z.
+            // Flat pipes (constant z) keep legacy junction-only clamping.
+            if (cavitation_model_ == CavitationModel::LegacyClamp && ps.has_terrain_elevation) {
+                const double H_vap_j = pipeGridVaporHeadFt(ps, j);
+                if (Hj < H_vap_j) {
+                    Hj = H_vap_j;
+                    Vj = (C_P - H_vap_j) / B;
+                }
+            }
+
+            newH[i][j] = Hj;
+            newV[i][j] = Vj;
         }
 
         // ── Pipe-end boundary characteristics ────────────────────────────
@@ -2249,6 +2262,7 @@ void MOCSolver::buildPipeGridElevations(PipeState& ps, const PipeInput& p) const
                 : 0.0;
             ps.z[j] = z_from + frac * (z_to - z_from);
         }
+        ps.has_terrain_elevation = std::abs(z_from - z_to) > 1e-3;
         return;
     }
 
@@ -2268,6 +2282,7 @@ void MOCSolver::buildPipeGridElevations(PipeState& ps, const PipeInput& p) const
         const double chainage_ft = static_cast<double>(j) * dx;
         ps.z[j] = interpolateElevationAtChainageFt(profile, chainage_ft);
     }
+    ps.has_terrain_elevation = true;
 }
 
 // ── Pipe profile capture helpers ──────────────────────────────────────────────
@@ -2295,6 +2310,10 @@ double MOCSolver::pipeGridElevationFt(const PipeState& ps, int grid_index) const
     return 0.0;
 }
 
+double MOCSolver::pipeGridVaporHeadFt(const PipeState& ps, int grid_index) const {
+    return pipeGridElevationFt(ps, grid_index) + p_vapor_;
+}
+
 void MOCSolver::initializePipeProfileCapture(SimResults& results) {
     profile_point_indices_.clear();
     profile_chainage_ft_.clear();
@@ -2302,6 +2321,7 @@ void MOCSolver::initializePipeProfileCapture(SimResults& results) {
     results.pipe_profile_head_ft.clear();
     results.pipe_profile_pressure_psi.clear();
     results.pipe_profile_velocity_fps.clear();
+    results.pipe_profile_cavitation.clear();
 
     for (int i = 0; i < static_cast<int>(pipes_.size()); ++i) {
         const auto& ps = pipes_[i];
@@ -2412,9 +2432,13 @@ void MOCSolver::recordStep(SimResults& results) const {
             std::vector<double> head_row;
             std::vector<double> pressure_row;
             std::vector<double> velocity_row;
+            std::vector<int> cavitation_row;
             head_row.reserve(idx_it->second.size());
             pressure_row.reserve(idx_it->second.size());
             velocity_row.reserve(idx_it->second.size());
+            cavitation_row.reserve(idx_it->second.size());
+
+            const double P_vapor_psi = p_vapor_ / PSI_TO_FT;
 
             for (int j : idx_it->second) {
                 const double Hj = ps.H[j];
@@ -2427,14 +2451,17 @@ void MOCSolver::recordStep(SimResults& results) const {
                     throw std::runtime_error(
                         "Numerical instability: NaN/Inf detected in profile velocity for pipe '" + pipe_id + "'");
                 }
+                const double P_psi = (Hj - zj) / PSI_TO_FT;
                 head_row.push_back(Hj);
-                pressure_row.push_back((Hj - zj) / PSI_TO_FT);
+                pressure_row.push_back(P_psi);
                 velocity_row.push_back(ps.V[j]);
+                cavitation_row.push_back(P_psi <= P_vapor_psi ? 1 : 0);
             }
 
             results.pipe_profile_head_ft[pipe_id].push_back(std::move(head_row));
             results.pipe_profile_pressure_psi[pipe_id].push_back(std::move(pressure_row));
             results.pipe_profile_velocity_fps[pipe_id].push_back(std::move(velocity_row));
+            results.pipe_profile_cavitation[pipe_id].push_back(std::move(cavitation_row));
         }
     }
 }
@@ -2500,6 +2527,7 @@ SimResults MOCSolver::run(double total_time_s, double dt,
             results.pipe_profile_head_ft[pi.id].reserve(num_steps);
             results.pipe_profile_pressure_psi[pi.id].reserve(num_steps);
             results.pipe_profile_velocity_fps[pi.id].reserve(num_steps);
+            results.pipe_profile_cavitation[pi.id].reserve(num_steps);
         }
     }
 

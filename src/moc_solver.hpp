@@ -156,6 +156,8 @@ struct SimResults {
     std::unordered_map<std::string, std::vector<std::vector<double>>> pipe_profile_head_ft;
     std::unordered_map<std::string, std::vector<std::vector<double>>> pipe_profile_pressure_psi;
     std::unordered_map<std::string, std::vector<std::vector<double>>> pipe_profile_velocity_fps;
+    // 0/1 vapor screening at profile points (H <= z(x) + H_vapor); mirrors node_cavitation
+    std::unordered_map<std::string, std::vector<std::vector<int>>> pipe_profile_cavitation;
 };
 
 enum class ControlType {
@@ -223,6 +225,7 @@ struct PipeState {
     std::vector<double> V;          // velocity (ft/s)    [num_nodes]
     std::vector<double> V_filtered; // IIR-filtered V for unsteady friction
     std::vector<double> z;          // ground elevation (ft) at each grid point [num_nodes]
+    bool has_terrain_elevation = false; // survey table or sloping endpoint elevations
 };
 
 // ── Internal node runtime state ──────────────────────────────────────────────
@@ -400,6 +403,7 @@ private:
     std::unordered_map<std::string, std::vector<double>> profile_chainage_ft_;
 
     double pipeGridElevationFt(const PipeState& ps, int grid_index) const;
+    double pipeGridVaporHeadFt(const PipeState& ps, int grid_index) const;
     static std::vector<int> buildProfilePointIndices(int num_nodes, int stride);
     void initializePipeProfileCapture(SimResults& results);
     void buildPipeGridElevations(PipeState& ps, const PipeInput& p) const;

@@ -215,8 +215,8 @@ pipe_si(..., elevation_profile_m=[(0.0, 36.6), ...])
 - [x] Interpolate `z[j]` at each interior grid point during `initGrid()`.
 - [x] Store `z[j]` per pipe segment in `PipeState`.
 - [x] Use `z[j]` when computing gauge pressure for profile export.
-- [ ] Use `z[j]` for **LegacyClamp** at interior points (see Phase 3) and for
-      pre-DVCM vapor screening tests.
+- [x] Use `z[j]` for **LegacyClamp** at interior points (see Phase 3) and for
+      pre-DVCM vapor screening tests (`pipe_profile_cavitation`, interior clamp in `stepMOC()`).
 - [ ] EPANET import: optional `[RTHYM]` elevation table per pipe (defer if heavy).
 - [x] Add `tests/test_pipe_elevation_profile.py`:
       - [x] Summit elevation produces lowest static pressure at correct chainage.

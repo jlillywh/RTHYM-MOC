@@ -708,14 +708,15 @@ The cavity channels (`node_cavity_volume`, `node_cavity_active`, `node_cavity_co
 
 #### Optional per-pipe MOC profiles
 
-When `record_pipe_profiles=True`, four additional top-level keys appear.  They are **absent** when the flag is `False` (the default), so existing post-processing code is unaffected.
+When `record_pipe_profiles=True`, five additional top-level keys appear.  They are **absent** when the flag is `False` (the default), so existing post-processing code is unaffected.
 
 | Key | Type | Shape | Description |
 |---|---|---|---|
 | `pipe_profile_chainage_ft` | `dict[str, ndarray]` | `(M,)` per pipe | Distance from the upstream pipe end, ft |
 | `pipe_profile_head` | `dict[str, ndarray]` | `(N, M)` per pipe | Piezometric head (HGL) at each chainage station, ft |
-| `pipe_profile_pressure` | `dict[str, ndarray]` | `(N, M)` per pipe | Gauge pressure at each chainage station, psi (linear elevation interpolation between endpoint node elevations) |
+| `pipe_profile_pressure` | `dict[str, ndarray]` | `(N, M)` per pipe | Gauge pressure at each chainage station, psi (uses local `z(x)` from `elevation_profile` or endpoint interpolation) |
 | `pipe_profile_velocity_fps` | `dict[str, ndarray]` | `(N, M)` per pipe | Flow velocity at each chainage station, ft/s |
+| `pipe_profile_cavitation` | `dict[str, ndarray]` | `(N, M)` per pipe | `1` when gauge pressure ≤ vapor pressure at local `z(x)` (pre-DVCM screening) |
 
 `N` is the number of recorded time steps (same as `len(results["time"])`).  `M` is the number of profile points along that pipe after spatial downsampling.  The first and last chainage values are the upstream and downstream pipe ends; the corresponding profile heads match `node_head` at those boundary nodes.
 
@@ -726,6 +727,7 @@ x_ft   = np.array(results["pipe_profile_chainage_ft"]["P1"])      # (M,) float64
 H_prof = np.array(results["pipe_profile_head"]["P1"])            # (N, M) float64, ft
 P_prof = np.array(results["pipe_profile_pressure"]["P1"])        # (N, M) float64, psi
 V_prof = np.array(results["pipe_profile_velocity_fps"]["P1"])    # (N, M) float64, ft/s
+C_prof = np.array(results["pipe_profile_cavitation"]["P1"])      # (N, M) int, 0/1
 ```
 
 `results_to_si()` and `run_si()` convert these to SI keys when present:
