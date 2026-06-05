@@ -80,3 +80,83 @@ graph TD
 1. Simulating rapid pump trips or sudden valve closures where column separation is likely.
 2. Sizing and validating passive surge protection devices (such as air valves or hydropneumatic vessels) under severe subatmospheric exposure.
 3. Conducting safety and structural integrity audits to calculate the absolute peak overpressure from water column collision.
+
+---
+
+## 5. Junction-Only DVCM vs. Interior DVCM (Long-Pipeline Phase 3)
+
+RTHYM-MOC ships two DVCM scopes on uninterrupted pipe reaches:
+
+| Aspect | Junction-only DVCM (default) | Interior DVCM (`enable_interior_dvcm=True`) |
+|---|---|---|
+| **Activation** | `CavitationModel.DVCM` only | `CavitationModel.DVCM` **and** `enable_interior_dvcm=True` on `run()` |
+| **State location** | `NodeState` at graph junctions, valves, pumps, and inline devices | `PipeSegmentState` per MOC grid index `j = 1 … N-2` |
+| **Cavity capacity** | Sum of adjacent pipe-half volumes at the node | Segment volume $dx \cdot A$ at each interior grid point |
+| **Vapor head reference** | Node `elevation` | Local survey elevation $z(x)$ via `pipeGridVaporHeadFt()` |
+| **Interior MOC heads** | Not clamped; may fall below local $H_{\text{vap}}(x)$ on sloping reaches | Clamped to local vapor head while cavity regime is active |
+| **Profile diagnostics** | `pipe_profile_cavitation` only (0/1 screening from gauge pressure) | Adds `pipe_profile_cavity_volume`, `pipe_profile_cavity_active` |
+| **Backward compatibility** | Unchanged — this is the default when interior mode is off | Opt-in; junction telemetry and flat-network tests are unaffected |
+
+### Junction-only behavior on sloping uninterrupted pipes
+
+Before Phase 3, `CavitationModel.DVCM` applied regime switching only at **network nodes** (junctions, valves, pumps, etc.). On a junction-free sloping main:
+
+- Interior MOC predictor heads/velocities are computed each step but **not** integrated into a vapor-pocket state machine.
+- Profile gauge pressure can dip below the local vapor limit at terrain high points even though junction boundaries remain physical.
+- `pipe_profile_cavitation` flags sub-vapor **screening** from instantaneous gauge pressure, but there is no `pipe_profile_cavity_volume` growth or collapse spike at mid-pipe chainage.
+
+This is intentional for backward compatibility: existing junction DVCM regression suites and EPANET-style networks with frequent nodes behave as before.
+
+### Interior DVCM behavior on sloping uninterrupted pipes
+
+When `enable_interior_dvcm=True`, the same `LiquidFull → CavityActive → CollapseTransition` regime machine runs in the interior MOC loop immediately after the C± predictor step:
+
+1. **Cavity initiation** uses local $H_{\text{vap}}(x)$ and the same enter/leave hysteresis as junction DVCM (`0.10` / `0.50` psi ft tolerances).
+2. **Volume growth** is bounded per step to $0.25 \times dx \cdot A$ from segment conductance imbalance.
+3. **Head clamp** holds $H_j \ge H_{\text{vap}}(x_j)$ while the segment regime is not `LiquidFull`.
+4. **Collapse** shrinks stored volume; the committed head profile can show a secondary rise at the survey summit (water-column collision) detectable on `pipe_profile_head`.
+
+Pipe-end grid indices (`j = 0`, `j = N-1`) remain governed by boundary/junction DVCM at the graph nodes; interior state is not written there.
+
+### Side-by-side on a downsurge sloping main
+
+Canonical geometry: 2000 ft pipe, survey summit at 1000 ft chainage, downstream reservoir drop. Documented tests in `tests/test_interior_dvcm_sloping_pipe.py`:
+
+| Observation | Junction-only DVCM | Interior DVCM |
+|---|---|---|
+| Cavity volume at pipe terminals (profile export) | Not exported; endpoints inactive | Still zero — only interior indices carry state |
+| Cavity at survey summit | No tracked volume | `pipe_profile_cavity_active` and `pipe_profile_cavity_volume` grow at the high point |
+| Summit head during separation | Can remain below local $H_{\text{vap}}$ | Clamped to local vapor floor while cavity is active |
+| Post-collapse spike at summit | No mid-pipe collision physics | Detectable head rise ($\ge 5$ ft in reference case) localized near summit chainage |
+| `dt` convergence | N/A for interior envelopes | Halving `dt` changes interior chainage envelopes by $< 1\%$ (see [dvcm_timestep_guidance.md §5](dvcm_timestep_guidance.md)) |
+
+### API example
+
+```python
+results = solver.run(
+    total_time=1.0,
+    dt=0.001,
+    cavitation_model=rthym_moc.CavitationModel.DVCM,
+    record_pipe_profiles=True,
+    enable_interior_dvcm=True,  # default False
+)
+# Interior diagnostics (when both flags are True):
+#   results["pipe_profile_cavity_volume"]["P1"]  # ft³, shape (steps, profile_points)
+#   results["pipe_profile_cavity_active"]["P1"]  # 0/1
+```
+
+`set_enable_interior_dvcm(True)` persists on the solver for subsequent `run()` calls. SI conversion via `results_to_si()` maps volume to `pipe_profile_cavity_volume_m3`.
+
+### When to enable interior DVCM
+
+Enable interior DVCM when:
+
+1. Simulating **long, junction-free reaches** with elevation surveys where the terrain high point controls vapor margin.
+2. Exporting **chainage-resolved cavity diagnostics** for R-THYM or long-line design review.
+3. Resolving **mid-pipe column separation and collapse spikes** that junction-only DVCM cannot represent on uninterrupted pipes.
+
+Keep junction-only DVCM (default) when:
+
+1. The network has frequent nodes and column separation is already captured at junctions/valves.
+2. You need fastest compatibility with existing DVCM regression baselines and do not need mid-pipe cavity state.
+3. You are running flat networks where interior and junction behavior are equivalent for practical purposes.

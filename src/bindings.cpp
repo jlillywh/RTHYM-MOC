@@ -201,6 +201,22 @@ static py::dict results_to_dict(SimResults&& r) {
             cavitation_profiles[k.c_str()] = to_numpy_2d_int(std::move(v));
         }
         out["pipe_profile_cavitation"] = cavitation_profiles;
+
+        if (!r.pipe_profile_cavity_volume.empty()) {
+            py::dict cavity_volume_profiles;
+            for (auto& [k, v] : r.pipe_profile_cavity_volume) {
+                cavity_volume_profiles[k.c_str()] = to_numpy_2d(std::move(v));
+            }
+            out["pipe_profile_cavity_volume"] = cavity_volume_profiles;
+        }
+
+        if (!r.pipe_profile_cavity_active.empty()) {
+            py::dict cavity_active_profiles;
+            for (auto& [k, v] : r.pipe_profile_cavity_active) {
+                cavity_active_profiles[k.c_str()] = to_numpy_2d_int(std::move(v));
+            }
+            out["pipe_profile_cavity_active"] = cavity_active_profiles;
+        }
     }
 
     return out;
@@ -458,6 +474,11 @@ PYBIND11_MODULE(_rthym_moc, m) {
             "Select the cavitation model used by subsequent run() calls.")
         .def("get_cavitation_model", &MOCSolver::get_cavitation_model,
             "Return the currently configured cavitation model.")
+        .def("set_enable_interior_dvcm", &MOCSolver::set_enable_interior_dvcm,
+            py::arg("enable"),
+            "Enable interior-point DVCM on uninterrupted pipe reaches (default off).")
+        .def("get_enable_interior_dvcm", &MOCSolver::get_enable_interior_dvcm,
+            "Return whether interior-point DVCM is enabled for subsequent run() calls.")
         .def("set_generator_connected", &MOCSolver::set_pump_power,
             py::arg("id"), py::arg("connected"),
             "Set whether a turbine's generator is connected to the grid (equivalent to has_power).")
@@ -559,14 +580,15 @@ PYBIND11_MODULE(_rthym_moc, m) {
                double k_bru,
                py::object cavitation_model,
                bool record_pipe_profiles,
-               int profile_stride) -> py::dict {
+               int profile_stride,
+               bool enable_interior_dvcm) -> py::dict {
                 std::optional<CavitationModel> cavitation_model_opt = std::nullopt;
                 if (!cavitation_model.is_none()) {
                     cavitation_model_opt = cavitation_model.cast<CavitationModel>();
                 }
                 return results_to_dict(
                     self.run(total_time, dt, p_vapor_psi, usf_tau, k_bru, cavitation_model_opt,
-                             record_pipe_profiles, profile_stride));
+                             record_pipe_profiles, profile_stride, enable_interior_dvcm));
             },
             py::arg("total_time"),
             py::arg("dt")          = 0.01,
@@ -576,6 +598,7 @@ PYBIND11_MODULE(_rthym_moc, m) {
             py::arg("cavitation_model") = py::none(),
             py::arg("record_pipe_profiles") = false,
             py::arg("profile_stride") = 1,
+            py::arg("enable_interior_dvcm") = false,
             R"pbdoc(
             Run the transient simulation and return results.
 
@@ -625,6 +648,10 @@ PYBIND11_MODULE(_rthym_moc, m) {
                   "pipe_profile_velocity_fps": dict[pipe_id] → numpy.ndarray (num_steps, num_profile_points)  ft/s
                   "pipe_profile_cavitation"  : dict[pipe_id] → numpy.ndarray (num_steps, num_profile_points)  0/1
                       (gauge pressure <= vapor pressure at local z(x); pre-DVCM screening)
+                  "pipe_profile_cavity_volume" : dict[pipe_id] → numpy.ndarray (num_steps, num_profile_points)  ft³
+                      (interior DVCM cavity volume; only when enable_interior_dvcm=True)
+                  "pipe_profile_cavity_active" : dict[pipe_id] → numpy.ndarray (num_steps, num_profile_points)  0/1
+                      (interior DVCM active flag; only when enable_interior_dvcm=True)
 
               Diagnostic keys (populated when simulating with DVCM):
                   "node_cavity_volume" : dict[node_id] → numpy.ndarray (num_steps,)  ft³

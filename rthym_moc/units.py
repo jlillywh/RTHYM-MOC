@@ -446,6 +446,7 @@ def run_si(
     cavitation_model: CavitationModel | None = None,
     record_pipe_profiles: bool = False,
     profile_stride: int = 1,
+    enable_interior_dvcm: bool = False,
 ) -> dict[str, Any]:
     """Run a transient and return an SI-unit results dictionary.
 
@@ -467,6 +468,7 @@ def run_si(
         "k_bru": k_bru,
         "record_pipe_profiles": record_pipe_profiles,
         "profile_stride": profile_stride,
+        "enable_interior_dvcm": enable_interior_dvcm,
     }
     if cavitation_model is not None:
         run_kwargs["cavitation_model"] = cavitation_model
@@ -558,6 +560,14 @@ def results_to_si(results: Mapping[str, Any]) -> dict[str, Any]:
     if "pipe_profile_cavitation" in results:
         out["pipe_profile_cavitation"] = {
             str(key): np.asarray(value, dtype=int) for key, value in results["pipe_profile_cavitation"].items()
+        }
+    if "pipe_profile_cavity_volume" in results:
+        out["pipe_profile_cavity_volume_m3"] = _convert_series_dict(
+            results["pipe_profile_cavity_volume"], FT3_TO_M3
+        )
+    if "pipe_profile_cavity_active" in results:
+        out["pipe_profile_cavity_active"] = {
+            str(key): np.asarray(value, dtype=int) for key, value in results["pipe_profile_cavity_active"].items()
         }
 
     return out
