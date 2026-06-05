@@ -397,3 +397,40 @@ HEADLOSS H-W
     j1_node = added_nodes["J1"]
     assert j1_node.type == "Standpipe"
     assert j1_node.tank_area == pytest.approx(m.area_m2_to_ft2(1.0))
+
+
+def test_mocsolver_run_accepts_positional_cavitation_model():
+    solver = m.MOCSolver()
+    r1 = m.NodeInput()
+    r1.id = "R1"
+    r1.type = "Tank"
+    r1.head = 120.0
+    j1 = m.NodeInput()
+    j1.id = "J1"
+    j1.type = "Junction"
+    r2 = m.NodeInput()
+    r2.id = "R2"
+    r2.type = "Tank"
+    r2.head = 80.0
+    p1 = m.PipeInput()
+    p1.id = "P1"
+    p1.from_node = "R1"
+    p1.to_node = "J1"
+    p1.length = 1000.0
+    p1.diameter = 8.0
+    p1.roughness = 120.0
+    p2 = m.PipeInput()
+    p2.id = "P2"
+    p2.from_node = "J1"
+    p2.to_node = "R2"
+    p2.length = 1000.0
+    p2.diameter = 8.0
+    p2.roughness = 120.0
+    solver.add_node(r1)
+    solver.add_node(j1)
+    solver.add_node(r2)
+    solver.add_pipe(p1)
+    solver.add_pipe(p2)
+
+    results = solver.run(0.05, 0.01, -14.0, 0.5, -1.0, m.CavitationModel.LegacyClamp)
+    assert len(results["time"]) == 5

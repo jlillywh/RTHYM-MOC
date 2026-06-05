@@ -2191,6 +2191,67 @@ void MOCSolver::stepMOC() {
     t_now_ += dt_;
 }
 
+// ── Pipe profile capture helpers ──────────────────────────────────────────────
+
+std::vector<int> MOCSolver::buildProfilePointIndices(int num_nodes, int stride) {
+    const int step = std::max(1, stride);
+    std::vector<int> indices;
+    if (num_nodes <= 0) {
+        return indices;
+    }
+    for (int j = 0; j < num_nodes; j += step) {
+        indices.push_back(j);
+    }
+    const int last = num_nodes - 1;
+    if (indices.empty() || indices.back() != last) {
+        indices.push_back(last);
+    }
+    return indices;
+}
+
+double MOCSolver::pipeGridElevationFt(const PipeState& ps, int grid_index) const {
+    double z_from = 0.0;
+    double z_to   = 0.0;
+    const auto fit = node_idx_map_.find(ps.from_id);
+    const auto tit = node_idx_map_.find(ps.to_id);
+    if (fit != node_idx_map_.end()) {
+        z_from = nodes_[fit->second].input.elevation;
+    }
+    if (tit != node_idx_map_.end()) {
+        z_to = nodes_[tit->second].input.elevation;
+    }
+    if (ps.num_nodes <= 1) {
+        return z_from;
+    }
+    const double frac = static_cast<double>(grid_index) / static_cast<double>(ps.num_nodes - 1);
+    return z_from + frac * (z_to - z_from);
+}
+
+void MOCSolver::initializePipeProfileCapture(SimResults& results) {
+    profile_point_indices_.clear();
+    profile_chainage_ft_.clear();
+    results.pipe_profile_chainage_ft.clear();
+    results.pipe_profile_head_ft.clear();
+    results.pipe_profile_pressure_psi.clear();
+    results.pipe_profile_velocity_fps.clear();
+
+    for (int i = 0; i < static_cast<int>(pipes_.size()); ++i) {
+        const auto& ps = pipes_[i];
+        const auto& pipe_id = pipe_inputs_[i].id;
+        const auto indices = buildProfilePointIndices(ps.num_nodes, profile_stride_);
+        profile_point_indices_[pipe_id] = indices;
+
+        std::vector<double> chainage;
+        chainage.reserve(indices.size());
+        const double dx = (ps.num_nodes > 1) ? (ps.L / static_cast<double>(ps.num_nodes - 1)) : 0.0;
+        for (int j : indices) {
+            chainage.push_back(static_cast<double>(j) * dx);
+        }
+        profile_chainage_ft_[pipe_id] = chainage;
+        results.pipe_profile_chainage_ft[pipe_id] = chainage;
+    }
+}
+
 // ── Record current state into results vectors ─────────────────────────────────
 
 void MOCSolver::recordStep(SimResults& results) const {
@@ -2270,13 +2331,52 @@ void MOCSolver::recordStep(SimResults& results) const {
         avg_V /= ps.num_nodes;
         results.pipe_flow_gpm[pipe_inputs_[i].id].push_back(avg_V * ps.area / GPM_TO_CFS);
     }
+
+    if (record_pipe_profiles_) {
+        for (int i = 0; i < static_cast<int>(pipes_.size()); ++i) {
+            const auto& ps = pipes_[i];
+            const auto& pipe_id = pipe_inputs_[i].id;
+            const auto idx_it = profile_point_indices_.find(pipe_id);
+            if (idx_it == profile_point_indices_.end()) {
+                continue;
+            }
+
+            std::vector<double> head_row;
+            std::vector<double> pressure_row;
+            std::vector<double> velocity_row;
+            head_row.reserve(idx_it->second.size());
+            pressure_row.reserve(idx_it->second.size());
+            velocity_row.reserve(idx_it->second.size());
+
+            for (int j : idx_it->second) {
+                const double Hj = ps.H[j];
+                const double zj = pipeGridElevationFt(ps, j);
+                if (std::isnan(Hj) || std::isinf(Hj)) {
+                    throw std::runtime_error(
+                        "Numerical instability: NaN/Inf detected in profile head for pipe '" + pipe_id + "'");
+                }
+                if (std::isnan(ps.V[j]) || std::isinf(ps.V[j])) {
+                    throw std::runtime_error(
+                        "Numerical instability: NaN/Inf detected in profile velocity for pipe '" + pipe_id + "'");
+                }
+                head_row.push_back(Hj);
+                pressure_row.push_back((Hj - zj) / PSI_TO_FT);
+                velocity_row.push_back(ps.V[j]);
+            }
+
+            results.pipe_profile_head_ft[pipe_id].push_back(std::move(head_row));
+            results.pipe_profile_pressure_psi[pipe_id].push_back(std::move(pressure_row));
+            results.pipe_profile_velocity_fps[pipe_id].push_back(std::move(velocity_row));
+        }
+    }
 }
 
 // ── Main run loop ─────────────────────────────────────────────────────────────
 
 SimResults MOCSolver::run(double total_time_s, double dt,
                           double p_vapor_psi, double usf_tau,
-                          double k_bru, std::optional<CavitationModel> cavitation_model) {
+                          double k_bru, std::optional<CavitationModel> cavitation_model,
+                          bool record_pipe_profiles, int profile_stride) {
     if (dt <= 0.0) {
         throw std::invalid_argument("Timestep dt must be strictly positive");
     }
@@ -2286,6 +2386,9 @@ SimResults MOCSolver::run(double total_time_s, double dt,
     if (usf_tau <= 0.0) {
         throw std::invalid_argument("Filter time constant usf_tau must be strictly positive");
     }
+    if (profile_stride < 1) {
+        throw std::invalid_argument("profile_stride must be >= 1");
+    }
 
     dt_      = dt;
     p_vapor_ = p_vapor_psi * PSI_TO_FT; // convert psi → ft
@@ -2294,6 +2397,8 @@ SimResults MOCSolver::run(double total_time_s, double dt,
     }
     usf_tau_ = usf_tau;
     k_Bru_   = k_bru;
+    record_pipe_profiles_ = record_pipe_profiles;
+    profile_stride_       = profile_stride;
 
     initGrid();
 
@@ -2319,6 +2424,15 @@ SimResults MOCSolver::run(double total_time_s, double dt,
     }
     for (const auto& pi : pipe_inputs_) {
         results.pipe_flow_gpm[pi.id].reserve(num_steps);
+    }
+
+    if (record_pipe_profiles_) {
+        initializePipeProfileCapture(results);
+        for (const auto& pi : pipe_inputs_) {
+            results.pipe_profile_head_ft[pi.id].reserve(num_steps);
+            results.pipe_profile_pressure_psi[pi.id].reserve(num_steps);
+            results.pipe_profile_velocity_fps[pi.id].reserve(num_steps);
+        }
     }
 
     for (int step = 0; step < num_steps; ++step) {

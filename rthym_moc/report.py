@@ -13,7 +13,7 @@ import numpy as np
 
 from . import PSI_TO_FT
 from .acceptance import CheckResults, run_acceptance_checks, ViolationDetail, format_acceptance_report
-from .units import FT_TO_M, GPM_TO_M3S, PSI_TO_KPA, length_m_to_ft, pressure_psi_to_kpa
+from .units import FT_TO_M, FTS_TO_MS, GPM_TO_M3S, PSI_TO_KPA, length_m_to_ft, pressure_psi_to_kpa
 
 
 class Extrema(TypedDict):
@@ -36,8 +36,35 @@ class NodeStudySummary(TypedDict, total=False):
     cavitation: CavitationSummary
 
 
-class PipeStudySummary(TypedDict):
+class ProfilePointExtrema(TypedDict):
+    value: float
+    time_s: float
+    chainage_ft: float
+
+
+class ChainageEnvelope(TypedDict, total=False):
+    chainage_ft: list[float]
+    head_min_ft: list[float]
+    head_max_ft: list[float]
+    pressure_min_psi: list[float]
+    pressure_max_psi: list[float]
+    velocity_min_fps: list[float]
+    velocity_max_fps: list[float]
+
+
+class ProfilePeakSummary(TypedDict, total=False):
+    head_min: ProfilePointExtrema
+    head_max: ProfilePointExtrema
+    pressure_min: ProfilePointExtrema
+    pressure_max: ProfilePointExtrema
+    velocity_min: ProfilePointExtrema
+    velocity_max: ProfilePointExtrema
+
+
+class PipeStudySummary(TypedDict, total=False):
     flow_gpm: Extrema
+    chainage_envelope: ChainageEnvelope
+    profile_peak: ProfilePeakSummary
 
 
 class StudySummary(TypedDict, total=False):
@@ -53,8 +80,35 @@ class NodeStudySummarySI(TypedDict, total=False):
     cavitation: CavitationSummary
 
 
-class PipeStudySummarySI(TypedDict):
+class ProfilePointExtremaSI(TypedDict):
+    value: float
+    time_s: float
+    chainage_m: float
+
+
+class ChainageEnvelopeSI(TypedDict, total=False):
+    chainage_m: list[float]
+    head_min_m: list[float]
+    head_max_m: list[float]
+    pressure_min_kpa: list[float]
+    pressure_max_kpa: list[float]
+    velocity_min_m_s: list[float]
+    velocity_max_m_s: list[float]
+
+
+class ProfilePeakSummarySI(TypedDict, total=False):
+    head_min: ProfilePointExtremaSI
+    head_max: ProfilePointExtremaSI
+    pressure_min: ProfilePointExtremaSI
+    pressure_max: ProfilePointExtremaSI
+    velocity_min: ProfilePointExtremaSI
+    velocity_max: ProfilePointExtremaSI
+
+
+class PipeStudySummarySI(TypedDict, total=False):
     flow_m3s: Extrema
+    chainage_envelope: ChainageEnvelopeSI
+    profile_peak: ProfilePeakSummarySI
 
 
 class StudySummarySI(TypedDict, total=False):
@@ -92,6 +146,70 @@ def series_extrema(time_s: np.ndarray, values: np.ndarray) -> Extrema:
         max=float(y[i_max]),
         max_time_s=float(t[i_max]),
     )
+
+
+def profile_point_extrema(
+    time_s: np.ndarray,
+    chainage_ft: np.ndarray,
+    values_2d: np.ndarray,
+    *,
+    find_min: bool,
+) -> ProfilePointExtrema:
+    """Return the global min or max over a (time, chainage) profile grid."""
+    arr = np.asarray(values_2d, dtype=float)
+    x = np.asarray(chainage_ft, dtype=float)
+    t = np.asarray(time_s, dtype=float)
+    if arr.size == 0 or x.size == 0 or t.size == 0:
+        return ProfilePointExtrema(value=float("nan"), time_s=float("nan"), chainage_ft=float("nan"))
+    flat_idx = int(np.argmin(arr) if find_min else np.argmax(arr))
+    i_t, i_x = np.unravel_index(flat_idx, arr.shape)
+    return ProfilePointExtrema(
+        value=float(arr[i_t, i_x]),
+        time_s=float(t[i_t]),
+        chainage_ft=float(x[i_x]),
+    )
+
+
+def envelope_vs_chainage(values_2d: np.ndarray) -> tuple[list[float], list[float]]:
+    """Return min/max over time at each chainage station."""
+    arr = np.asarray(values_2d, dtype=float)
+    if arr.size == 0:
+        return [], []
+    return np.min(arr, axis=0).tolist(), np.max(arr, axis=0).tolist()
+
+
+def _summarize_pipe_profile(
+    time_s: np.ndarray,
+    chainage_ft: np.ndarray,
+    head_2d: np.ndarray | None,
+    pressure_2d: np.ndarray | None,
+    velocity_2d: np.ndarray | None,
+) -> tuple[ChainageEnvelope, ProfilePeakSummary]:
+    envelope: ChainageEnvelope = {"chainage_ft": np.asarray(chainage_ft, dtype=float).tolist()}
+    peaks: ProfilePeakSummary = {}
+
+    if head_2d is not None:
+        head_min, head_max = envelope_vs_chainage(head_2d)
+        envelope["head_min_ft"] = head_min
+        envelope["head_max_ft"] = head_max
+        peaks["head_min"] = profile_point_extrema(time_s, chainage_ft, head_2d, find_min=True)
+        peaks["head_max"] = profile_point_extrema(time_s, chainage_ft, head_2d, find_min=False)
+
+    if pressure_2d is not None:
+        pressure_min, pressure_max = envelope_vs_chainage(pressure_2d)
+        envelope["pressure_min_psi"] = pressure_min
+        envelope["pressure_max_psi"] = pressure_max
+        peaks["pressure_min"] = profile_point_extrema(time_s, chainage_ft, pressure_2d, find_min=True)
+        peaks["pressure_max"] = profile_point_extrema(time_s, chainage_ft, pressure_2d, find_min=False)
+
+    if velocity_2d is not None:
+        velocity_min, velocity_max = envelope_vs_chainage(velocity_2d)
+        envelope["velocity_min_fps"] = velocity_min
+        envelope["velocity_max_fps"] = velocity_max
+        peaks["velocity_min"] = profile_point_extrema(time_s, chainage_ft, velocity_2d, find_min=True)
+        peaks["velocity_max"] = profile_point_extrema(time_s, chainage_ft, velocity_2d, find_min=False)
+
+    return envelope, peaks
 
 
 def cavitation_summary(
@@ -151,6 +269,26 @@ def summarize_study(
             "flow_gpm": series_extrema(time_s, flow_series),
         }
 
+    chainage_by_pipe = results.get("pipe_profile_chainage_ft", {})
+    head_by_pipe = results.get("pipe_profile_head", {})
+    pressure_by_pipe = results.get("pipe_profile_pressure", {})
+    velocity_by_pipe = results.get("pipe_profile_velocity_fps", {})
+    for pipe_id, chainage_series in chainage_by_pipe.items():
+        pid = str(pipe_id)
+        if pid not in pipes_out:
+            pipes_out[pid] = {}
+        pipe_entry: PipeStudySummary = pipes_out[pid]
+        envelope, peaks = _summarize_pipe_profile(
+            time_s,
+            np.asarray(chainage_series, dtype=float),
+            np.asarray(head_by_pipe[pipe_id], dtype=float) if pipe_id in head_by_pipe else None,
+            np.asarray(pressure_by_pipe[pipe_id], dtype=float) if pipe_id in pressure_by_pipe else None,
+            np.asarray(velocity_by_pipe[pipe_id], dtype=float) if pipe_id in velocity_by_pipe else None,
+        )
+        pipe_entry["chainage_envelope"] = envelope
+        if peaks:
+            pipe_entry["profile_peak"] = peaks
+
     summary = StudySummary(
         meta={
             "duration_s": float(time_s[-1]) if time_s.size else 0.0,
@@ -181,6 +319,50 @@ def summarize_study(
     return summary
 
 
+def _scale_profile_point(point: ProfilePointExtrema, value_factor: float, chainage_factor: float) -> ProfilePointExtremaSI:
+    return ProfilePointExtremaSI(
+        value=point["value"] * value_factor,
+        time_s=point["time_s"],
+        chainage_m=point["chainage_ft"] * chainage_factor,
+    )
+
+
+def _chainage_envelope_to_si(envelope: ChainageEnvelope) -> ChainageEnvelopeSI:
+    out: ChainageEnvelopeSI = {
+        "chainage_m": [x * FT_TO_M for x in envelope["chainage_ft"]],
+    }
+    if "head_min_ft" in envelope:
+        out["head_min_m"] = [v * FT_TO_M for v in envelope["head_min_ft"]]
+    if "head_max_ft" in envelope:
+        out["head_max_m"] = [v * FT_TO_M for v in envelope["head_max_ft"]]
+    if "pressure_min_psi" in envelope:
+        out["pressure_min_kpa"] = [v * PSI_TO_KPA for v in envelope["pressure_min_psi"]]
+    if "pressure_max_psi" in envelope:
+        out["pressure_max_kpa"] = [v * PSI_TO_KPA for v in envelope["pressure_max_psi"]]
+    if "velocity_min_fps" in envelope:
+        out["velocity_min_m_s"] = [v * FTS_TO_MS for v in envelope["velocity_min_fps"]]
+    if "velocity_max_fps" in envelope:
+        out["velocity_max_m_s"] = [v * FTS_TO_MS for v in envelope["velocity_max_fps"]]
+    return out
+
+
+def _profile_peak_to_si(peaks: ProfilePeakSummary) -> ProfilePeakSummarySI:
+    out: ProfilePeakSummarySI = {}
+    if "head_min" in peaks:
+        out["head_min"] = _scale_profile_point(peaks["head_min"], FT_TO_M, FT_TO_M)
+    if "head_max" in peaks:
+        out["head_max"] = _scale_profile_point(peaks["head_max"], FT_TO_M, FT_TO_M)
+    if "pressure_min" in peaks:
+        out["pressure_min"] = _scale_profile_point(peaks["pressure_min"], PSI_TO_KPA, FT_TO_M)
+    if "pressure_max" in peaks:
+        out["pressure_max"] = _scale_profile_point(peaks["pressure_max"], PSI_TO_KPA, FT_TO_M)
+    if "velocity_min" in peaks:
+        out["velocity_min"] = _scale_profile_point(peaks["velocity_min"], FTS_TO_MS, FT_TO_M)
+    if "velocity_max" in peaks:
+        out["velocity_max"] = _scale_profile_point(peaks["velocity_max"], FTS_TO_MS, FT_TO_M)
+    return out
+
+
 def _scale_extrema(ext: Extrema, factor: float) -> Extrema:
     return Extrema(
         min=ext["min"] * factor,
@@ -204,10 +386,16 @@ def study_summary_to_si(summary: StudySummary) -> StudySummarySI:
             entry["cavitation"] = node_row["cavitation"]
         nodes_out[str(node_id)] = entry
 
-    pipes_out: dict[str, PipeStudySummarySI] = {
-        str(pipe_id): {"flow_m3s": _scale_extrema(pipe_row["flow_gpm"], GPM_TO_M3S)}
-        for pipe_id, pipe_row in summary["pipes"].items()
-    }
+    pipes_out: dict[str, PipeStudySummarySI] = {}
+    for pipe_id, pipe_row in summary["pipes"].items():
+        pipe_entry: PipeStudySummarySI = {}
+        if "flow_gpm" in pipe_row:
+            pipe_entry["flow_m3s"] = _scale_extrema(pipe_row["flow_gpm"], GPM_TO_M3S)
+        if "chainage_envelope" in pipe_row:
+            pipe_entry["chainage_envelope"] = _chainage_envelope_to_si(pipe_row["chainage_envelope"])
+        if "profile_peak" in pipe_row:
+            pipe_entry["profile_peak"] = _profile_peak_to_si(pipe_row["profile_peak"])
+        pipes_out[str(pipe_id)] = pipe_entry
 
     si_summary = StudySummarySI(meta=dict(summary["meta"]), nodes=nodes_out, pipes=pipes_out)
 

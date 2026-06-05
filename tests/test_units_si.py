@@ -62,6 +62,9 @@ def test_node_si_sets_all_optional_fields():
         closure_time=0.15,
         flipped=True,
         ramp_time_s=10.0,
+        inertia_wr2_kg_m2=10.0,
+        speed_rpm=1800.0,
+        efficiency=0.92,
     )
 
     assert node.level == pytest.approx(80.0)
@@ -80,6 +83,9 @@ def test_node_si_sets_all_optional_fields():
     assert node.closure_time == pytest.approx(0.15)
     assert node.flipped is True
     assert node.ramp_time == pytest.approx(10.0)
+    assert node.inertia_wr2 == pytest.approx(10.0 * 23.73036)
+    assert node.speed_rpm == pytest.approx(1800.0)
+    assert node.efficiency == pytest.approx(0.92)
 
 
 def test_pipe_si_sets_underlying_us_customary_fields():
@@ -511,9 +517,19 @@ def test_head_schedule_si_matches_us_schedule_in_run():
 class _RunRecordingSolver:
     def __init__(self) -> None:
         self.run_args: tuple[float, float, float, float, float] | None = None
+        self.run_kwargs: dict[str, object] | None = None
 
-    def run(self, total_time: float, dt: float, p_vapor_psi: float, usf_tau: float, k_bru: float):
+    def run(
+        self,
+        total_time: float,
+        dt: float,
+        p_vapor_psi: float = -14.0,
+        usf_tau: float = 0.5,
+        k_bru: float = -1.0,
+        **kwargs: object,
+    ):
         self.run_args = (total_time, dt, p_vapor_psi, usf_tau, k_bru)
+        self.run_kwargs = dict(kwargs)
         return {
             "time": np.array([0.0, 0.01]),
             "node_head": {"J1": np.array([100.0, 100.0])},
@@ -541,6 +557,21 @@ def test_run_si_default_p_vapor_matches_us_run_default():
     assert solver.run_args[2] == pytest.approx(-14.0)
 
 
+def test_run_si_forwards_cavitation_model_kwarg():
+    solver = _RunRecordingSolver()
+    m.run_si(solver, 0.1, dt=0.01, cavitation_model=m.CavitationModel.LegacyClamp)
+    assert solver.run_kwargs is not None
+    assert solver.run_kwargs["cavitation_model"] == m.CavitationModel.LegacyClamp
+
+
+def test_run_si_forwards_profile_export_kwargs():
+    solver = _RunRecordingSolver()
+    m.run_si(solver, 0.1, dt=0.01, record_pipe_profiles=True, profile_stride=3)
+    assert solver.run_kwargs is not None
+    assert solver.run_kwargs["record_pipe_profiles"] is True
+    assert solver.run_kwargs["profile_stride"] == 3
+
+
 class _QueryRecordingSolver:
     def get_node_head(self, node_id: str) -> float:
         assert node_id == "J1"
@@ -555,6 +586,68 @@ def test_get_node_head_and_pressure_si():
     solver = _QueryRecordingSolver()
     assert m.get_node_head_si(solver, "J1") == pytest.approx(30.48)
     assert m.get_node_pressure_si(solver, "J1") == pytest.approx(m.pressure_psi_to_kpa(43.0))
+
+
+def test_results_to_si_converts_pipe_profiles():
+    results = {
+        "time": np.array([0.01, 0.02]),
+        "pipe_profile_chainage_ft": {"P1": np.array([0.0, 1500.0, 3000.0])},
+        "pipe_profile_head": {
+            "P1": np.array([[100.0, 110.0, 90.0], [101.0, 111.0, 91.0]]),
+        },
+        "pipe_profile_pressure": {
+            "P1": np.array([[10.0, 11.0], [12.0, 13.0]]),
+        },
+        "pipe_profile_velocity_fps": {
+            "P1": np.array([[1.0, 2.0, 3.0]]),
+        },
+    }
+
+    si = m.results_to_si(results)
+
+    np.testing.assert_allclose(si["pipe_profile_chainage_m"]["P1"], np.array([0.0, 1500.0, 3000.0]) * m.FT_TO_M)
+    np.testing.assert_allclose(si["pipe_profile_head_m"]["P1"], results["pipe_profile_head"]["P1"] * m.FT_TO_M)
+    np.testing.assert_allclose(
+        si["pipe_profile_pressure_kpa"]["P1"],
+        results["pipe_profile_pressure"]["P1"] * m.PSI_TO_KPA,
+    )
+    np.testing.assert_allclose(
+        si["pipe_profile_velocity_m_s"]["P1"],
+        results["pipe_profile_velocity_fps"]["P1"] * m.FTS_TO_MS,
+    )
+
+
+def test_run_si_passes_record_pipe_profiles_and_converts_profiles():
+    solver = m.MOCSolver()
+    solver.add_node(m.node_si("R1", "PressureBoundary", head_m=45.72))
+    solver.add_node(m.node_si("R2", "PressureBoundary", head_m=0.0))
+    solver.add_pipe(
+        m.pipe_si(
+            "P1",
+            "R1",
+            "R2",
+            length_m=914.4,
+            diameter_mm=304.8,
+            roughness=130.0,
+            flow_m3s=m.flow_gpm_to_m3s(500.0),
+        )
+    )
+
+    us = solver.run(total_time=0.1, dt=0.01, record_pipe_profiles=True)
+    si = m.run_si(solver, total_time=0.1, dt=0.01, record_pipe_profiles=True)
+
+    assert "pipe_profile_head" in us
+    assert "pipe_profile_head_m" in si
+    assert "pipe_profile_head" not in si
+
+    np.testing.assert_allclose(
+        si["pipe_profile_head_m"]["P1"],
+        np.asarray(us["pipe_profile_head"]["P1"]) * m.FT_TO_M,
+    )
+    np.testing.assert_allclose(
+        si["pipe_profile_chainage_m"]["P1"],
+        np.asarray(us["pipe_profile_chainage_ft"]["P1"]) * m.FT_TO_M,
+    )
 
 
 def test_run_si_integration_matches_run_plus_results_to_si():

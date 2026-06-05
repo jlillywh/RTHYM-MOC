@@ -438,6 +438,8 @@ def run_si(
     usf_tau: float = 0.5,
     k_bru: float = -1.0,
     cavitation_model: CavitationModel | None = None,
+    record_pipe_profiles: bool = False,
+    profile_stride: int = 1,
 ) -> dict[str, Any]:
     """Run a transient and return an SI-unit results dictionary.
 
@@ -446,12 +448,19 @@ def run_si(
     cavitation_model : CavitationModel | None
         Optional cavitation model override for this run. When omitted, the
         solver's currently configured cavitation model is used.
+    record_pipe_profiles : bool
+        When ``True``, include per-pipe MOC grid profiles in SI units
+        (``pipe_profile_*`` keys). Same flag as :meth:`MOCSolver.run`.
+    profile_stride : int
+        Spatial downsampling stride along each pipe profile (default 1).
     """
 
     run_kwargs: dict[str, Any] = {
         "p_vapor_psi": pressure_kpa_to_psi(p_vapor_kpa),
         "usf_tau": usf_tau,
         "k_bru": k_bru,
+        "record_pipe_profiles": record_pipe_profiles,
+        "profile_stride": profile_stride,
     }
     if cavitation_model is not None:
         run_kwargs["cavitation_model"] = cavitation_model
@@ -470,6 +479,14 @@ def results_to_si(results: Mapping[str, Any]) -> dict[str, Any]:
     - ``node_pressure_kpa``
     - ``pipe_flow_m3s``
     - ``valve_velocity_m_s``
+
+    Optional per-pipe MOC profiles (when ``record_pipe_profiles=True`` on
+    ``run()``) are converted when present:
+
+    - ``pipe_profile_chainage_m`` from ``pipe_profile_chainage_ft``
+    - ``pipe_profile_head_m`` from ``pipe_profile_head``
+    - ``pipe_profile_pressure_kpa`` from ``pipe_profile_pressure``
+    - ``pipe_profile_velocity_m_s`` from ``pipe_profile_velocity_fps``
 
     Optional additive cavity channels are converted/passed through when
     present in the input dictionary:
@@ -524,5 +541,13 @@ def results_to_si(results: Mapping[str, Any]) -> dict[str, Any]:
         out["turbine_speed"] = {
             str(key): np.asarray(value, dtype=float) for key, value in results["turbine_speed"].items()
         }
+    if "pipe_profile_chainage_ft" in results:
+        out["pipe_profile_chainage_m"] = _convert_series_dict(results["pipe_profile_chainage_ft"], FT_TO_M)
+    if "pipe_profile_head" in results:
+        out["pipe_profile_head_m"] = _convert_series_dict(results["pipe_profile_head"], FT_TO_M)
+    if "pipe_profile_pressure" in results:
+        out["pipe_profile_pressure_kpa"] = _convert_series_dict(results["pipe_profile_pressure"], PSI_TO_KPA)
+    if "pipe_profile_velocity_fps" in results:
+        out["pipe_profile_velocity_m_s"] = _convert_series_dict(results["pipe_profile_velocity_fps"], FTS_TO_MS)
 
     return out

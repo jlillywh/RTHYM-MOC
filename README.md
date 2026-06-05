@@ -622,6 +622,8 @@ results = solver.run(
     usf_tau    = 0.5,     # float, seconds — unsteady-friction IIR time constant
                           #   set to dt to disable unsteady friction entirely
     k_bru      = -1.0,    # float — Brunone USF coefficient (see below)
+    record_pipe_profiles = False,  # bool — export interior MOC grid H/P/V per pipe (optional)
+    profile_stride       = 1,      # int  — spatial downsampling along each pipe (optional; ≥ 1)
 )
 ```
 
@@ -632,6 +634,13 @@ results = solver.run(
 | `-1` (default) | Dynamic Vardy–Brown: coefficient computed each step from local Reynolds number |
 | `0` | Steady friction only (no unsteady-friction correction) |
 | `> 0` | User-supplied static coefficient (typical turbulent range: 0.02–0.15) |
+
+**`record_pipe_profiles` / `profile_stride` (optional interior pipe export).**
+
+| Parameter | Default | Behavior |
+|---|---|---|
+| `record_pipe_profiles` | `False` | When `True`, populate optional per-pipe profile keys in the results dict (see [Optional per-pipe MOC profiles](#optional-per-pipe-moc-profiles)). When `False`, those keys are omitted and `run()` output matches legacy behavior. |
+| `profile_stride` | `1` | Keep every `stride`-th interior MOC grid point along each pipe. Pipe-end stations are always retained. Must be ≥ 1. |
 
 Each call to `run()` rebuilds the MOC grid from the steady-state initial conditions stored in the `NodeInput` / `PipeInput` objects.  Node and pipe inputs persist across calls; call `set_valve_setting()` etc. *before* the next `run()` to change initial conditions for the next segment.
 
@@ -684,6 +693,39 @@ The cavity channels (`node_cavity_volume`, `node_cavity_active`, `node_cavity_co
 
 `valve_setting` is recorded for `Valve` and `Turbine` nodes.  `valve_position` and `valve_velocity` are recorded for `CheckValve` nodes during slam dynamics.  `pump_speed` is recorded for `Pump` nodes.  `turbine_speed` is recorded for `Turbine` nodes.
 
+#### Optional per-pipe MOC profiles
+
+When `record_pipe_profiles=True`, four additional top-level keys appear.  They are **absent** when the flag is `False` (the default), so existing post-processing code is unaffected.
+
+| Key | Type | Shape | Description |
+|---|---|---|---|
+| `pipe_profile_chainage_ft` | `dict[str, ndarray]` | `(M,)` per pipe | Distance from the upstream pipe end, ft |
+| `pipe_profile_head` | `dict[str, ndarray]` | `(N, M)` per pipe | Piezometric head (HGL) at each chainage station, ft |
+| `pipe_profile_pressure` | `dict[str, ndarray]` | `(N, M)` per pipe | Gauge pressure at each chainage station, psi (linear elevation interpolation between endpoint node elevations) |
+| `pipe_profile_velocity_fps` | `dict[str, ndarray]` | `(N, M)` per pipe | Flow velocity at each chainage station, ft/s |
+
+`N` is the number of recorded time steps (same as `len(results["time"])`).  `M` is the number of profile points along that pipe after spatial downsampling.  The first and last chainage values are the upstream and downstream pipe ends; the corresponding profile heads match `node_head` at those boundary nodes.
+
+```python
+results = solver.run(total_time=10.0, dt=0.01, record_pipe_profiles=True, profile_stride=2)
+
+x_ft   = np.array(results["pipe_profile_chainage_ft"]["P1"])      # (M,) float64, ft
+H_prof = np.array(results["pipe_profile_head"]["P1"])            # (N, M) float64, ft
+P_prof = np.array(results["pipe_profile_pressure"]["P1"])        # (N, M) float64, psi
+V_prof = np.array(results["pipe_profile_velocity_fps"]["P1"])    # (N, M) float64, ft/s
+```
+
+`results_to_si()` and `run_si()` convert these to SI keys when present:
+
+| US key | SI key (`results_to_si` / `run_si`) |
+|---|---|
+| `pipe_profile_chainage_ft` | `pipe_profile_chainage_m` |
+| `pipe_profile_head` | `pipe_profile_head_m` |
+| `pipe_profile_pressure` | `pipe_profile_pressure_kpa` |
+| `pipe_profile_velocity_fps` | `pipe_profile_velocity_m_s` |
+
+Pass `record_pipe_profiles=True` (and optionally `profile_stride`) to `run_si()` the same way as `run()`.
+
 ### Post-processing & study reports
 
 After `run()`, use the helpers in `rthym_moc.report` (re-exported at package root) to build engineering summaries without custom analysis code:
@@ -698,7 +740,7 @@ rthym_moc.export_study_csv("study_output", summary)  # node_envelopes.csv, pipe_
 
 | Function | Description |
 |---|---|
-| `summarize_study(results, dt_s=None)` | Build a `StudySummary` dict with node head/pressure envelopes, pipe flow envelopes, cavitation duration, and run metadata |
+| `summarize_study(results, dt_s=None)` | Build a `StudySummary` dict with node head/pressure envelopes, pipe flow envelopes, optional per-pipe chainage envelopes (when profile keys are present), cavitation duration, and run metadata |
 | `series_extrema(time_s, values)` | Min/max of any scalar series plus the times at which they occur |
 | `cavitation_summary(time_s, flags, dt_s=None)` | First occurrence, step count, and estimated duration from cavitation flags |
 | `format_study_table(summary)` | Plain-text table for logs or reports |
@@ -717,9 +759,11 @@ A `StudySummary` has three top-level keys:
 
 - `meta` — `duration_s`, `num_steps`, `dt_s`
 - `nodes[id]` — `head_ft`, `pressure_psi` (each an extrema dict with `min`, `min_time_s`, `max`, `max_time_s`), and optional `cavitation` (`occurred`, `first_time_s`, `steps`, `duration_s`)
-- `pipes[id]` — `flow_gpm` extrema and times
+- `pipes[id]` — `flow_gpm` extrema and times; when `run()` included profile keys, also:
+  - `chainage_envelope` — min/max over time at each chainage station (`chainage_ft`, `head_min_ft`, `head_max_ft`, `pressure_min_psi`, `pressure_max_psi`, and `velocity_min_fps` / `velocity_max_fps` when velocity profiles were recorded)
+  - `profile_peak` — global worst points on the `(time × chainage)` grid; each quantity is a dict with `value`, `time_s`, and `chainage_ft` (e.g. `pressure_min`, `head_max`)
 
-For SI summaries, use `summarize_study_si(results)` — the structure is the same but node keys are `head_m` / `pressure_kpa` and pipe keys are `flow_m3s`.  With `run_si()`, you can skip the separate `results_to_si()` step:
+For SI summaries, use `summarize_study_si(results)` — the structure is the same but node keys are `head_m` / `pressure_kpa`, pipe flow keys are `flow_m3s`, and profile envelope keys use `chainage_m`, `head_min_m`, `pressure_min_kpa`, `velocity_min_m_s`, etc.  With `run_si()`, you can skip the separate `results_to_si()` step:
 
 ```python
 results_si = rthym_moc.run_si(solver, total_time=10.0, dt=0.01)
@@ -786,6 +830,7 @@ SI helper inputs use:
 | Flows | m^3/s |
 | Pipe diameter, wall thickness | mm |
 | Wave speed / valve velocity outputs | m/s |
+| Optional per-pipe profiles (`record_pipe_profiles=True`) | `pipe_profile_chainage_m`, `pipe_profile_head_m`, `pipe_profile_pressure_kpa`, `pipe_profile_velocity_m_s` |
 | Young's modulus in `pipe_si()` | Pa |
 | Time and valve / pump settings | unchanged (`s`, `%`) |
 | Head / demand schedules | m and m³/s via `set_head_schedule_si()` / `set_demand_schedule_si()` |
