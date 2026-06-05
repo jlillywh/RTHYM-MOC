@@ -475,6 +475,16 @@ def test_parse_rthym_pipe_elevation_requires_two_points_warns() -> None:
         assert _parse_rthym_pipe_elevation_profiles(sec, "GPM") == {}
 
 
+def test_parse_rthym_pipe_elevation_skips_invalid_tokens() -> None:
+    sec = {
+        "RTHYM": [
+            ["P1", "PipeElevation", "noequals", "0=100", "bad=x", "500=250", "1000=200"],
+        ]
+    }
+    profiles = _parse_rthym_pipe_elevation_profiles(sec, "GPM")
+    assert profiles["P1"] == [(0.0, 100.0), (500.0, 250.0), (1000.0, 200.0)]
+
+
 def test_load_inp_rthym_pipe_elevation_unknown_pipe_warns(tmp_path: Path) -> None:
     inp_path = tmp_path / "missing_pipe_elev.inp"
     inp_path.write_text(

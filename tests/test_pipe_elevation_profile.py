@@ -127,6 +127,41 @@ def test_survey_elevation_profile_overrides_linear_interpolation() -> None:
     assert pressure[0, summit_idx] < linear_pressure_psi
 
 
+def test_static_gauge_pressure_minimum_at_survey_summit() -> None:
+    """Phase 2 exit: on a junction-free pipe, static min gauge P is at the survey high point."""
+    length_ft = 2000.0
+    summit_chainage_ft = 1000.0
+    head_ft = 320.0
+    survey = [(0.0, 100.0), (summit_chainage_ft, 280.0), (length_ft, 120.0)]
+
+    solver = m.MOCSolver()
+    solver.add_node(_make_node("R1", "PressureBoundary", elevation=100.0, head=head_ft))
+    solver.add_node(_make_node("R2", "PressureBoundary", elevation=120.0, head=head_ft))
+    pipe = _make_pipe(
+        "P1",
+        "R1",
+        "R2",
+        length=length_ft,
+        diameter=12.0,
+        roughness=130.0,
+        flow_gpm=0.0,
+    )
+    pipe.elevation_profile = survey
+    solver.add_pipe(pipe)
+
+    results = solver.run(total_time=0.01, dt=0.01, record_pipe_profiles=True)
+    chainage = np.asarray(results["pipe_profile_chainage_ft"]["P1"])
+    pressure = np.asarray(results["pipe_profile_pressure"]["P1"])
+
+    summit_idx = int(np.argmin(np.abs(chainage - summit_chainage_ft)))
+    min_idx = int(np.argmin(pressure[0]))
+
+    assert min_idx == summit_idx
+    assert pressure[0, min_idx] == pytest.approx(np.min(pressure[0]), rel=1e-9)
+    assert pressure[0, min_idx] < pressure[0, 0]
+    assert pressure[0, min_idx] < pressure[0, -1]
+
+
 def test_elevation_profile_requires_two_points() -> None:
     solver = m.MOCSolver()
     solver.add_node(_make_node("R1", "PressureBoundary", head=100.0))

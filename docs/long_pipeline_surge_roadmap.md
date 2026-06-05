@@ -187,6 +187,8 @@ results = solver.run(..., record_pipe_profiles=True, profile_stride=4)
 
 ## Phase 2: Elevation Profile Along Pipes (Tier 1)
 
+**Status:** Complete — [#82](https://github.com/jlillywh/RTHYM-MOC/issues/82) (pending PR merge).
+
 **Priority:** High — unlocks correct vapor limits at interior high points.
 
 ### Deliverables
@@ -225,10 +227,14 @@ pipe_si(..., elevation_profile_m=[(0.0, 36.6), ...])
 
 ### Exit criteria
 
-- Sloping pipe without junctions: minimum **static** gauge pressure occurs at the
-  survey high point (before transient).
-- Existing flat-network tests unchanged.
-- Profile pressure uses local elevation, not endpoint elevation.
+- [x] Sloping pipe without junctions: minimum **static** gauge pressure occurs at the
+      survey high point (before transient)
+      (`test_static_gauge_pressure_minimum_at_survey_summit`).
+- [x] Existing flat-network tests unchanged (full regression suite; interior clamp
+      gated to terrain reaches).
+- [x] Profile pressure uses local elevation, not endpoint elevation
+      (`test_survey_elevation_profile_overrides_linear_interpolation`,
+      `test_profile_cavitation_screening_matches_local_vapor_head`).
 
 ---
 
@@ -495,7 +501,7 @@ separation regimes; He et al. / Adelaide rig for severe collapse (loose anchor).
 
 - [x] Phase 0 complete (baseline docs + epic #79)
 - [x] Phase 1 complete — profile export ([#81](https://github.com/jlillywh/RTHYM-MOC/issues/81), [#88](https://github.com/jlillywh/RTHYM-MOC/pull/88))
-- [ ] Phase 2 complete — elevation profile
+- [x] Phase 2 complete — elevation profile ([#82](https://github.com/jlillywh/RTHYM-MOC/issues/82))
 - [ ] Phase 3 complete — interior DVCM
 - [ ] Phase 4 complete — grid scaling
 - [ ] Phase 5 complete — chainage air valves
