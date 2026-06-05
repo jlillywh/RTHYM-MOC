@@ -613,6 +613,7 @@ void MOCSolver::initGrid() {
         }
 
         buildPipeGridElevations(ps, p);
+        initializePipeSegmentStates(ps);
 
         // ── Linear HGL + uniform velocity initial condition ───────────────
         ps.H.resize(ps.num_nodes);
@@ -744,6 +745,110 @@ void MOCSolver::initGrid() {
     bndry_.resize(num_pipes);
 }
 
+namespace {
+
+constexpr double H_CAVITY_ENTER_TOL_FT = 0.10 * PSI_TO_FT;
+constexpr double H_CAVITY_LEAVE_TOL_FT = 0.50 * PSI_TO_FT;
+
+void stepInteriorSegmentDvcm(
+    PipeSegmentState& seg,
+    double H_candidate,
+    double H_vap_j,
+    double cavity_capacity_ft3,
+    double dt_s,
+    double segment_conductance_cfs_per_ft) {
+    const bool enter_cavity = H_candidate <= (H_vap_j - H_CAVITY_ENTER_TOL_FT);
+    const bool leave_cavity = H_candidate >= (H_vap_j + H_CAVITY_LEAVE_TOL_FT);
+    const double imbalance_cfs =
+        std::abs(segment_conductance_cfs_per_ft * (H_candidate - H_vap_j));
+    const double max_step_delta_ft3 = 0.25 * cavity_capacity_ft3;
+    const double bounded_step_delta_ft3 = std::min(imbalance_cfs * dt_s, max_step_delta_ft3);
+
+    switch (seg.cavity_regime) {
+        case CavityRegime::LiquidFull:
+            if (enter_cavity) {
+                seg.cavity_regime = CavityRegime::CavityActive;
+                seg.cavity_active = true;
+                seg.cavity_volume_ft3 = std::min(
+                    cavity_capacity_ft3,
+                    std::max(0.0, seg.cavity_volume_ft3 + bounded_step_delta_ft3));
+            } else {
+                seg.cavity_active = false;
+                seg.cavity_volume_ft3 = 0.0;
+                seg.cavity_consecutive_collapses = 0;
+            }
+            break;
+        case CavityRegime::CavityActive:
+            if (leave_cavity) {
+                seg.cavity_regime = CavityRegime::CollapseTransition;
+                seg.cavity_active = false;
+                seg.cavity_volume_ft3 =
+                    std::max(0.0, seg.cavity_volume_ft3 - bounded_step_delta_ft3);
+                seg.cavity_collapsed_this_step = true;
+                seg.cavity_collapse_count += 1;
+                seg.cavity_consecutive_collapses += 1;
+            } else {
+                seg.cavity_active = true;
+                seg.cavity_volume_ft3 = std::min(
+                    cavity_capacity_ft3,
+                    std::max(0.0, seg.cavity_volume_ft3 + bounded_step_delta_ft3));
+            }
+            break;
+        case CavityRegime::CollapseTransition:
+            if (seg.cavity_volume_ft3 <= bounded_step_delta_ft3 &&
+                H_candidate >= (H_vap_j - H_CAVITY_ENTER_TOL_FT)) {
+                seg.cavity_regime = CavityRegime::LiquidFull;
+                seg.cavity_active = false;
+                seg.cavity_volume_ft3 = 0.0;
+                seg.cavity_consecutive_collapses = 0;
+            } else {
+                seg.cavity_active = false;
+                seg.cavity_volume_ft3 =
+                    std::max(0.0, seg.cavity_volume_ft3 - bounded_step_delta_ft3);
+            }
+            break;
+    }
+}
+
+[[noreturn]] void throwInteriorDvcmInstability(
+    const std::string& pipe_id,
+    int grid_index,
+    const std::string& quantity) {
+    throw std::runtime_error(
+        "Numerical instability: NaN/Inf detected in interior " + quantity
+        + " for pipe '" + pipe_id + "' at grid index " + std::to_string(grid_index));
+}
+
+void throwIfInvalidInteriorSegmentState(
+    const std::string& pipe_id,
+    int grid_index,
+    double Hj,
+    double Vj,
+    const PipeSegmentState& seg,
+    double cavity_capacity_ft3) {
+    if (std::isnan(Hj) || std::isinf(Hj)) {
+        throwInteriorDvcmInstability(pipe_id, grid_index, "head");
+    }
+    if (std::isnan(Vj) || std::isinf(Vj)) {
+        throwInteriorDvcmInstability(pipe_id, grid_index, "velocity");
+    }
+    if (std::isnan(seg.cavity_volume_ft3) || std::isinf(seg.cavity_volume_ft3)) {
+        throwInteriorDvcmInstability(pipe_id, grid_index, "cavity volume");
+    }
+    if (seg.cavity_volume_ft3 < -1e-9) {
+        throw std::runtime_error(
+            "Non-physical state: Negative interior cavity volume for pipe '"
+            + pipe_id + "' at grid index " + std::to_string(grid_index));
+    }
+    if (seg.cavity_volume_ft3 > cavity_capacity_ft3 + 1e-9) {
+        throw std::runtime_error(
+            "Non-physical state: Interior cavity volume exceeds segment capacity for pipe '"
+            + pipe_id + "' at grid index " + std::to_string(grid_index));
+    }
+}
+
+} // namespace
+
 // ── Single MOC time step ──────────────────────────────────────────────────────
 // Mirrors transientWorker.js :: stepMOC()
 
@@ -800,6 +905,11 @@ void MOCSolver::stepMOC() {
 
     for (int i = 0; i < num_pipes; ++i) {
         auto& ps  = pipes_[i];
+        if (enable_interior_dvcm_) {
+            for (auto& seg : ps.segments) {
+                seg.cavity_collapsed_this_step = false;
+            }
+        }
         const int  N    = ps.num_nodes;
         const double dx = ps.a_wave * dt_;
         const double B  = ps.a_wave / g;               // ft·s/ft² = s/ft
@@ -848,9 +958,33 @@ void MOCSolver::stepMOC() {
             double Hj = (C_P + C_M) / 2.0;
             double Vj = (C_P - C_M) / (2.0 * B);
 
-            // LegacyClamp on terrain reaches: vapor floor uses local z[j], not node z.
-            // Flat pipes (constant z) keep legacy junction-only clamping.
-            if (cavitation_model_ == CavitationModel::LegacyClamp && ps.has_terrain_elevation) {
+            if (enable_interior_dvcm_ && cavitation_model_ == CavitationModel::DVCM) {
+                auto& seg = ps.segments[static_cast<std::size_t>(j)];
+                const double H_vap_j = pipeGridVaporHeadFt(ps, j);
+                const double cavity_capacity_ft3 = dx * ps.area;
+                const double segment_conductance = 2.0 * ps.area / B;
+                stepInteriorSegmentDvcm(
+                    seg,
+                    Hj,
+                    H_vap_j,
+                    cavity_capacity_ft3,
+                    dt_,
+                    segment_conductance);
+
+                if (seg.cavity_regime != CavityRegime::LiquidFull && Hj < H_vap_j) {
+                    Hj = H_vap_j;
+                    Vj = (C_P - H_vap_j) / B;
+                }
+
+                throwIfInvalidInteriorSegmentState(
+                    pipe_inputs_[i].id,
+                    j,
+                    Hj,
+                    Vj,
+                    seg,
+                    cavity_capacity_ft3);
+            } else if (cavitation_model_ == CavitationModel::LegacyClamp && ps.has_terrain_elevation) {
+                // LegacyClamp on terrain reaches: vapor floor uses local z[j], not node z.
                 const double H_vap_j = pipeGridVaporHeadFt(ps, j);
                 if (Hj < H_vap_j) {
                     Hj = H_vap_j;
@@ -2314,6 +2448,10 @@ double MOCSolver::pipeGridVaporHeadFt(const PipeState& ps, int grid_index) const
     return pipeGridElevationFt(ps, grid_index) + p_vapor_;
 }
 
+void MOCSolver::initializePipeSegmentStates(PipeState& ps) {
+    ps.segments.assign(static_cast<std::size_t>(ps.num_nodes), PipeSegmentState{});
+}
+
 void MOCSolver::initializePipeProfileCapture(SimResults& results) {
     profile_point_indices_.clear();
     profile_chainage_ft_.clear();
@@ -2322,6 +2460,8 @@ void MOCSolver::initializePipeProfileCapture(SimResults& results) {
     results.pipe_profile_pressure_psi.clear();
     results.pipe_profile_velocity_fps.clear();
     results.pipe_profile_cavitation.clear();
+    results.pipe_profile_cavity_volume.clear();
+    results.pipe_profile_cavity_active.clear();
 
     for (int i = 0; i < static_cast<int>(pipes_.size()); ++i) {
         const auto& ps = pipes_[i];
@@ -2409,15 +2549,39 @@ void MOCSolver::recordStep(SimResults& results) const {
 
     for (int i = 0; i < static_cast<int>(pipes_.size()); ++i) {
         const auto& ps = pipes_[i];
+        const auto& pipe_id = pipe_inputs_[i].id;
+        const double dx = (ps.num_nodes > 1)
+            ? (ps.L / static_cast<double>(ps.num_nodes - 1))
+            : ps.L;
+        const double segment_capacity_ft3 = dx * ps.area;
+
         double avg_V = 0.0;
-        for (double v : ps.V) {
+        for (int j = 0; j < ps.num_nodes; ++j) {
+            const double v = ps.V[static_cast<std::size_t>(j)];
             if (std::isnan(v) || std::isinf(v)) {
-                throw std::runtime_error("Numerical instability: NaN/Inf detected in flow velocity for pipe '" + pipe_inputs_[i].id + "'");
+                throw std::runtime_error(
+                    "Numerical instability: NaN/Inf detected in flow velocity for pipe '"
+                    + pipe_id + "'");
             }
             avg_V += v;
+
+            if (enable_interior_dvcm_
+                && cavitation_model_ == CavitationModel::DVCM
+                && j > 0
+                && j < ps.num_nodes - 1) {
+                const double Hj = ps.H[static_cast<std::size_t>(j)];
+                const auto& seg = ps.segments[static_cast<std::size_t>(j)];
+                throwIfInvalidInteriorSegmentState(
+                    pipe_id,
+                    j,
+                    Hj,
+                    v,
+                    seg,
+                    segment_capacity_ft3);
+            }
         }
         avg_V /= ps.num_nodes;
-        results.pipe_flow_gpm[pipe_inputs_[i].id].push_back(avg_V * ps.area / GPM_TO_CFS);
+        results.pipe_flow_gpm[pipe_id].push_back(avg_V * ps.area / GPM_TO_CFS);
     }
 
     if (record_pipe_profiles_) {
@@ -2433,10 +2597,16 @@ void MOCSolver::recordStep(SimResults& results) const {
             std::vector<double> pressure_row;
             std::vector<double> velocity_row;
             std::vector<int> cavitation_row;
+            std::vector<double> cavity_volume_row;
+            std::vector<int> cavity_active_row;
             head_row.reserve(idx_it->second.size());
             pressure_row.reserve(idx_it->second.size());
             velocity_row.reserve(idx_it->second.size());
             cavitation_row.reserve(idx_it->second.size());
+            if (enable_interior_dvcm_) {
+                cavity_volume_row.reserve(idx_it->second.size());
+                cavity_active_row.reserve(idx_it->second.size());
+            }
 
             const double P_vapor_psi = p_vapor_ / PSI_TO_FT;
 
@@ -2456,12 +2626,31 @@ void MOCSolver::recordStep(SimResults& results) const {
                 pressure_row.push_back(P_psi);
                 velocity_row.push_back(ps.V[j]);
                 cavitation_row.push_back(P_psi <= P_vapor_psi ? 1 : 0);
+                if (enable_interior_dvcm_) {
+                    const auto& seg = ps.segments[static_cast<std::size_t>(j)];
+                    const double dx = (ps.num_nodes > 1)
+                        ? (ps.L / static_cast<double>(ps.num_nodes - 1))
+                        : ps.L;
+                    throwIfInvalidInteriorSegmentState(
+                        pipe_id,
+                        j,
+                        Hj,
+                        ps.V[static_cast<std::size_t>(j)],
+                        seg,
+                        dx * ps.area);
+                    cavity_volume_row.push_back(seg.cavity_volume_ft3);
+                    cavity_active_row.push_back(seg.cavity_active ? 1 : 0);
+                }
             }
 
             results.pipe_profile_head_ft[pipe_id].push_back(std::move(head_row));
             results.pipe_profile_pressure_psi[pipe_id].push_back(std::move(pressure_row));
             results.pipe_profile_velocity_fps[pipe_id].push_back(std::move(velocity_row));
             results.pipe_profile_cavitation[pipe_id].push_back(std::move(cavitation_row));
+            if (enable_interior_dvcm_) {
+                results.pipe_profile_cavity_volume[pipe_id].push_back(std::move(cavity_volume_row));
+                results.pipe_profile_cavity_active[pipe_id].push_back(std::move(cavity_active_row));
+            }
         }
     }
 }
@@ -2471,7 +2660,8 @@ void MOCSolver::recordStep(SimResults& results) const {
 SimResults MOCSolver::run(double total_time_s, double dt,
                           double p_vapor_psi, double usf_tau,
                           double k_bru, std::optional<CavitationModel> cavitation_model,
-                          bool record_pipe_profiles, int profile_stride) {
+                          bool record_pipe_profiles, int profile_stride,
+                          bool enable_interior_dvcm) {
     if (dt <= 0.0) {
         throw std::invalid_argument("Timestep dt must be strictly positive");
     }
@@ -2494,6 +2684,7 @@ SimResults MOCSolver::run(double total_time_s, double dt,
     k_Bru_   = k_bru;
     record_pipe_profiles_ = record_pipe_profiles;
     profile_stride_       = profile_stride;
+    enable_interior_dvcm_ = enable_interior_dvcm;
 
     initGrid();
 
@@ -2528,6 +2719,10 @@ SimResults MOCSolver::run(double total_time_s, double dt,
             results.pipe_profile_pressure_psi[pi.id].reserve(num_steps);
             results.pipe_profile_velocity_fps[pi.id].reserve(num_steps);
             results.pipe_profile_cavitation[pi.id].reserve(num_steps);
+            if (enable_interior_dvcm_) {
+                results.pipe_profile_cavity_volume[pi.id].reserve(num_steps);
+                results.pipe_profile_cavity_active[pi.id].reserve(num_steps);
+            }
         }
     }
 

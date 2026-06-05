@@ -83,3 +83,36 @@ Depending on the intensity of the transient and the presence of cavitation, use 
 | **Computational Cost** | ~22% slower per step | ~22% faster per step |
 
 *Note: While `DVCM` runs faster per step than `LegacyClamp` due to optimized regime tracking, the overall CPU time may increase if a smaller timestep $dt$ is required to maintain numerical stability during severe cavity collapse.*
+
+---
+
+## 5. Long-Pipeline Interior DVCM Convergence
+
+Phase 3 interior-point DVCM on uninterrupted sloping reaches uses the same $dt$ discipline as junction DVCM, with profile envelopes as the convergence metric (not a single junction time series).
+
+### Reference case: `LP-INTERIOR-DVCM-CONV`
+
+| Parameter | Value |
+|---|---|
+| Geometry | 2000 ft sloping pipe, survey summit at 1000 ft chainage, junction-free `PressureBoundary` ends |
+| Transient | Downstream reservoir drop `280 → 60` ft at $t = 0.02$ s |
+| Model | `CavitationModel.DVCM`, `enable_interior_dvcm=True`, `record_pipe_profiles=True` |
+| Vapor pressure | $-14$ psi |
+| Simulation time | 1.0 s |
+
+### Recommended procedure
+
+1. Run with baseline $dt = 0.001$ s.
+2. Halve to $dt = 0.0005$ s and rerun (Courant grid refines automatically).
+3. Build chainage envelopes from `pipe_profile_pressure` and `pipe_profile_head` (min/max over time at each profile station).
+4. Interpolate the fine-grid envelopes onto the coarse chainage stations.
+5. On interior chainage $200 \le x \le 1800$ ft (exclude boundary-dominated ends), require
+   $$\max \left| \frac{E_{\text{coarse}}(x) - E_{\text{fine}}(x)}{E_{\text{fine}}(x)} \right| \le 1\%$$
+   for `pressure_max_psi`, `head_min_ft`, and `head_max_ft` envelopes.
+6. Also check the global peak of the `pressure_max` envelope changes by $\le 1\%$.
+
+At $dt = 0.001$ s this case is grid-independent to well within 1% on interior gauge-pressure and head envelopes; finer $dt$ is still warranted for severe junction collapse spikes elsewhere in the network.
+
+### Pytest mirror
+
+`tests/test_interior_dvcm_sloping_pipe.py::test_interior_dvcm_dt_halving_chainage_envelope_converges`

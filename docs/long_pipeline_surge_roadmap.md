@@ -240,6 +240,8 @@ pipe_si(..., elevation_profile_m=[(0.0, 36.6), ...])
 
 ## Phase 3: Interior-Point DVCM (Tier 1)
 
+**Status:** Complete — [#83](https://github.com/jlillywh/RTHYM-MOC/issues/83) (pending PR merge).
+
 **Priority:** High — core physics fix for mid-pipe column separation.
 
 ### Deliverables
@@ -261,29 +263,35 @@ pipe_si(..., elevation_profile_m=[(0.0, 36.6), ...])
 
 ### Checklist
 
-- [ ] Add `PipeSegmentState` (or extend `PipeState`) for cavity volume, regime,
-      collapse counters per interior index.
-- [ ] Implement regime switching in the interior loop after MOC predictor step.
-- [ ] Add hysteresis tolerances (`H_CAVITY_ENTER_TOL`, `H_CAVITY_LEAVE_TOL`) —
-      same as junction DVCM.
-- [ ] Wire optional interior DVCM flag on `MOCSolver` / `run()`.
-- [ ] Export `pipe_profile_cavity_volume`, `pipe_profile_cavity_active` when
-      profiles enabled.
-- [ ] Guard NaN/Inf paths (extend existing DVCM guards).
-- [ ] Add `tests/test_interior_dvcm_sloping_pipe.py`:
-      - [ ] Cavity initiates at summit under downsurge, not at terminals.
-      - [ ] Collapse produces secondary spike detectable at mid-pipe profile.
-- [ ] Add convergence test: halve `dt`, peak envelope within 1% (document in
-      [dvcm_timestep_guidance.md](dvcm_timestep_guidance.md) long-pipe section).
-- [ ] Update [dvcm_comparison.md](dvcm_comparison.md) with interior vs junction-only
-      behavior.
+- [x] Add `PipeSegmentState` (or extend `PipeState`) for cavity volume, regime,
+      collapse counters per interior index (`PipeState.segments[j]`, initialized in
+      `initGrid()`).
+- [x] Implement regime switching in the interior loop after MOC predictor step
+      (`stepInteriorSegmentDvcm()` in `stepMOC()`, segment capacity `dx·A`).
+- [x] Add hysteresis tolerances (`H_CAVITY_ENTER_TOL`, `H_CAVITY_LEAVE_TOL`) —
+      same as junction DVCM (shared `0.10` / `0.50` psi ft equivalents).
+- [x] Wire optional interior DVCM flag on `MOCSolver` / `run()`
+      (`enable_interior_dvcm`, default off).
+- [x] Export `pipe_profile_cavity_volume`, `pipe_profile_cavity_active` when
+      profiles enabled and `enable_interior_dvcm=True`.
+- [x] Guard NaN/Inf paths (extend existing DVCM guards: `throwIfInvalidInteriorSegmentState`
+      in `stepMOC()` and `recordStep()` for interior head, velocity, and cavity volume).
+- [x] Add `tests/test_interior_dvcm_sloping_pipe.py`:
+      - [x] Cavity initiates at summit under downsurge, not at terminals.
+      - [x] Collapse produces secondary spike detectable at mid-pipe profile.
+- [x] Add convergence test: halve `dt`, peak envelope within 1% (document in
+      [dvcm_timestep_guidance.md](dvcm_timestep_guidance.md) §5 long-pipe section;
+      `test_interior_dvcm_dt_halving_chainage_envelope_converges`).
+- [x] Update [dvcm_comparison.md](dvcm_comparison.md) with interior vs junction-only
+      behavior (§5).
 
 ### Exit criteria
 
-- Junction-only DVCM tests still pass with interior mode off.
-- Sloping long pipe (no intermediate junctions): cavity forms at high-point
-  chainage in downsurge event.
-- No regression in `pytest -q` legacy/DVCM junction suite.
+- [x] Junction-only DVCM tests still pass with interior mode off
+      (`test_interior_dvcm_off_matches_junction_only_dvcm_regression`, full suite).
+- [x] Sloping long pipe (no intermediate junctions): cavity forms at high-point
+      chainage in downsurge event (`test_interior_cavity_initiates_at_summit_not_terminals`).
+- [x] No regression in `pytest -q` legacy/DVCM junction suite (403 passed; 53 `-m dvcm`).
 
 ---
 
@@ -502,7 +510,7 @@ separation regimes; He et al. / Adelaide rig for severe collapse (loose anchor).
 - [x] Phase 0 complete (baseline docs + epic #79)
 - [x] Phase 1 complete — profile export ([#81](https://github.com/jlillywh/RTHYM-MOC/issues/81), [#88](https://github.com/jlillywh/RTHYM-MOC/pull/88))
 - [x] Phase 2 complete — elevation profile ([#82](https://github.com/jlillywh/RTHYM-MOC/issues/82))
-- [ ] Phase 3 complete — interior DVCM
+- [x] Phase 3 complete — interior DVCM ([#83](https://github.com/jlillywh/RTHYM-MOC/issues/83))
 - [ ] Phase 4 complete — grid scaling
 - [ ] Phase 5 complete — chainage air valves
 - [ ] Phase 6 complete — Vitkovsky friction selector

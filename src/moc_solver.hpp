@@ -158,6 +158,9 @@ struct SimResults {
     std::unordered_map<std::string, std::vector<std::vector<double>>> pipe_profile_velocity_fps;
     // 0/1 vapor screening at profile points (H <= z(x) + H_vapor); mirrors node_cavitation
     std::unordered_map<std::string, std::vector<std::vector<int>>> pipe_profile_cavitation;
+    // Interior DVCM diagnostics at profile points (enable_interior_dvcm + record_pipe_profiles)
+    std::unordered_map<std::string, std::vector<std::vector<double>>> pipe_profile_cavity_volume;
+    std::unordered_map<std::string, std::vector<std::vector<int>>>    pipe_profile_cavity_active;
 };
 
 enum class ControlType {
@@ -209,6 +212,18 @@ struct ControlRuleState {
     int action_node_idx = -1;
 };
 
+// ── Per-grid-point interior DVCM state (Phase 3) ─────────────────────────────
+// Indexed by MOC grid j; interior DVCM uses j = 1 … N-2 (endpoints use junction DVCM).
+
+struct PipeSegmentState {
+    bool cavity_active = false;
+    double cavity_volume_ft3 = 0.0;
+    bool cavity_collapsed_this_step = false;
+    int cavity_collapse_count = 0;
+    int cavity_consecutive_collapses = 0;
+    CavityRegime cavity_regime = CavityRegime::LiquidFull;
+};
+
 // ── Internal pipe runtime state ──────────────────────────────────────────────
 
 struct PipeState {
@@ -226,6 +241,7 @@ struct PipeState {
     std::vector<double> V_filtered; // IIR-filtered V for unsteady friction
     std::vector<double> z;          // ground elevation (ft) at each grid point [num_nodes]
     bool has_terrain_elevation = false; // survey table or sloping endpoint elevations
+    std::vector<PipeSegmentState> segments; // cavity state per grid index [num_nodes]
 };
 
 // ── Internal node runtime state ──────────────────────────────────────────────
@@ -306,7 +322,8 @@ public:
                    double k_bru         = -1.0,
                    std::optional<CavitationModel> cavitation_model = std::nullopt,
                    bool record_pipe_profiles = false,
-                   int profile_stride = 1); // -1 = auto Vardy-Brown; 0 = no USF; >0 = static
+                   int profile_stride = 1,
+                   bool enable_interior_dvcm = false);
 
     // Step-by-step API for WASM integration
     void   initGrid();
@@ -318,6 +335,8 @@ public:
     void   set_k_bru(double k_bru) { k_Bru_ = k_bru; }
     void   set_cavitation_model(CavitationModel cavitation_model) { cavitation_model_ = cavitation_model; }
     CavitationModel get_cavitation_model() const { return cavitation_model_; }
+    void   set_enable_interior_dvcm(bool enable) { enable_interior_dvcm_ = enable; }
+    bool   get_enable_interior_dvcm() const { return enable_interior_dvcm_; }
 
 #if defined(EMSCRIPTEN) || defined(__EMSCRIPTEN__)
     emscripten::val get_step_results() const;
@@ -356,6 +375,7 @@ private:
     double dt_      = 0.01;
     double p_vapor_ = -14.0 * PSI_TO_FT; // ft (converted from psi at init)
     CavitationModel cavitation_model_ = CavitationModel::LegacyClamp;
+    bool enable_interior_dvcm_ = false;
     double usf_tau_ = 0.5;               // s  boundary-layer relaxation time constant
     // Brunone (1991) dimensionless USF coefficient.
     //   < 0  (default -1): compute dynamically each timestep via Vardy-Brown (1996)
@@ -407,6 +427,7 @@ private:
     static std::vector<int> buildProfilePointIndices(int num_nodes, int stride);
     void initializePipeProfileCapture(SimResults& results);
     void buildPipeGridElevations(PipeState& ps, const PipeInput& p) const;
+    static void initializePipeSegmentStates(PipeState& ps);
     static double interpolateElevationAtChainageFt(
         const std::vector<std::pair<double, double>>& profile,
         double chainage_ft);
