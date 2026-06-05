@@ -133,6 +133,9 @@ flowchart LR
 
 ## Phase 1: Pipe Profile Export (Tier 1)
 
+**Status:** Complete — [#81](https://github.com/jlillywh/RTHYM-MOC/issues/81),
+[#88](https://github.com/jlillywh/RTHYM-MOC/pull/88).
+
 **Priority:** Highest — immediate value for R-THYM visualization; no new physics.
 
 ### Deliverables
@@ -491,7 +494,7 @@ separation regimes; He et al. / Adelaide rig for severe collapse (loose anchor).
 ## Master checklist
 
 - [x] Phase 0 complete (baseline docs + epic #79)
-- [ ] Phase 1 complete — profile export
+- [x] Phase 1 complete — profile export ([#81](https://github.com/jlillywh/RTHYM-MOC/issues/81), [#88](https://github.com/jlillywh/RTHYM-MOC/pull/88))
 - [ ] Phase 2 complete — elevation profile
 - [ ] Phase 3 complete — interior DVCM
 - [ ] Phase 4 complete — grid scaling
@@ -520,3 +523,4 @@ separation regimes; He et al. / Adelaide rig for severe collapse (loose anchor).
 |------|--------|
 | 2026-06-05 | Initial roadmap from long-line surge engine-gap analysis |
 | 2026-06-05 | Phase 0 baseline + tracking epic [#79](https://github.com/jlillywh/RTHYM-MOC/issues/79) |
+| 2026-06-05 | Phase 1 complete ([#81](https://github.com/jlillywh/RTHYM-MOC/issues/81), [#88](https://github.com/jlillywh/RTHYM-MOC/pull/88)); exit-criteria tests in follow-up PR |
