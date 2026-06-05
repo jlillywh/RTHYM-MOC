@@ -367,13 +367,13 @@ refactor to **B** if topology churn complicates R-THYM editing.
 
 ### Checklist
 
-- [ ] API to attach air valve at `(pipe_id, chainage_ft)` or survey high point.
-- [ ] Split pipe into two `PipeInput` records internally (or explicit helper).
-- [ ] Verify compressible air model interaction with interior DVCM (extend
+- [x] API to attach air valve at `(pipe_id, chainage_ft)` or survey high point.
+- [x] Split pipe into two `PipeInput` records internally (or explicit helper).
+- [x] Verify compressible air model interaction with interior DVCM (extend
       `test_dvcm_air_valve.py` patterns).
-- [ ] Add long-line case: summit air valve prevents cavity vs unprotected run.
-- [ ] Document in README Surge control components section.
-- [ ] Update `docs/dvcm_web_integration.md` for cavity/prevention UX.
+- [x] Add long-line case: summit air valve prevents cavity vs unprotected run.
+- [x] Document in README Surge control components section.
+- [x] Update `docs/dvcm_web_integration.md` for cavity/prevention UX.
 
 ### Exit criteria
 
@@ -516,7 +516,7 @@ separation regimes; He et al. / Adelaide rig for severe collapse (loose anchor).
 - [x] Phase 2 complete — elevation profile ([#82](https://github.com/jlillywh/RTHYM-MOC/issues/82))
 - [x] Phase 3 complete — interior DVCM ([#83](https://github.com/jlillywh/RTHYM-MOC/issues/83))
 - [x] Phase 4 complete — grid scaling
-- [ ] Phase 5 complete — chainage air valves
+- [x] Phase 5 complete — chainage air valves
 - [ ] Phase 6 complete — Vitkovsky friction selector
 - [ ] Phase 7 complete — validation hardening
 - [ ] README and CHANGELOG updated

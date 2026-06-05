@@ -69,6 +69,16 @@ from .acceptance import (
     run_acceptance_checks,
     format_acceptance_report,
 )
+from .chainage_air_valve import (
+    PipeNetwork,
+    SplitPipeAtChainageResult,
+    attach_air_valve_at_chainage,
+    attach_air_valve_at_survey_high_point,
+    elevation_at_chainage_ft,
+    head_at_chainage_ft,
+    split_pipe_at_chainage,
+    survey_high_point_chainage_ft,
+)
 from .units import (
     DEFAULT_P_VAPOR_KPA,
     FT_TO_M,
@@ -184,6 +194,14 @@ __all__ = [
     "summarize_study_si",
     "run_acceptance_checks",
     "format_acceptance_report",
+    "PipeNetwork",
+    "SplitPipeAtChainageResult",
+    "attach_air_valve_at_chainage",
+    "attach_air_valve_at_survey_high_point",
+    "elevation_at_chainage_ft",
+    "head_at_chainage_ft",
+    "split_pipe_at_chainage",
+    "survey_high_point_chainage_ft",
     "study_summary_to_si",
     "series_extrema",
     "cavitation_summary",

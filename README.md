@@ -1155,6 +1155,88 @@ The model simulates compressible air dynamics using isentropic nozzle flow equat
   For air admission (inflow), $p_{\text{inlet}} = P_{\text{atm}}$ and $p_r = P_g / P_{\text{atm}}$. For air release (outflow), $p_{\text{inlet}} = P_g$ and $p_r = P_{\text{atm}} / P_g$.
 - **Vessel Limits**: To prevent physically impossible states, the pocket volume is capped at the local chamber/vent body volume (`tank_volume`).
 
+#### Air valves at a pipe chainage (long-line summits)
+
+On long uninterrupted reaches, vacuum breakers are often placed at the survey high
+point rather than at an existing network junction.  The helpers in
+`rthym_moc.chainage_air_valve` (also exported on the top-level package) split the
+pipe topologically at the chosen chainage and insert an `AirValve` node that reuses
+the compressible-air model above.  Elevation and piezometric head at the split are
+taken from the pipe's `elevation_profile` survey table (or endpoint interpolation
+when no survey is present).
+
+Use `PipeNetwork` as a mutable node/pipe registry, attach the valve, then load the
+solver:
+
+```python
+import rthym_moc as m
+
+net = m.PipeNetwork()
+
+r1 = m.NodeInput()
+r1.id = "R1"
+r1.type = "PressureBoundary"
+r1.elevation = 100.0
+r1.head = 400.0
+net.add_node(r1)
+
+r2 = m.NodeInput()
+r2.id = "R2"
+r2.type = "PressureBoundary"
+r2.elevation = 120.0
+r2.head = 400.0
+net.add_node(r2)
+
+pipe = m.PipeInput()
+pipe.id = "Pmain"
+pipe.from_node = "R1"
+pipe.to_node = "R2"
+pipe.length = 4000.0
+pipe.diameter = 12.0
+pipe.roughness = 130.0
+pipe.flow_gpm = 800.0
+pipe.elevation_profile = [(0.0, 100.0), (2000.0, 320.0), (4000.0, 120.0)]
+net.add_pipe(pipe)
+
+# Auto-detect summit from elevation_profile and insert AirValve there:
+valve_id, chainage_ft = m.attach_air_valve_at_survey_high_point(
+    net, "Pmain", valve_node_id="AV_summit",
+)
+
+# Or place at an explicit chainage (ft from from_node):
+# valve_id = m.attach_air_valve_at_chainage(net, "Pmain", 1800.0)
+
+solver = m.MOCSolver()
+net.apply_to(solver)
+results = solver.run(total_time=5.0, dt=0.01)
+```
+
+**API summary**
+
+| Function | Purpose |
+|---|---|
+| `PipeNetwork` | Mutable `nodes` / `pipes` dicts with `apply_to(solver)` |
+| `attach_air_valve_at_survey_high_point(net, pipe_id, …)` | Split at survey or endpoint high point; returns `(valve_node_id, chainage_ft)` |
+| `attach_air_valve_at_chainage(net, pipe_id, chainage_ft, …)` | Split at an explicit chainage; returns `valve_node_id` |
+| `split_pipe_at_chainage(pipe, nodes, chainage_ft, …)` | Low-level split → upstream/downstream `PipeInput` + `AirValve` `NodeInput` |
+| `survey_high_point_chainage_ft`, `elevation_at_chainage_ft`, `head_at_chainage_ft` | Placement helpers from survey tables |
+
+Optional `AirValve` fields (`gas_volume`, `tank_volume`, `diameter`,
+`air_release_diameter`, `loss_coeff_in`, `loss_coeff_out`, `air_release_head`) can
+be passed as keyword arguments to the attach helpers.
+
+When a pipe is split, `elevation_profile` and sparse interior DVCM watchpoints
+(`interior_dvcm_chainages_ft`) are rebased onto the upstream and downstream
+reaches.  A watchpoint exactly at the split chainage is omitted (the valve node
+handles the summit instead).  With `enable_interior_dvcm=True` and
+`record_pipe_profiles=True`, interior cavity telemetry is exported on the split
+pipe ids (e.g. `Pmain_up`, `Pmain_dn`).
+
+Reference case: `tests/test_dvcm_air_valve.py::test_dvcm_long_line_summit_air_valve_prevents_cavity`
+shows a summit air valve eliminating interior DVCM cavity volume at the high point
+versus an unprotected run on the same reach.  See also `tests/test_chainage_air_valve.py`
+and `docs/long_pipeline_surge_roadmap.md` (Phase 5).
+
 ### Standpipe (open surge tank)
 
 An open-topped standpipe connected to the pipeline.  When a pressure wave arrives, water rises or falls inside the standpipe rather than propagating as a waterhammer spike, limiting peak pressures.
