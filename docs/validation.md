@@ -8,19 +8,20 @@ comparisons; those live in [docs/benchmarking.md](benchmarking.md).
 ## Verification vs regression (read this first)
 
 Not every test under `tests/` is a **verification** test in the sense users care
-about. We distinguish three trust models:
+about. We distinguish four trust models:
 
 | Trust model | Question it answers | Reference | User-facing claim |
 |---|---|---|---|
-| **Independent verification** | Does rthym-moc match physics or another engine? | Analytical formula, R-THYM (JS), EPANET/wntr, TSNet export, continuity/collision invariants | “Checked against an independent source of truth” |
+| **Independent verification** | Does rthym-moc match physics, EPANET/**wntr**, TSNet, or published measurements? | Analytical formula, **wntr**, TSNet export, lab peaks/traces, continuity/collision invariants | “Checked against a source of truth outside this Python port” |
+| **Maintainer parity** | Does the Python port still match the author's R-THYM web-app exports? | Checked-in R-THYM JSON/CSV from the JS engine | “Author regression during port — **not** third-party proof” |
 | **Snapshot regression** | Did we accidentally change a previously accepted answer? | Checked-in JSON/CSV from an earlier rthym-moc run | “Locked to a baseline trace — detects drift, not absolute correctness” |
 | **Design-rule / behavioral** | Do sizing, placement, or control sweeps behave as expected? | Fixed internal geometry + monotonic or bounded expectations | “Design trends hold — not a cross-check against external truth” |
 
-**Verification** requires a reference **outside the current solver run** — theory,
-another implementation, or a measurement — not “whatever rthym-moc printed when we
-first checked in the file.” Snapshot regressions are still valuable for CI (they
-catch unintended numerical drift) but should not be described to users as proof
-that the physics is correct.
+**Verification** for external reviewers requires a reference **outside the current solver
+run and outside the same author's other implementation** — theory, **wntr**, TSNet,
+published lab data, or another team's engine. R-THYM web-app comparisons are still
+valuable CI gates for the maintainer but should not be headline evidence in docs or
+papers.
 
 Pytest runs the **full suite** (`pytest -q`); the tables below label which modules
 are which.
@@ -29,8 +30,6 @@ are which.
 
 | Test module | Independent reference | Notebook mirror |
 |---|---|---|
-| `tests/test_joukowsky_rthym.py` | R-THYM web app export **+** analytical Joukowsky | `quickstart_notebook.ipynb` (partial) |
-| `tests/test_long_pipe_valve.py` | R-THYM web app export | `long_pipe_valve_verification.ipynb` |
 | `tests/test_complex_topology_from_inp.py` | EPANET steady state via **wntr** | `epanet_import_verification.ipynb` |
 | `tests/test_epanet_complex_topology_cross_engine.py` | Same EPANET pre-trip check | `cross_engine_surge_verification.ipynb` |
 | `tests/test_gradual_closure_benchmark.py` | Joukowsky / Allievi closure-regime expectations | `gradual_closure_verification.ipynb` |
@@ -41,6 +40,13 @@ are which.
 | `tests/test_surge_device_verification.py` | Joukowsky, polytropic precharge law, Appendix B.8 refs | `surge_device_verification.ipynb` |
 | `tests/test_tsnet_standpipe_cross_engine.py` | Checked-in **TSNet** B.8 trace (exported independently) | `cross_engine_surge_verification.ipynb` |
 | `tests/test_pipe_materials.py` | Analytical Korteweg wave speed | — |
+
+### Maintainer parity (R-THYM web app — author cross-check)
+
+| Test module | Reference | Notebook mirror |
+|---|---|---|
+| `tests/test_joukowsky_rthym.py` | R-THYM web app export **+** analytical Joukowsky (external part is the formula check) | `quickstart_notebook.ipynb` (§3 = parity; §2 = analytical) |
+| `tests/test_long_pipe_valve.py` | R-THYM web app export | `long_pipe_valve_verification.ipynb` |
 
 **Documented but optional / manual:** TSNet Joukowsky three-way study (Appendix
 §B.6, `examples/benchmark_vs_tsnet.py`) — not a default pytest dependency.
@@ -94,8 +100,9 @@ Each **independent verification** case should provide the following where practi
 
 - a documented scenario with network description, schematic, and expected outcome
 - one or more **independent** trusted references: analytical solution,
-  EPANET/wntr steady state, the R-THYM web app, TSNet export, or another artifact
-  from a separate engine — not a prior rthym-moc snapshot alone
+  EPANET/wntr steady state, TSNet export, published lab data, or another team's
+  engine — not a prior rthym-moc snapshot alone and not the author's R-THYM web
+  app when the audience is external (label that as **maintainer parity** instead)
 - explicit quantitative tolerances such as peak error, RMS trace error, or
   steady-state deviation
 - automated checks in pytest
@@ -110,13 +117,13 @@ and notebooks (see [Verification vs regression](#verification-vs-regression-read
 
 | Category | Trust model | What it proves | Primary tests |
 |---|---|---|---|
-| Cross-engine (R-THYM) | **Independent** | Heads, peaks, and traces match the production web-app engine | `test_joukowsky_rthym.py`, `test_long_pipe_valve.py` |
-| Cross-engine (EPANET / TSNet) | **Independent** | Imported steady state; standpipe trace vs TSNet export | `test_complex_topology_from_inp.py`, `test_tsnet_standpipe_cross_engine.py` |
 | Analytical / regime | **Independent** | Joukowsky and slow-closure behavior vs theory | `test_gradual_closure_benchmark.py`, `test_standpipe_surge_protection.py` |
+| Cross-engine (EPANET / TSNet) | **Independent** | Imported steady state; standpipe trace vs TSNet export | `test_complex_topology_from_inp.py`, `test_tsnet_standpipe_cross_engine.py` |
 | DVCM physics invariants | **Independent** | Mass step and collapse ΔH vs formulas | `test_dvcm_physical_verification.py` |
 | DVCM Bergant Adelaide rig | **Independent** | Literature peaks + digitized Fig. 4 trace (peak window) | `test_dvcm_bergant_adelaide_experiment.py`, `test_dvcm_bergant_adelaide_trace.py` |
-| DVCM canonical traces | **Snapshot** | Junction traces match checked-in golden JSON | `test_dvcm_canonical_scenarios.py` |
 | Surge-device verification | **Independent** (mixed) | Joukowsky / B.8 / device laws on anchored cases | `test_surge_device_verification.py` |
+| R-THYM web app parity | **Maintainer** | Heads, peaks, and traces match author's JS engine | `test_joukowsky_rthym.py`, `test_long_pipe_valve.py` |
+| DVCM canonical traces | **Snapshot** | Junction traces match checked-in golden JSON | `test_dvcm_canonical_scenarios.py` |
 | Surge sizing / placement | **Design-rule** | Monotonic sizing, placement, mixed-device trends | `test_tank_size_benchmark.py`, `test_hydropneumatic_size_benchmark.py`, … |
 | Broader pytest | **Mixed** | Cavitation, controls, INP import, materials, API smoke | remaining modules under `tests/` |
 

@@ -6,7 +6,8 @@ Pytest under `tests/` is the **CI source of truth**. Notebooks replay the same c
 where a Binder walkthrough helps. Each notebook is labeled by **trust model** —
 see [validation.md § Verification vs regression](validation.md#verification-vs-regression-read-this-first):
 
-- **Independent** — theory or another engine (R-THYM, EPANET/wntr, TSNet export, formulas)
+- **Independent** — theory, **wntr**, TSNet export, published lab data
+- **Maintainer parity** — author's R-THYM web-app exports (port regression, not third-party proof)
 - **Snapshot** — golden trace from an earlier rthym-moc run (drift detection only)
 - **Design-rule** — expected trends on fixed geometries (sizing/placement sweeps)
 
@@ -17,16 +18,20 @@ Full pytest↔notebook matrix: [validation_notebook_coverage.md](validation_note
 | Step | Notebook | Why |
 |------|----------|-----|
 | 0 | [`validation_notebooks_index.ipynb`](../examples/validation_notebooks_index.ipynb) | Pick the right walkthrough (this page in notebook form) |
-| 1 | [`quickstart_notebook.ipynb`](../examples/quickstart_notebook.ipynb) | R-THYM Joukowsky cross-engine + reproducibility pattern |
-| 2 | Pick a topic below | DVCM, surge, EPANET, or second R-THYM study |
+| 1 | [`gradual_closure_verification.ipynb`](../examples/gradual_closure_verification.ipynb) | Textbook Joukowsky / Allievi — externally credible |
+| 2 | [`cross_engine_surge_verification.ipynb`](../examples/cross_engine_surge_verification.ipynb) | TSNet + **wntr** before trip |
+| 3 | Pick a topic below | DVCM, surge devices, EPANET, or lab benchmark |
+
+**Tutorial / maintainer parity:** [`quickstart_notebook.ipynb`](../examples/quickstart_notebook.ipynb)
+(API walkthrough; §2 analytical Joukowsky; §3 optional R-THYM overlay for the author).
 
 ## Verification notebooks (at a glance)
 
 | Notebook | Trust model | What it proves | Primary pytest mirror(s) | Binder runtime |
 |----------|-------------|----------------|---------------------------|----------------|
-| [`quickstart_notebook.ipynb`](../examples/quickstart_notebook.ipynb) | Independent | R-THYM Joukowsky cross-engine | `test_joukowsky_rthym.py` | **~1 min** |
+| [`quickstart_notebook.ipynb`](../examples/quickstart_notebook.ipynb) | Maintainer parity | Tutorial + analytical Joukowsky (§2); R-THYM overlay (§3) | `test_joukowsky_rthym.py` | **~1 min** |
 | [`cross_engine_surge_verification.ipynb`](../examples/cross_engine_surge_verification.ipynb) | Independent | TSNet B.8 + EPANET pre-trip | `test_tsnet_standpipe_cross_engine.py`, `test_epanet_complex_topology_cross_engine.py` | **~25 s** |
-| [`long_pipe_valve_verification.ipynb`](../examples/long_pipe_valve_verification.ipynb) | Independent | R-THYM long-pipe valve study | `test_long_pipe_valve.py` | **~3 min** |
+| [`long_pipe_valve_verification.ipynb`](../examples/long_pipe_valve_verification.ipynb) | Maintainer parity | R-THYM long-pipe valve study | `test_long_pipe_valve.py` | **~3 min** |
 | [`epanet_import_verification.ipynb`](../examples/epanet_import_verification.ipynb) | Independent | EPANET steady state + trip | `test_complex_topology_from_inp.py` | **~15 s** |
 | [`gradual_closure_verification.ipynb`](../examples/gradual_closure_verification.ipynb) | Independent | Joukowsky / Allievi sweep | `test_gradual_closure_benchmark.py` | **~30 s** |
 | [`dvcm_physical_verification.ipynb`](../examples/dvcm_physical_verification.ipynb) | Independent | Mass step + collapse ΔH formulas | `test_dvcm_physical_verification.py` | **~15 s** |
