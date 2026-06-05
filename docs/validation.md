@@ -1,9 +1,81 @@
 # Validation Guide
 
-This document describes how RTHYM-MOC proves **solver correctness**: trusted
-references, quantitative tolerances, automated pytest regressions, and versioned
-artifacts. It does not cover **runtime performance** comparisons; those live in
-[docs/benchmarking.md](benchmarking.md).
+This document describes how RTHYM-MOC proves **solver correctness** and tracks
+**behavioral stability**: trusted references, quantitative tolerances, automated
+pytest checks, and versioned artifacts. It does not cover **runtime performance**
+comparisons; those live in [docs/benchmarking.md](benchmarking.md).
+
+## Verification vs regression (read this first)
+
+Not every test under `tests/` is a **verification** test in the sense users care
+about. We distinguish three trust models:
+
+| Trust model | Question it answers | Reference | User-facing claim |
+|---|---|---|---|
+| **Independent verification** | Does rthym-moc match physics or another engine? | Analytical formula, R-THYM (JS), EPANET/wntr, TSNet export, continuity/collision invariants | “Checked against an independent source of truth” |
+| **Snapshot regression** | Did we accidentally change a previously accepted answer? | Checked-in JSON/CSV from an earlier rthym-moc run | “Locked to a baseline trace — detects drift, not absolute correctness” |
+| **Design-rule / behavioral** | Do sizing, placement, or control sweeps behave as expected? | Fixed internal geometry + monotonic or bounded expectations | “Design trends hold — not a cross-check against external truth” |
+
+**Verification** requires a reference **outside the current solver run** — theory,
+another implementation, or a measurement — not “whatever rthym-moc printed when we
+first checked in the file.” Snapshot regressions are still valuable for CI (they
+catch unintended numerical drift) but should not be described to users as proof
+that the physics is correct.
+
+Pytest runs the **full suite** (`pytest -q`); the tables below label which modules
+are which.
+
+### Independent verification (automated in CI unless noted)
+
+| Test module | Independent reference | Notebook mirror |
+|---|---|---|
+| `tests/test_joukowsky_rthym.py` | R-THYM web app export **+** analytical Joukowsky | `quickstart_notebook.ipynb` (partial) |
+| `tests/test_long_pipe_valve.py` | R-THYM web app export | `long_pipe_valve_verification.ipynb` |
+| `tests/test_complex_topology_from_inp.py` | EPANET steady state via **wntr** | `epanet_import_verification.ipynb` |
+| `tests/test_epanet_complex_topology_cross_engine.py` | Same EPANET pre-trip check | `cross_engine_surge_verification.ipynb` |
+| `tests/test_gradual_closure_benchmark.py` | Joukowsky / Allievi closure-regime expectations | `gradual_closure_verification.ipynb` |
+| `tests/test_dvcm_physical_verification.py` | Wylie continuity step + discrete collapse ΔH | `dvcm_physical_verification.ipynb` |
+| `tests/test_dvcm_bergant_adelaide_experiment.py` | Bergant–Simpson Adelaide lab peaks (He et al. 2025 / Bergant 1999); see [bergant_adelaide_verification.md](bergant_adelaide_verification.md) | — |
+| `tests/test_dvcm_bergant_adelaide_trace.py` | Digitized He et al. (2025) Fig. 4 CSV; peak-window gauge check | `bergant_adelaide_verification.ipynb` |
+| `tests/test_standpipe_surge_protection.py` | Joukowsky peak + standpipe mass-oscillation formula | (partial) `surge_device_verification.ipynb` |
+| `tests/test_surge_device_verification.py` | Joukowsky, polytropic precharge law, Appendix B.8 refs | `surge_device_verification.ipynb` |
+| `tests/test_tsnet_standpipe_cross_engine.py` | Checked-in **TSNet** B.8 trace (exported independently) | `cross_engine_surge_verification.ipynb` |
+| `tests/test_pipe_materials.py` | Analytical Korteweg wave speed | — |
+
+**Documented but optional / manual:** TSNet Joukowsky three-way study (Appendix
+§B.6, `examples/benchmark_vs_tsnet.py`) — not a default pytest dependency.
+
+**Tutorial script (not CI):** `examples/test_wave_reflections.py` — wave period
+$T_0 = 4L/a$ vs simulation.
+
+### Snapshot regression (prior rthym-moc baseline)
+
+| Test module | Baseline artifact | Notebook mirror |
+|---|---|---|
+| `tests/test_dvcm_canonical_scenarios.py` | `tests/dvcm_*_reference.json` (golden J1 traces) | `dvcm_canonical_verification.ipynb` |
+
+These files store **inputs** (`schedule`, `total_time_s`) and **expected outputs**
+(`head_ft`, collapse flags) from an earlier accepted rthym-moc run. A passing test
+means “still matches the snapshot,” not “verified against textbook physics.”
+
+### Design-rule and behavioral regressions (fixed geometry, no external oracle)
+
+Monotonic sizing/placement sweeps and similar modules prove **expected trends** on
+anchored networks — useful for design studies and CI stability, but not independent
+verification:
+
+`test_tank_size_benchmark.py`, `test_hydropneumatic_size_benchmark.py`,
+`test_device_placement_benchmark.py`, `test_pipe_length_benchmark.py`,
+`test_multi_device_placement_benchmark.py`, `test_mixed_device_interaction_benchmark.py`,
+`test_air_valve_dominant_*.py`, and related surge benchmarks.
+Notebook: partial mirror in `surge_design_rules_verification.ipynb`.
+
+### Broader pytest (API, import, controls, smoke)
+
+Remaining modules under `tests/` cover import fidelity, operational controls,
+check valves, materials, invalid inputs, WASM smoke, etc. They guard **product
+behavior and regressions** but are not headline physics-verification studies.
+See module docstrings and the [Validation Test Map](#validation-test-map) below.
 
 ## Notebook mirrors vs pytest
 
@@ -18,28 +90,35 @@ an **interactive sampler**, not a complete map of every regression.
 
 ## Structure Rules
 
-Each validation case should provide the following where practical:
+Each **independent verification** case should provide the following where practical:
 
 - a documented scenario with network description, schematic, and expected outcome
-- one or more trusted references: analytical solution, EPANET/wntr steady state,
-  the R-THYM web app, or another stored reference artifact
+- one or more **independent** trusted references: analytical solution,
+  EPANET/wntr steady state, the R-THYM web app, TSNet export, or another artifact
+  from a separate engine — not a prior rthym-moc snapshot alone
 - explicit quantitative tolerances such as peak error, RMS trace error, or
   steady-state deviation
-- automated regression checks in pytest
+- automated checks in pytest
 - stored reference artifacts in the repository when external replay data is used
 - parameter sweeps when the governing behavior depends on a control parameter
   such as closure time, tank size, or pipe length
 
+Snapshot regressions and design-rule sweeps should be labeled as such in docs
+and notebooks (see [Verification vs regression](#verification-vs-regression-read-this-first)).
+
 ## Validation Summary
 
-| Category | What it proves | Primary tests | Reference |
+| Category | Trust model | What it proves | Primary tests |
 |---|---|---|---|
-| Cross-engine (R-THYM) | Heads, peaks, and traces match the production web-app engine | `test_joukowsky_rthym.py`, `test_long_pipe_valve.py` | Checked-in JSON/CSV exports |
-| Cross-engine (EPANET) | Imported steady state and trip directionality | `test_complex_topology_from_inp.py` | `tests/networks/complex_topology.inp` |
-| Analytical / regime | Joukowsky and slow-closure behavior vs theory | `test_gradual_closure_benchmark.py` | Joukowsky / Allievi expectations |
-| DVCM canonical cavitation | Junction-only cavity initiation, collapse/recovery, and repeated-event stability | `test_dvcm_canonical_scenarios.py` | Internal anchored junction geometries |
-| Surge-device physics | Monotonic sizing, placement, and mixed-device trends | `test_tank_size_benchmark.py`, `test_hydropneumatic_size_benchmark.py`, `test_device_placement_benchmark.py`, `test_pipe_length_benchmark.py`, `test_multi_device_placement_benchmark.py`, `test_mixed_device_interaction_benchmark.py`, `test_air_valve_dominant_*.py` | Internal anchored geometries |
-| Broader regression | Cavitation, controls, INP import, materials, losses | `test_column_separation_and_stability.py`, `test_operational_controls.py`, `test_pump_valve_transients_from_inp.py`, and others under `tests/` | Module docstrings |
+| Cross-engine (R-THYM) | **Independent** | Heads, peaks, and traces match the production web-app engine | `test_joukowsky_rthym.py`, `test_long_pipe_valve.py` |
+| Cross-engine (EPANET / TSNet) | **Independent** | Imported steady state; standpipe trace vs TSNet export | `test_complex_topology_from_inp.py`, `test_tsnet_standpipe_cross_engine.py` |
+| Analytical / regime | **Independent** | Joukowsky and slow-closure behavior vs theory | `test_gradual_closure_benchmark.py`, `test_standpipe_surge_protection.py` |
+| DVCM physics invariants | **Independent** | Mass step and collapse ΔH vs formulas | `test_dvcm_physical_verification.py` |
+| DVCM Bergant Adelaide rig | **Independent** | Literature peaks + digitized Fig. 4 trace (peak window) | `test_dvcm_bergant_adelaide_experiment.py`, `test_dvcm_bergant_adelaide_trace.py` |
+| DVCM canonical traces | **Snapshot** | Junction traces match checked-in golden JSON | `test_dvcm_canonical_scenarios.py` |
+| Surge-device verification | **Independent** (mixed) | Joukowsky / B.8 / device laws on anchored cases | `test_surge_device_verification.py` |
+| Surge sizing / placement | **Design-rule** | Monotonic sizing, placement, mixed-device trends | `test_tank_size_benchmark.py`, `test_hydropneumatic_size_benchmark.py`, … |
+| Broader pytest | **Mixed** | Cavitation, controls, INP import, materials, API smoke | remaining modules under `tests/` |
 
 Representative headline results (automated in CI):
 
@@ -49,28 +128,28 @@ Representative headline results (automated in CI):
 
 ## Validation Test Map
 
-| Test module | Scenario / expected outcome | Reference solution | Parameterized coverage | Cross-engine |
+| Test module | Trust model | Scenario / expected outcome | Reference solution | Notebook |
 |---|---|---|---|---|
-| `tests/test_joukowsky_rthym.py` | Instant closure with downstream stub and column-separation dynamics should match R-THYM export | R-THYM web app + analytical Joukowsky constraints | no | R-THYM web app |
-| `tests/test_long_pipe_valve.py` | Equal-percentage closure network should match R-THYM heads, peaks, and pressure traces | R-THYM web app export | nodes and trace quantities only | R-THYM web app; `examples/long_pipe_valve_verification.ipynb` |
-| `tests/test_complex_topology_from_inp.py` | Imported complex network should match EPANET operating point and pump-trip directionality | EPANET/wntr steady state | per-node and per-pipe parametrization | wntr / EPANET; `examples/epanet_import_verification.ipynb` |
-| `tests/test_gradual_closure_benchmark.py` | Closure-time sweep should reproduce rapid-closure Joukowsky behavior and slow-closure suppression | Analytical Joukowsky / Allievi regime expectations | closure time (`0.5 s`, `3.0 s`, `150 s`) | `examples/gradual_closure_verification.ipynb` |
-| `tests/test_dvcm_canonical_scenarios.py` | Rapid collapse-spike, pressure-recovery, and repeated-event junction cavitation scenarios should remain stable and quantitatively match anchored DVCM traces | Internal anchored junction geometries (`tests/dvcm_*_reference.json`); interactive overlays in `examples/dvcm_canonical_verification.ipynb` | three canonical schedules with peak-head, collapse-timing, and RMS-trace tolerances | no |
-| `tests/test_dvcm_physical_verification.py` | Junction cavity volume step changes should match bounded `(Q_out − Q_in)` integration; post-collapse head rise should match the discrete collision estimate | Wylie continuity + `docs/dvcm_timestep_guidance.md` collision formula | symmetric reservoir–junction column-separation schedule; interactive charts in `examples/dvcm_physical_verification.ipynb` | no |
-| `tests/test_surge_device_verification.py` | Standpipe limits closure surge per Joukowsky + mass-oscillation refs; hydropneumatic and air-valve pump-trip cases meet anchored low-pressure floors | Appendix B.8 (standpipe), polytropic precharge law, `test_air_valve.py` / size benchmarks | valve-closure standpipe + pump-trip protection geometries; `examples/surge_device_verification.ipynb` | TSNet standpipe (documented in appendix, not default pytest) |
-| `tests/test_tank_size_benchmark.py` | Increasing standpipe size should monotonically reduce the protected-node closure peak | Internal anchored geometry | standpipe area (`1`, `2`, `5`, `10`, `20 ft²`) | partial: `examples/surge_design_rules_verification.ipynb` |
-| `tests/test_hydropneumatic_size_benchmark.py` | Larger vessels at fixed precharge ratio should improve trip recovery | Internal anchored geometry | vessel size (`2`–`20 ft³`, `gas_volume/tank_volume = 0.4`) | no |
-| `tests/test_device_placement_benchmark.py` | Moving protection farther from pump discharge should weaken trip protection | Internal anchored geometry | distance (`40`, `120`, `300`, `600 ft`) | partial: `examples/surge_design_rules_verification.ipynb` |
-| `tests/test_pipe_length_benchmark.py` | Discharge-main length should shift near-pump vessel effectiveness | Internal anchored geometry | length (`500`–`8000 ft`) | no |
-| `tests/test_multi_device_placement_benchmark.py` | Split capacity protects well only if one vessel stays near the pump | Internal anchored geometry | two-vessel placement pairs | no |
-| `tests/test_mixed_device_interaction_benchmark.py` | Vessel + air valve should beat either device alone on low-pressure exposure | Internal anchored geometry | protection mode (`none`, `air`, `vessel`, `both`) | no |
-| `tests/test_air_valve_dominant_mixed_layout_benchmark.py` | Air valve dominates; tiny vessel adds secondary damping | Internal anchored geometry | protection mode (`none`, `air`, `vessel`, `both`) | no |
-| `tests/test_air_valve_dominant_layout_sensitivity_benchmark.py` | Downstream vessel distance changes secondary damping only | Internal anchored geometry | distance (`300`–`3000 ft`) | no |
-| `tests/test_air_valve_dominant_size_sweep_benchmark.py` | Larger downstream vessel recovers more regional mean trip head | Internal anchored geometry | size (`0.3`–`4.8 ft³`) | no |
+| `tests/test_joukowsky_rthym.py` | Independent | Instant closure with column-separation dynamics | R-THYM web app + analytical Joukowsky | `quickstart_notebook.ipynb` |
+| `tests/test_long_pipe_valve.py` | Independent | Equal-% closure vs R-THYM heads, peaks, traces | R-THYM web app export | `long_pipe_valve_verification.ipynb` |
+| `tests/test_complex_topology_from_inp.py` | Independent | Pre-trip operating point + pump-trip directionality | EPANET/wntr steady state | `epanet_import_verification.ipynb` |
+| `tests/test_epanet_complex_topology_cross_engine.py` | Independent | EPANET pre-trip heads and flows | wntr `EpanetSimulator` | `cross_engine_surge_verification.ipynb` |
+| `tests/test_tsnet_standpipe_cross_engine.py` | Independent | Standpipe peak/RMS vs TSNet B.8 export | `tests/TSNet_Standpipe_B8_*` | `cross_engine_surge_verification.ipynb` |
+| `tests/test_gradual_closure_benchmark.py` | Independent | Closure-time sweep vs Joukowsky / Allievi | Analytical regime expectations | `gradual_closure_verification.ipynb` |
+| `tests/test_dvcm_physical_verification.py` | Independent | Mass step + collapse ΔH | Wylie + collision formula | `dvcm_physical_verification.ipynb` |
+| `tests/test_standpipe_surge_protection.py` | Independent | Standpipe vs Joukowsky + mass oscillation | Analytical Appendix B.8 | partial → `surge_device_verification.ipynb` |
+| `tests/test_surge_device_verification.py` | Independent | Standpipe, HPT, air-valve cases | Joukowsky, polytropic law, B.8 | `surge_device_verification.ipynb` |
+| `tests/test_dvcm_canonical_scenarios.py` | **Snapshot** | J1 traces match golden JSON | `tests/dvcm_*_reference.json` | `dvcm_canonical_verification.ipynb` |
+| `tests/test_tank_size_benchmark.py` | Design-rule | Larger standpipe → lower closure peak | Monotonic trend on fixed geometry | partial → `surge_design_rules_verification.ipynb` |
+| `tests/test_hydropneumatic_size_benchmark.py` | Design-rule | Larger vessel → better trip recovery | Monotonic trend | — |
+| `tests/test_device_placement_benchmark.py` | Design-rule | Farther protection → weaker trip mitigation | Monotonic trend | partial → `surge_design_rules_verification.ipynb` |
+| `tests/test_pipe_length_benchmark.py` | Design-rule | Main length shifts vessel effectiveness | Param sweep bounds | — |
+| `tests/test_multi_device_placement_benchmark.py` | Design-rule | Split capacity placement rules | Fixed geometry pairs | — |
+| `tests/test_mixed_device_interaction_benchmark.py` | Design-rule | Combined devices vs single device | Relative exposure counts | — |
+| `tests/test_air_valve_dominant_*.py` | Design-rule | Air-valve dominance / layout sensitivity | Fixed geometry sweeps | — |
 
-Internal-reference sweeps prove **regression and design-rule behavior** on fixed
-geometries. Cross-engine rows prove **independent correctness** against stored
-exports or EPANET steady state.
+Independent rows answer “is the physics right?” Snapshot and design-rule rows
+answer “did we drift?” or “do design trends hold?”
 
 ## Scenario Documentation
 
@@ -94,8 +173,8 @@ Current metrics include:
 - bounded late-time envelopes for stability-focused transients
 - DVCM collapse timing error in `s` for anchored junction cavitation cases
 
-For `tests/test_dvcm_canonical_scenarios.py`, the current explicit acceptance
-metrics are:
+For `tests/test_dvcm_canonical_scenarios.py` (**snapshot regression**, not
+independent verification), the explicit acceptance metrics are:
 
 - peak-head error `<= 0.05 ft` against the anchored case peak
 - first collapse timing error `<= 1e-9 s`
@@ -115,35 +194,33 @@ assertion itself.
 
 ## Regression Tracking
 
-Reference outputs are stored in-repo for validation cases that depend on
-external or cross-engine replay data:
+Reference outputs are stored in-repo so tests can replay fixed answers:
 
-- `tests/R-THYM_Joukowsky_Verification.json`
-- `tests/R-THYM_Joukowsky_Traces.csv`
-- `tests/R-THYM_MOC_Verification.json`
-- `tests/R-THYM_MOC_Traces.csv`
-- INP fixtures under `tests/networks/`
+- **Independent verification artifacts** — exports from R-THYM, TSNet, or EPANET
+  runs that predate the pytest check (e.g. `tests/R-THYM_*.json`, `tests/TSNet_Standpipe_B8_*`)
+- **Snapshot baselines** — golden rthym-moc traces (e.g. `tests/dvcm_*_reference.json`)
+- **Network fixtures** — INP files under `tests/networks/` and study INPs
 
-Code changes are checked against fixed reference outputs rather than only
-against relative trends.
+Code changes are checked against these stored outputs rather than only against
+relative trends.
 
 ## Reference Artifact Inventory
 
-| Artifact | Type | Source / meaning | Primary automated consumer |
+| Artifact | Trust model | Source / meaning | Primary consumer |
 |---|---|---|---|
-| `tests/R-THYM_Joukowsky_Verification.json` | JSON | R-THYM web-app export for the instant-closure Joukowsky case | `tests/test_joukowsky_rthym.py` |
-| `tests/R-THYM_Joukowsky_Traces.csv` | CSV | R-THYM web-app time-series trace for the same case | `tests/test_joukowsky_rthym.py` |
-| `tests/R-THYM_MOC_Verification.json` | JSON | R-THYM web-app export for the long-pipe valve case | `tests/test_long_pipe_valve.py` |
-| `tests/R-THYM_MOC_Traces.csv` | CSV | R-THYM web-app time-series trace for the long-pipe valve case | `tests/test_long_pipe_valve.py` |
-| `tests/dvcm_rapid_closure_reference.json` | JSON | Anchored DVCM rapid-collapse regression trace | `tests/test_dvcm_canonical_scenarios.py` |
-| `tests/dvcm_pressure_recovery_reference.json` | JSON | Anchored DVCM pressure-recovery regression trace | `tests/test_dvcm_canonical_scenarios.py` |
-| `tests/dvcm_long_run_reference.json` | JSON | Anchored DVCM repeated-event regression trace | `tests/test_dvcm_canonical_scenarios.py` |
-| `tests/Joukowsky Benchmark.inp` | INP | EPANET-style geometry for the Joukowsky cross-engine study | `tests/test_joukowsky_rthym.py` |
-| `tests/Long Pipe Valve.inp` | INP | EPANET-style geometry for the long-pipe valve study | `tests/test_long_pipe_valve.py` |
-| `tests/networks/complex_topology.inp` | INP | Multi-node network for EPANET/wntr steady-state checks | `tests/test_complex_topology_from_inp.py` |
-| `tests/TSNet_Standpipe_B8_Verification.json` | JSON | TSNet appendix B.8.5 standpipe peaks / RMS metadata | `tests/test_tsnet_standpipe_cross_engine.py` |
-| `tests/TSNet_Standpipe_B8_Traces.csv` | CSV | TSNet J1 head time series for B.8 standpipe | `tests/test_tsnet_standpipe_cross_engine.py`, `examples/cross_engine_surge_verification.ipynb` |
-| `tests/networks/pump_valve_benchmark.inp` | INP | Pump/valve network for trip, restart, and closure regressions | `tests/test_pump_valve_transients_from_inp.py` |
+| `tests/R-THYM_Joukowsky_Verification.json` | Independent | R-THYM web-app export (Joukowsky case) | `test_joukowsky_rthym.py` |
+| `tests/R-THYM_Joukowsky_Traces.csv` | Independent | R-THYM time series (same case) | `test_joukowsky_rthym.py` |
+| `tests/R-THYM_MOC_Verification.json` | Independent | R-THYM web-app export (long-pipe valve) | `test_long_pipe_valve.py` |
+| `tests/R-THYM_MOC_Traces.csv` | Independent | R-THYM time series (long-pipe valve) | `test_long_pipe_valve.py` |
+| `tests/TSNet_Standpipe_B8_Verification.json` | Independent | TSNet B.8.5 standpipe peaks / RMS | `test_tsnet_standpipe_cross_engine.py` |
+| `tests/TSNet_Standpipe_B8_Traces.csv` | Independent | TSNet J1 head time series (B.8) | `test_tsnet_standpipe_cross_engine.py` |
+| `tests/dvcm_rapid_closure_reference.json` | **Snapshot** | Golden rthym-moc J1 trace (rapid closure) | `test_dvcm_canonical_scenarios.py` |
+| `tests/dvcm_pressure_recovery_reference.json` | **Snapshot** | Golden rthym-moc J1 trace (recovery) | `test_dvcm_canonical_scenarios.py` |
+| `tests/dvcm_long_run_reference.json` | **Snapshot** | Golden rthym-moc J1 trace (long run) | `test_dvcm_canonical_scenarios.py` |
+| `tests/Joukowsky Benchmark.inp` | Input fixture | Network geometry for Joukowsky study | `test_joukowsky_rthym.py` |
+| `tests/Long Pipe Valve.inp` | Input fixture | Network geometry for long-pipe study | `test_long_pipe_valve.py` |
+| `tests/networks/complex_topology.inp` | Input fixture | Multi-node network for EPANET/wntr checks | `test_complex_topology_from_inp.py` |
+| `tests/networks/pump_valve_benchmark.inp` | Input fixture | Pump/valve trip and closure regressions | `test_pump_valve_transients_from_inp.py` |
 
 ## Reference Data Policy
 
@@ -167,7 +244,9 @@ Wall-clock performance comparisons against TSNet are documented separately in
 
 ## Gaps And Current Policy
 
-- Not every validation study is cross-engine; analytical and EPANET-based
+- Label new tests and notebooks with a **trust model** (independent / snapshot /
+  design-rule) in this guide and in module docstrings.
+- Not every pytest module is independent verification; analytical and EPANET-based
   references are used where they are the stronger oracle.
 - Parameter sweeps cover closure time, standpipe size, hydropneumatic sizing and
   placement, pipe length, split vessels, and mixed air-valve layouts. Further

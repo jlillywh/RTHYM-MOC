@@ -260,8 +260,9 @@ print(f"Joukowsky peak at V1: {H_V1.max():.1f} ft  at t = {t[H_V1.argmax()]:.3f}
 
 ## Testing
 
-How to run checks locally. For **what** is being asserted (tolerances, cross-engine
-cases, Binder mirrors), see [Validation](#validation).
+How to run checks locally. For **independent verification** vs **snapshot
+regression** vs **design-rule** tests, see [Validation](#validation) and
+[docs/validation.md](docs/validation.md#verification-vs-regression-read-this-first).
 
 Run the automated test suite from the repository root:
 
@@ -323,47 +324,69 @@ vs DVCM at a valve. See [Validation](#validation) for regression-style DVCM note
 
 ## Validation
 
-Validation answers: **is the MOC solver producing the right physics?** This is
-separate from [Examples](#examples): examples teach usage; validation proves
-correctness against references with explicit tolerances.
+Validation and regression live under `tests/` with explicit tolerances. This is
+separate from [Examples](#examples): examples teach usage; the material below
+states **what kind of check** each test is.
+
+| Trust model | Question | Where |
+|---|---|---|
+| **Independent verification** | Does rthym-moc match theory or another engine? | Cross-engine, analytical, and physics-invariant tests — [docs/validation.md](docs/validation.md#verification-vs-regression-read-this-first) |
+| **Snapshot regression** | Did we drift from a prior accepted rthym-moc answer? | e.g. `tests/dvcm_*_reference.json` + `test_dvcm_canonical_scenarios.py` |
+| **Design-rule / behavioral** | Do sizing and placement sweeps behave as expected? | Surge benchmark modules (monotonic trends on fixed geometries) |
 
 | Layer | Role | Where |
 |---|---|---|
-| **Automated regressions** | Source of truth for CI; numeric pass/fail | `tests/` + [docs/validation.md](docs/validation.md) |
-| **Verification notebooks** | Interactive replay of the same cases (Binder) | `examples/*_verification*.ipynb`, `quickstart_notebook.ipynb` — index in [docs/validation_notebooks.md](docs/validation_notebooks.md) |
+| **Automated tests** | CI pass/fail (`pytest -q`) | `tests/` + [docs/validation.md](docs/validation.md) |
+| **Interactive notebooks** | Same cases in Binder (labeled by trust model) | `examples/*_verification*.ipynb` — [docs/validation_notebooks.md](docs/validation_notebooks.md) |
 
-### Automated regression tests
-
-Run the full suite:
+### Run tests
 
 ```bash
 pytest -q
 ```
 
-Run the headline cross-engine checks:
+Headline **independent verification** checks:
 
 ```bash
-pytest tests/test_joukowsky_rthym.py tests/test_long_pipe_valve.py -q
+pytest tests/test_joukowsky_rthym.py tests/test_long_pipe_valve.py \
+  tests/test_complex_topology_from_inp.py tests/test_gradual_closure_benchmark.py \
+  tests/test_dvcm_physical_verification.py \
+  tests/test_dvcm_bergant_adelaide_experiment.py \
+  tests/test_dvcm_bergant_adelaide_trace.py -q
 ```
 
-### Validation at a glance
+### Independent verification (source of truth outside rthym-moc)
 
-| Category | What it proves | Key tests |
+| Category | Reference | Key tests / notebooks |
 |---|---|---|
-| Cross-engine (R-THYM) | Heads, peaks, and traces match the production web-app engine | `test_joukowsky_rthym.py`, `test_long_pipe_valve.py` |
-| Cross-engine (EPANET) | Imported steady state and trip directionality | `test_complex_topology_from_inp.py` |
-| Analytical / regime | Joukowsky and slow-closure behavior | `test_gradual_closure_benchmark.py` |
-| Surge-device physics | Sizing, placement, and mixed-device trends | `test_tank_size_benchmark.py`, `test_hydropneumatic_size_benchmark.py`, `test_device_placement_benchmark.py`, `test_air_valve_dominant_*.py`, and related modules |
-| Broader regression | Cavitation, controls, INP import, materials, losses | remaining modules under `tests/` |
+| R-THYM cross-engine | Checked-in web-app JSON/CSV | `test_joukowsky_rthym.py`, `test_long_pipe_valve.py`; `quickstart_notebook.ipynb`, `long_pipe_valve_verification.ipynb` |
+| EPANET steady state | **wntr** on `complex_topology.inp` | `test_complex_topology_from_inp.py`; `epanet_import_verification.ipynb` |
+| TSNet standpipe | Checked-in TSNet B.8 export | `test_tsnet_standpipe_cross_engine.py`; `cross_engine_surge_verification.ipynb` |
+| Analytical hydraulics | Joukowsky / Allievi / B.8 formulas | `test_gradual_closure_benchmark.py`, `test_standpipe_surge_protection.py`, `test_surge_device_verification.py` |
+| DVCM physics | Wylie mass step + collapse ΔH | `test_dvcm_physical_verification.py`; `dvcm_physical_verification.ipynb` |
+| DVCM Bergant Adelaide rig | Published lab peaks + digitized Fig. 4 (He et al. 2025) | `test_dvcm_bergant_adelaide_experiment.py`, `test_dvcm_bergant_adelaide_trace.py`; [bergant_adelaide_verification.md](docs/bergant_adelaide_verification.md), `bergant_adelaide_verification.ipynb` |
 
-Headline automated results:
+Headline results (independent checks):
 
+- Bergant Adelaide severe case: literature second-peak **~2057 kPa** abs; digitized Fig. 4 rebound peak within **35%** of simulation gauge peak (`test_dvcm_bergant_adelaide_*`)
 - Joukowsky first-step surge vs analytical: **< 0.05 %** (`test_joukowsky_rthym.py`)
 - R-THYM pressure trace RMS (early post-closure window): **≤ 4 psi** (`test_joukowsky_rthym.py`)
-- Wave oscillation period vs $T_0 = 4L/a$: **< 0.2 %** (see `examples/test_wave_reflections.py`)
+- Wave oscillation period vs $T_0 = 4L/a$: **< 0.2 %** (`examples/test_wave_reflections.py`)
 
-Full test map, tolerance policy, and reference-artifact inventory:
-[docs/validation.md](docs/validation.md). Pytest↔notebook coverage:
+### Snapshot regression (detect drift, not absolute correctness)
+
+| What | Baseline | Key tests / notebooks |
+|---|---|---|
+| DVCM junction traces | Golden `tests/dvcm_*_reference.json` from an earlier rthym-moc run | `test_dvcm_canonical_scenarios.py`; `dvcm_canonical_verification.ipynb` |
+
+### Design-rule regressions (expected trends on fixed geometries)
+
+Standpipe size, HPT placement, pipe length, and mixed-device sweeps —
+`test_tank_size_benchmark.py`, `test_device_placement_benchmark.py`, and related
+modules. Partial Binder mirror: `surge_design_rules_verification.ipynb`.
+
+Full trust-model map, tolerance policy, and artifact inventory:
+[docs/validation.md](docs/validation.md). Pytest↔notebook matrix:
 [docs/validation_notebook_coverage.md](docs/validation_notebook_coverage.md).
 
 Long-form cross-engine narratives:
@@ -375,31 +398,28 @@ Long-form cross-engine narratives:
 [`examples/validation_notebooks_index.ipynb`](examples/validation_notebooks_index.ipynb)
 (recommended order, runtimes, pytest mirrors).
 
-| Notebook | Purpose |
-|---|---|
-| `validation_notebooks_index.ipynb` | Navigation only — pick a walkthrough |
-| `quickstart_notebook.ipynb` | R-THYM Joukowsky cross-engine + reproducibility pattern |
-| `cross_engine_surge_verification.ipynb` | TSNet standpipe B.8 + EPANET pre-trip vs MOC |
-| `long_pipe_valve_verification.ipynb` | Five-pipe equal-% closure vs R-THYM JSON/CSV (~3 min) |
-| `epanet_import_verification.ipynb` | `complex_topology.inp` import + steady-state overlay (`wntr`) |
-| `gradual_closure_verification.ipynb` | Closure-time sweep vs Joukowsky / Allievi |
-| `dvcm_canonical_verification.ipynb` | DVCM regression vs `tests/dvcm_*_reference.json` |
-| `dvcm_physical_verification.ipynb` | Mass-balance steps + collapse ΔH formulas |
-| `surge_device_verification.ipynb` | Standpipe, HPT, air valve vs anchored references |
-| `surge_design_rules_verification.ipynb` | Standpipe size + HPT placement sweeps |
+| Notebook | Trust model | Purpose |
+|---|---|---|
+| `validation_notebooks_index.ipynb` | — | Navigation only — pick a walkthrough |
+| `quickstart_notebook.ipynb` | Independent | R-THYM Joukowsky cross-engine |
+| `cross_engine_surge_verification.ipynb` | Independent | TSNet B.8 + EPANET pre-trip vs MOC |
+| `long_pipe_valve_verification.ipynb` | Independent | Five-pipe equal-% closure vs R-THYM JSON/CSV (~3 min) |
+| `epanet_import_verification.ipynb` | Independent | `complex_topology.inp` + steady-state overlay (`wntr`) |
+| `gradual_closure_verification.ipynb` | Independent | Closure-time sweep vs Joukowsky / Allievi |
+| `dvcm_physical_verification.ipynb` | Independent | Mass-balance steps + collapse ΔH formulas |
+| `bergant_adelaide_verification.ipynb` | Independent | Bergant lab peaks + digitized He Fig. 4 trace |
+| `surge_device_verification.ipynb` | Independent | Standpipe, HPT, air valve vs analytical / B.8 refs |
+| `dvcm_canonical_verification.ipynb` | **Snapshot** | Replay golden `tests/dvcm_*_reference.json` traces |
+| `surge_design_rules_verification.ipynb` | Design-rule | Standpipe size + HPT placement sweeps |
 
 [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fvalidation_notebooks_index.ipynb)
 Index ·
-
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fquickstart_notebook.ipynb)
 Quickstart ·
-
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fcross_engine_surge_verification.ipynb)
 Cross-engine surge ·
-
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fdvcm_canonical_verification.ipynb)
 DVCM traces ·
-
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fsurge_device_verification.ipynb)
 Surge devices
 

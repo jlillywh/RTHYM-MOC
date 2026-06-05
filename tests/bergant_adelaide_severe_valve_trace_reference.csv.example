@@ -1,0 +1,6 @@
+# source: He et al. (2025) Processes 13:3510 Fig. 4 — experimental valve pressure (severe, V0=1.4 m/s)
+# method: WebPlotDigitizer — see docs/bergant_adelaide_verification.md
+# pressure_unit: gauge
+# time_unit: s
+# case_id: severe_cavitation
+t_s,p_gauge_kPa

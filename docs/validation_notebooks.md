@@ -2,7 +2,15 @@
 
 **Start here on Binder:** [`examples/validation_notebooks_index.ipynb`](../examples/validation_notebooks_index.ipynb) (no simulations — navigation only).
 
-Pytest under `tests/` is the regression source of truth. The notebooks below are interactive mirrors: same references and pass/fail metrics where noted. For the full pytest↔notebook matrix (including pytest-only areas), see [validation_notebook_coverage.md](validation_notebook_coverage.md).
+Pytest under `tests/` is the **CI source of truth**. Notebooks replay the same cases
+where a Binder walkthrough helps. Each notebook is labeled by **trust model** —
+see [validation.md § Verification vs regression](validation.md#verification-vs-regression-read-this-first):
+
+- **Independent** — theory or another engine (R-THYM, EPANET/wntr, TSNet export, formulas)
+- **Snapshot** — golden trace from an earlier rthym-moc run (drift detection only)
+- **Design-rule** — expected trends on fixed geometries (sizing/placement sweeps)
+
+Full pytest↔notebook matrix: [validation_notebook_coverage.md](validation_notebook_coverage.md).
 
 ## Recommended order for new users
 
@@ -14,26 +22,28 @@ Pytest under `tests/` is the regression source of truth. The notebooks below are
 
 ## Verification notebooks (at a glance)
 
-| Notebook | What it proves | Primary pytest mirror(s) | Binder runtime (Run All, built `.venv`) |
-|----------|----------------|---------------------------|----------------------------------------|
-| [`quickstart_notebook.ipynb`](../examples/quickstart_notebook.ipynb) | Instant valve closure vs checked-in R-THYM JSON/CSV; exploratory shortened schedule | `test_joukowsky_rthym.py` | **~1 min** |
-| [`cross_engine_surge_verification.ipynb`](../examples/cross_engine_surge_verification.ipynb) | **TSNet** standpipe B.8 vs `tests/TSNet_Standpipe_B8_*`; **EPANET** pre-trip vs MOC on `complex_topology.inp` | `test_tsnet_standpipe_cross_engine.py`, `test_epanet_complex_topology_cross_engine.py` | **~25 s** (`[inp]`) |
-| [`long_pipe_valve_verification.ipynb`](../examples/long_pipe_valve_verification.ipynb) | Five-pipe equal-% closure vs `R-THYM_MOC_*` (Appendix B) | `test_long_pipe_valve.py` | **~3 min** full sim; set `RUN_SIMULATION = False` for reference-only plots |
-| [`epanet_import_verification.ipynb`](../examples/epanet_import_verification.ipynb) | `load_inp()` on `complex_topology.inp` + pump trip | `test_complex_topology_from_inp.py` | **~15 s** (needs `wntr`) |
-| [`gradual_closure_verification.ipynb`](../examples/gradual_closure_verification.ipynb) | Joukowsky vs slow-closure sweep (0.5 / 3 / 150 s) | `test_gradual_closure_benchmark.py` | **~30 s** |
-| [`dvcm_canonical_verification.ipynb`](../examples/dvcm_canonical_verification.ipynb) | **DVCM regression:** J1 head vs three `tests/dvcm_*_reference.json` | `test_dvcm_canonical_scenarios.py` | **~5 s** |
-| [`dvcm_physical_verification.ipynb`](../examples/dvcm_physical_verification.ipynb) | Junction mass-balance steps + collapse ΔH formulas | `test_dvcm_physical_verification.py` | **~15 s** |
-| [`dvcm_showcase.ipynb`](../examples/dvcm_showcase.ipynb) | Pedagogy: Legacy vs DVCM at a valve (not CI regression) | — (exploratory) | **~5–15 min** — DVCM run uses `dt = 1e-4` s over 10 s (**~100k steps**); Legacy uses `dt = 0.01` |
-| [`surge_device_verification.ipynb`](../examples/surge_device_verification.ipynb) | Standpipe, HPT, air valve (closure + trip + restart) | `test_surge_device_verification.py`, `test_surge_device_mitigation.py`, `test_air_valve.py`, `test_standpipe_surge_protection.py` | **~20 s** (`RUN_TSNET = False` by default) |
-| [`surge_design_rules_verification.ipynb`](../examples/surge_design_rules_verification.ipynb) | Why larger standpipe / nearer HPT helps (sweeps) | `test_tank_size_benchmark.py`, `test_device_placement_benchmark.py` | **~45 s** |
+| Notebook | Trust model | What it proves | Primary pytest mirror(s) | Binder runtime |
+|----------|-------------|----------------|---------------------------|----------------|
+| [`quickstart_notebook.ipynb`](../examples/quickstart_notebook.ipynb) | Independent | R-THYM Joukowsky cross-engine | `test_joukowsky_rthym.py` | **~1 min** |
+| [`cross_engine_surge_verification.ipynb`](../examples/cross_engine_surge_verification.ipynb) | Independent | TSNet B.8 + EPANET pre-trip | `test_tsnet_standpipe_cross_engine.py`, `test_epanet_complex_topology_cross_engine.py` | **~25 s** |
+| [`long_pipe_valve_verification.ipynb`](../examples/long_pipe_valve_verification.ipynb) | Independent | R-THYM long-pipe valve study | `test_long_pipe_valve.py` | **~3 min** |
+| [`epanet_import_verification.ipynb`](../examples/epanet_import_verification.ipynb) | Independent | EPANET steady state + trip | `test_complex_topology_from_inp.py` | **~15 s** |
+| [`gradual_closure_verification.ipynb`](../examples/gradual_closure_verification.ipynb) | Independent | Joukowsky / Allievi sweep | `test_gradual_closure_benchmark.py` | **~30 s** |
+| [`dvcm_physical_verification.ipynb`](../examples/dvcm_physical_verification.ipynb) | Independent | Mass step + collapse ΔH formulas | `test_dvcm_physical_verification.py` | **~15 s** |
+| [`bergant_adelaide_verification.ipynb`](../examples/bergant_adelaide_verification.ipynb) | Independent | Bergant lab peaks + digitized He Fig. 4 trace | `test_dvcm_bergant_adelaide_experiment.py`, `test_dvcm_bergant_adelaide_trace.py` | **~5 s** |
+| [`surge_device_verification.ipynb`](../examples/surge_device_verification.ipynb) | Independent | Standpipe, HPT, air valve vs analytical refs | `test_surge_device_verification.py`, … | **~20 s** |
+| [`dvcm_canonical_verification.ipynb`](../examples/dvcm_canonical_verification.ipynb) | **Snapshot** | Replay golden `tests/dvcm_*_reference.json` | `test_dvcm_canonical_scenarios.py` | **~5 s** |
+| [`surge_design_rules_verification.ipynb`](../examples/surge_design_rules_verification.ipynb) | Design-rule | Size + placement sweeps | `test_tank_size_benchmark.py`, … | **~45 s** |
+| [`dvcm_showcase.ipynb`](../examples/dvcm_showcase.ipynb) | — | Pedagogy (Legacy vs DVCM) | — | **~5–15 min** |
 
 ## DVCM: which notebook?
 
-| Question | Open |
-|----------|------|
-| Does my build match the checked-in JSON regression traces? | **`dvcm_canonical_verification.ipynb`** |
-| Do cavity volume steps and collapse ΔH match theory? | `dvcm_physical_verification.ipynb` |
-| How does DVCM differ from Legacy on a valve network? | `dvcm_showcase.ipynb` (slow — fine for exploration, not the CI gate) |
+| Question | Open | Trust model |
+|----------|------|-------------|
+| Does my build still match the checked-in golden JSON traces? | **`dvcm_canonical_verification.ipynb`** | Snapshot |
+| Do cavity volume steps and collapse ΔH match theory? | `dvcm_physical_verification.ipynb` | Independent |
+| Does DVCM match Bergant Adelaide lab data (peaks + digitized trace)? | `bergant_adelaide_verification.ipynb` | Independent |
+| How does DVCM differ from Legacy on a valve network? | `dvcm_showcase.ipynb` (slow — exploratory) | — |
 
 ## Surge: which notebook?
 
