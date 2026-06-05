@@ -564,7 +564,20 @@ pipe.flow_gpm       = 500.0    # GPM, initial steady-state flow (+ = from→to)
 pipe.wall_thickness = 0.25     # inches (used only if youngs_modulus > 0; <= 0 is sanitized to 0.01)
 pipe.youngs_modulus = 0.0      # psi (0 = rigid pipe, default wave speed ~4000 ft/s)
 pipe.poissons_ratio = 0.3      # (used only if youngs_modulus > 0)
+pipe.elevation_profile = []    # optional [(chainage_ft, elevation_ft), ...] survey table
 ```
+
+When `elevation_profile` is empty (default), each MOC grid point uses ground
+elevation linearly interpolated between `from_node` and `to_node` elevations.
+Provide at least two `(chainage_ft, elevation_ft)` pairs measured from the
+upstream pipe end to override with a piecewise-linear survey (used for profile
+gauge pressure and future interior cavitation checks).
+
+```python
+pipe.elevation_profile = [(0.0, 120.0), (26400.0, 340.0), (52800.0, 95.0)]
+```
+
+SI helper: `pipe_si(..., elevation_profile_m=[(0.0, 36.6), ...])`.
 
 `pipe.minor_loss` is a dimensionless local-loss coefficient $K$ for bends,
 tees, fittings, entrance/exit losses, or any other concentrated resistance you

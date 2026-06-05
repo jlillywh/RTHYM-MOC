@@ -315,6 +315,10 @@ PYBIND11_MODULE(_rthym_moc, m) {
         wall_thickness : float, inches   (for elastic wave speed; default 0.25)
         youngs_modulus : float, psi      (0 = rigid pipe → default 4000 ft/s)
         poissons_ratio : float           (default 0.3)
+        elevation_profile : list[tuple[float, float]]
+            Optional piecewise-linear survey as (chainage_ft, elevation_ft) from
+            the upstream pipe end. Empty → linear between from_node and to_node
+            elevations (default).
         )pbdoc")
         .def(py::init<>())
         .def_readwrite("id",             &PipeInput::id)
@@ -327,7 +331,8 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def_readwrite("flow_gpm",       &PipeInput::flow_gpm)
         .def_readwrite("wall_thickness", &PipeInput::wall_thickness)
         .def_readwrite("youngs_modulus", &PipeInput::youngs_modulus)
-        .def_readwrite("poissons_ratio", &PipeInput::poissons_ratio);
+        .def_readwrite("poissons_ratio", &PipeInput::poissons_ratio)
+        .def_readwrite("elevation_profile", &PipeInput::elevation_profile);
 
     // ── CavitationModel Enum ─────────────────────────────────────────────
     py::enum_<CavitationModel>(m, "CavitationModel")

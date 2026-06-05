@@ -211,17 +211,17 @@ pipe_si(..., elevation_profile_m=[(0.0, 36.6), ...])
 
 ### Checklist
 
-- [ ] Add `elevation_profile` to `PipeInput` (empty → linear interpolation).
-- [ ] Interpolate `z[j]` at each interior grid point during `initGrid()`.
-- [ ] Store `z[j]` per pipe segment in `PipeState`.
-- [ ] Use `z[j]` when computing gauge pressure for profile export.
+- [x] Add `elevation_profile` to `PipeInput` (empty → linear interpolation).
+- [x] Interpolate `z[j]` at each interior grid point during `initGrid()`.
+- [x] Store `z[j]` per pipe segment in `PipeState`.
+- [x] Use `z[j]` when computing gauge pressure for profile export.
 - [ ] Use `z[j]` for **LegacyClamp** at interior points (see Phase 3) and for
       pre-DVCM vapor screening tests.
 - [ ] EPANET import: optional `[RTHYM]` elevation table per pipe (defer if heavy).
-- [ ] Add `tests/test_pipe_elevation_profile.py`:
-      - [ ] Summit elevation produces lowest static pressure at correct chainage.
-      - [ ] Linear fallback matches current behavior for two-node pipes.
-- [ ] Document in README `PipeInput` section and this roadmap.
+- [x] Add `tests/test_pipe_elevation_profile.py`:
+      - [x] Summit elevation produces lowest static pressure at correct chainage.
+      - [x] Linear fallback matches current behavior for two-node pipes.
+- [x] Document in README `PipeInput` section and this roadmap.
 
 ### Exit criteria
 

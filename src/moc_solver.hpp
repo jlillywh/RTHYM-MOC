@@ -121,6 +121,10 @@ struct PipeInput {
     double  wall_thickness   = 0.25;   // inches
     double  youngs_modulus   = 0.0;    // psi  (0 = rigid, default wave speed)
     double  poissons_ratio   = 0.3;
+
+    // Optional piecewise-linear survey (chainage_ft from from_node, elevation_ft).
+    // Empty → linear interpolation between from_node and to_node elevations.
+    std::vector<std::pair<double, double>> elevation_profile;
 };
 
 // ── Simulation results ───────────────────────────────────────────────────────
@@ -218,6 +222,7 @@ struct PipeState {
     std::vector<double> H;          // head (ft)          [num_nodes]
     std::vector<double> V;          // velocity (ft/s)    [num_nodes]
     std::vector<double> V_filtered; // IIR-filtered V for unsteady friction
+    std::vector<double> z;          // ground elevation (ft) at each grid point [num_nodes]
 };
 
 // ── Internal node runtime state ──────────────────────────────────────────────
@@ -397,6 +402,10 @@ private:
     double pipeGridElevationFt(const PipeState& ps, int grid_index) const;
     static std::vector<int> buildProfilePointIndices(int num_nodes, int stride);
     void initializePipeProfileCapture(SimResults& results);
+    void buildPipeGridElevations(PipeState& ps, const PipeInput& p) const;
+    static double interpolateElevationAtChainageFt(
+        const std::vector<std::pair<double, double>>& profile,
+        double chainage_ft);
 };
 
 } // namespace rthym

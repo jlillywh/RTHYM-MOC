@@ -74,6 +74,7 @@ class PipeInput:
     wall_thickness: float
     youngs_modulus: float
     poissons_ratio: float
+    elevation_profile: list[tuple[float, float]]
 
     def __init__(self) -> None: ...
 

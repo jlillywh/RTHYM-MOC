@@ -612,6 +612,8 @@ void MOCSolver::initGrid() {
             }
         }
 
+        buildPipeGridElevations(ps, p);
+
         // ── Linear HGL + uniform velocity initial condition ───────────────
         ps.H.resize(ps.num_nodes);
         ps.V.resize(ps.num_nodes, vel_init);
@@ -2191,6 +2193,83 @@ void MOCSolver::stepMOC() {
     t_now_ += dt_;
 }
 
+// ── Pipe elevation profile helpers ────────────────────────────────────────────
+
+double MOCSolver::interpolateElevationAtChainageFt(
+    const std::vector<std::pair<double, double>>& profile,
+    double chainage_ft) {
+    if (profile.empty()) {
+        return 0.0;
+    }
+    if (chainage_ft <= profile.front().first) {
+        return profile.front().second;
+    }
+    if (chainage_ft >= profile.back().first) {
+        return profile.back().second;
+    }
+    for (std::size_t k = 1; k < profile.size(); ++k) {
+        const double x0 = profile[k - 1].first;
+        const double x1 = profile[k].first;
+        if (chainage_ft <= x1) {
+            const double z0 = profile[k - 1].second;
+            const double z1 = profile[k].second;
+            const double denom = x1 - x0;
+            if (std::abs(denom) < 1e-12) {
+                return z1;
+            }
+            const double frac = (chainage_ft - x0) / denom;
+            return z0 + frac * (z1 - z0);
+        }
+    }
+    return profile.back().second;
+}
+
+void MOCSolver::buildPipeGridElevations(PipeState& ps, const PipeInput& p) const {
+    ps.z.resize(ps.num_nodes);
+
+    double z_from = 0.0;
+    double z_to   = 0.0;
+    const auto fit = node_idx_map_.find(p.from_node);
+    const auto tit = node_idx_map_.find(p.to_node);
+    if (fit != node_idx_map_.end()) {
+        z_from = nodes_[fit->second].input.elevation;
+    }
+    if (tit != node_idx_map_.end()) {
+        z_to = nodes_[tit->second].input.elevation;
+    }
+
+    const double dx = (ps.num_nodes > 1)
+        ? (ps.L / static_cast<double>(ps.num_nodes - 1))
+        : 0.0;
+
+    if (p.elevation_profile.empty()) {
+        for (int j = 0; j < ps.num_nodes; ++j) {
+            const double frac = (ps.num_nodes > 1)
+                ? static_cast<double>(j) / static_cast<double>(ps.num_nodes - 1)
+                : 0.0;
+            ps.z[j] = z_from + frac * (z_to - z_from);
+        }
+        return;
+    }
+
+    if (p.elevation_profile.size() < 2) {
+        throw std::invalid_argument(
+            "Pipe '" + p.id + "': elevation_profile requires at least 2 "
+            "(chainage_ft, elevation_ft) points");
+    }
+
+    std::vector<std::pair<double, double>> profile = p.elevation_profile;
+    std::sort(profile.begin(), profile.end(),
+              [](const std::pair<double, double>& a, const std::pair<double, double>& b) {
+                  return a.first < b.first;
+              });
+
+    for (int j = 0; j < ps.num_nodes; ++j) {
+        const double chainage_ft = static_cast<double>(j) * dx;
+        ps.z[j] = interpolateElevationAtChainageFt(profile, chainage_ft);
+    }
+}
+
 // ── Pipe profile capture helpers ──────────────────────────────────────────────
 
 std::vector<int> MOCSolver::buildProfilePointIndices(int num_nodes, int stride) {
@@ -2210,21 +2289,10 @@ std::vector<int> MOCSolver::buildProfilePointIndices(int num_nodes, int stride) 
 }
 
 double MOCSolver::pipeGridElevationFt(const PipeState& ps, int grid_index) const {
-    double z_from = 0.0;
-    double z_to   = 0.0;
-    const auto fit = node_idx_map_.find(ps.from_id);
-    const auto tit = node_idx_map_.find(ps.to_id);
-    if (fit != node_idx_map_.end()) {
-        z_from = nodes_[fit->second].input.elevation;
+    if (grid_index >= 0 && grid_index < static_cast<int>(ps.z.size())) {
+        return ps.z[static_cast<std::size_t>(grid_index)];
     }
-    if (tit != node_idx_map_.end()) {
-        z_to = nodes_[tit->second].input.elevation;
-    }
-    if (ps.num_nodes <= 1) {
-        return z_from;
-    }
-    const double frac = static_cast<double>(grid_index) / static_cast<double>(ps.num_nodes - 1);
-    return z_from + frac * (z_to - z_from);
+    return 0.0;
 }
 
 void MOCSolver::initializePipeProfileCapture(SimResults& results) {
