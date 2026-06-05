@@ -603,9 +603,13 @@ void MOCSolver::initGrid() {
         }
         double f_calc = 0.02;
         if (std::abs(vel_init) > 1e-4) {
-            f_calc = darcyFFromHazenWilliamsAtVelocity(ps, p, vel_init, f_calc);
+            // Keep the design-flow HW head loss already computed above; recomputing
+            // f from |V| inside darcyFFromHazenWilliamsAtVelocity can diverge on
+            // MSVC when Q_gpm is back-calculated from grid velocity.
+            f_calc = (Hf_pipe_hw * ps.D * 2.0 * G_FT_S2)
+                   / (p.length * vel_init * vel_init);
         }
-        ps.f = f_calc;
+        ps.f = std::max(0.001, std::min(f_calc, 0.5));
         const double Hf_minor = std::max(0.0, p.minor_loss) * vel_init * vel_init / (2.0 * G_FT_S2);
         const double Hf_pipe = Hf_pipe_hw + Hf_minor;
 
