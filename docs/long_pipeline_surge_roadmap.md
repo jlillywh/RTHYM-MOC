@@ -172,10 +172,13 @@ results = solver.run(..., record_pipe_profiles=True, profile_stride=4)
 
 ### Exit criteria
 
-- Profile export is opt-in; legacy `run()` output unchanged when flag is false.
-- Mid-pipe head on a single-pipe Joukowsky case matches analytical within
-  existing project tolerances.
-- No measurable slowdown (&lt; 5%) when profile export is disabled.
+- [x] Profile export is opt-in; legacy `run()` output unchanged when flag is false
+      (`test_profile_export_disabled_by_default`).
+- [x] Mid-pipe head on a single-pipe Joukowsky case matches analytical within
+      existing project tolerances (`test_midpipe_head_matches_joukowsky_after_downstream_closure`,
+      ±5 ft, solver-adjusted wave speed, frictionless run).
+- [x] No measurable slowdown (&lt; 5%) when profile export is disabled
+      (`tests/test_long_pipeline_perf.py` vs `tests/long_pipeline_perf_baseline.json`, `pytest -m slow`).
 
 ---
 
