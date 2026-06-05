@@ -100,6 +100,13 @@ class CavitationModel:
     DVCM: CavitationModel
 
 
+class TransientFrictionModel:
+    Steady: TransientFrictionModel
+    QuasiSteady: TransientFrictionModel
+    BrunoneIIR: TransientFrictionModel
+    Vitkovsky: TransientFrictionModel
+
+
 class ControlRuleInput:
     id: str
     type: ControlType
@@ -132,6 +139,8 @@ class MOCSolver:
     def set_pump_speed(self, id: str, pct_speed: float) -> None: ...
     def set_cavitation_model(self, cavitation_model: CavitationModel) -> None: ...
     def get_cavitation_model(self) -> CavitationModel: ...
+    def set_friction_model(self, friction_model: TransientFrictionModel) -> None: ...
+    def get_friction_model(self) -> TransientFrictionModel: ...
     def set_enable_interior_dvcm(self, enable: bool) -> None: ...
     def get_enable_interior_dvcm(self) -> bool: ...
     def set_max_segments_per_pipe(self, max_segments: int) -> None: ...
@@ -158,6 +167,7 @@ class MOCSolver:
         record_pipe_profiles: bool = False,
         profile_stride: int = 1,
         enable_interior_dvcm: bool = False,
+        friction_model: TransientFrictionModel | None = None,
     ) -> SimResultsDict: ...
 
 

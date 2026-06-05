@@ -39,6 +39,7 @@ are which.
 | `tests/test_standpipe_surge_protection.py` | Joukowsky peak + standpipe mass-oscillation formula | (partial) `surge_device_verification.ipynb` |
 | `tests/test_surge_device_verification.py` | Joukowsky, polytropic precharge law, Appendix B.8 refs | `surge_device_verification.ipynb` |
 | `tests/test_tsnet_standpipe_cross_engine.py` | Checked-in **TSNet** B.8 trace (exported independently) | `cross_engine_surge_verification.ipynb` |
+| `tests/test_transient_friction_literature.py` | Wylie & Streeter 2·H<sub>f</sub> decay; Bergant et al. directional LP-07; see [transient_friction_verification.md](transient_friction_verification.md) | — |
 | `tests/test_pipe_materials.py` | Analytical Korteweg wave speed | — |
 
 ### Maintainer parity (R-THYM web app — author cross-check)

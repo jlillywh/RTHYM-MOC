@@ -564,6 +564,13 @@ def test_run_si_forwards_cavitation_model_kwarg():
     assert solver.run_kwargs["cavitation_model"] == m.CavitationModel.LegacyClamp
 
 
+def test_run_si_forwards_friction_model_kwarg():
+    solver = _RunRecordingSolver()
+    m.run_si(solver, 0.1, dt=0.01, friction_model=m.TransientFrictionModel.Steady)
+    assert solver.run_kwargs is not None
+    assert solver.run_kwargs["friction_model"] == m.TransientFrictionModel.Steady
+
+
 def test_run_si_forwards_profile_export_kwargs():
     solver = _RunRecordingSolver()
     m.run_si(solver, 0.1, dt=0.01, record_pipe_profiles=True, profile_stride=3)
