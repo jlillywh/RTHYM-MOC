@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import time
 
 import numpy as np
 import pytest
@@ -62,6 +61,7 @@ def test_profile_export_disabled_by_default() -> None:
     assert "pipe_profile_head" not in results
     assert "pipe_profile_pressure" not in results
     assert "pipe_profile_velocity_fps" not in results
+    assert "pipe_profile_cavitation" not in results
 
 
 def test_profile_export_shapes_and_endpoints() -> None:
@@ -306,18 +306,29 @@ def test_multi_pipe_profile_export() -> None:
         assert chainage[-1] == pytest.approx(length_ft, rel=1e-3)
 
 
-def test_profile_export_disabled_faster_than_enabled() -> None:
-    """Phase 1 exit: disabled export must not dominate runtime vs enabled runs."""
+def test_profile_export_enabled_materializes_interior_grids() -> None:
+    """Enabled export adds interior profile arrays; disabled path omits them.
+
+    Wall-clock overhead is gated by ``tests/test_long_pipeline_perf.py`` (LP-PERF-01).
+    Sub-millisecond micro-benchmarks on short pipes are too noisy for CI.
+    """
     solver = _single_pipe_solver()
-    reps = 4
+    disabled = solver.run(total_time=0.2, dt=0.01, record_pipe_profiles=False)
+    enabled = solver.run(total_time=0.2, dt=0.01, record_pipe_profiles=True)
 
-    def _elapsed(record: bool) -> float:
-        start = time.perf_counter()
-        for _ in range(reps):
-            solver.run(total_time=0.2, dt=0.01, record_pipe_profiles=record)
-        return time.perf_counter() - start
+    profile_keys = (
+        "pipe_profile_chainage_ft",
+        "pipe_profile_head",
+        "pipe_profile_pressure",
+        "pipe_profile_velocity_fps",
+        "pipe_profile_cavitation",
+    )
+    for key in profile_keys:
+        assert key not in disabled
+        assert key in enabled
 
-    t_disabled = _elapsed(False)
-    t_enabled = _elapsed(True)
-    assert t_disabled < t_enabled
-    assert t_enabled / t_disabled > 1.0
+    enabled_bytes = sum(
+        int(np.asarray(enabled[key]["P1"]).nbytes) for key in profile_keys
+    )
+    assert enabled_bytes > 0
+    assert np.asarray(enabled["pipe_profile_head"]["P1"]).shape[0] == len(enabled["time"])

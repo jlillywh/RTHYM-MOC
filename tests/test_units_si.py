@@ -601,6 +601,9 @@ def test_results_to_si_converts_pipe_profiles():
         "pipe_profile_velocity_fps": {
             "P1": np.array([[1.0, 2.0, 3.0]]),
         },
+        "pipe_profile_cavitation": {
+            "P1": np.array([[0, 1], [1, 0]]),
+        },
     }
 
     si = m.results_to_si(results)
@@ -614,6 +617,10 @@ def test_results_to_si_converts_pipe_profiles():
     np.testing.assert_allclose(
         si["pipe_profile_velocity_m_s"]["P1"],
         results["pipe_profile_velocity_fps"]["P1"] * m.FTS_TO_MS,
+    )
+    np.testing.assert_array_equal(
+        si["pipe_profile_cavitation"]["P1"],
+        results["pipe_profile_cavitation"]["P1"],
     )
 
 

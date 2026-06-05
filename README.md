@@ -564,7 +564,20 @@ pipe.flow_gpm       = 500.0    # GPM, initial steady-state flow (+ = from→to)
 pipe.wall_thickness = 0.25     # inches (used only if youngs_modulus > 0; <= 0 is sanitized to 0.01)
 pipe.youngs_modulus = 0.0      # psi (0 = rigid pipe, default wave speed ~4000 ft/s)
 pipe.poissons_ratio = 0.3      # (used only if youngs_modulus > 0)
+pipe.elevation_profile = []    # optional [(chainage_ft, elevation_ft), ...] survey table
 ```
+
+When `elevation_profile` is empty (default), each MOC grid point uses ground
+elevation linearly interpolated between `from_node` and `to_node` elevations.
+Provide at least two `(chainage_ft, elevation_ft)` pairs measured from the
+upstream pipe end to override with a piecewise-linear survey (used for profile
+gauge pressure and future interior cavitation checks).
+
+```python
+pipe.elevation_profile = [(0.0, 120.0), (26400.0, 340.0), (52800.0, 95.0)]
+```
+
+SI helper: `pipe_si(..., elevation_profile_m=[(0.0, 36.6), ...])`.
 
 `pipe.minor_loss` is a dimensionless local-loss coefficient $K$ for bends,
 tees, fittings, entrance/exit losses, or any other concentrated resistance you
@@ -695,14 +708,15 @@ The cavity channels (`node_cavity_volume`, `node_cavity_active`, `node_cavity_co
 
 #### Optional per-pipe MOC profiles
 
-When `record_pipe_profiles=True`, four additional top-level keys appear.  They are **absent** when the flag is `False` (the default), so existing post-processing code is unaffected.
+When `record_pipe_profiles=True`, five additional top-level keys appear.  They are **absent** when the flag is `False` (the default), so existing post-processing code is unaffected.
 
 | Key | Type | Shape | Description |
 |---|---|---|---|
 | `pipe_profile_chainage_ft` | `dict[str, ndarray]` | `(M,)` per pipe | Distance from the upstream pipe end, ft |
 | `pipe_profile_head` | `dict[str, ndarray]` | `(N, M)` per pipe | Piezometric head (HGL) at each chainage station, ft |
-| `pipe_profile_pressure` | `dict[str, ndarray]` | `(N, M)` per pipe | Gauge pressure at each chainage station, psi (linear elevation interpolation between endpoint node elevations) |
+| `pipe_profile_pressure` | `dict[str, ndarray]` | `(N, M)` per pipe | Gauge pressure at each chainage station, psi (uses local `z(x)` from `elevation_profile` or endpoint interpolation) |
 | `pipe_profile_velocity_fps` | `dict[str, ndarray]` | `(N, M)` per pipe | Flow velocity at each chainage station, ft/s |
+| `pipe_profile_cavitation` | `dict[str, ndarray]` | `(N, M)` per pipe | `1` when gauge pressure ≤ vapor pressure at local `z(x)` (pre-DVCM screening) |
 
 `N` is the number of recorded time steps (same as `len(results["time"])`).  `M` is the number of profile points along that pipe after spatial downsampling.  The first and last chainage values are the upstream and downstream pipe ends; the corresponding profile heads match `node_head` at those boundary nodes.
 
@@ -713,6 +727,7 @@ x_ft   = np.array(results["pipe_profile_chainage_ft"]["P1"])      # (M,) float64
 H_prof = np.array(results["pipe_profile_head"]["P1"])            # (N, M) float64, ft
 P_prof = np.array(results["pipe_profile_pressure"]["P1"])        # (N, M) float64, psi
 V_prof = np.array(results["pipe_profile_velocity_fps"]["P1"])    # (N, M) float64, ft/s
+C_prof = np.array(results["pipe_profile_cavitation"]["P1"])      # (N, M) int, 0/1
 ```
 
 `results_to_si()` and `run_si()` convert these to SI keys when present:
@@ -1405,11 +1420,15 @@ For `initial_flows`, use the original EPANET link ID for pumps and valves (e.g. 
 | `[TIMES]` | Patten timestep (hours → seconds) |
 | `[CURVES]` | Pump design points |
 | `[OPTIONS]` | `Units`, `Headloss` formula |
-| `[RTHYM]` | Surge-device overrides (`Standpipe`, `HydropneumaticTank`, `AirValve`, `CheckValve`); units follow `[OPTIONS] Units` |
+| `[RTHYM]` | Surge-device overrides (`Standpipe`, `HydropneumaticTank`, `AirValve`, `CheckValve`); optional `PipeID PipeElevation chainage=elevation …` survey rows; units follow `[OPTIONS] Units` |
 
 All US customary unit variants (GPM, CFS, MGD, IMGD, AFD) and SI metric variants (LPS, LPM, MLD, CMH, CMD) are supported.
 
-The custom ``[RTHYM]`` section uses the same ``Units`` setting: with ``UNITS LPS`` (or other SI variants), write standpipe areas in m², vessel volumes in m³, diameters in mm, and vent offsets in m.  With ``UNITS GPM`` (or other US variants), use ft², ft³, inches, and ft.  No separate flag is required.
+The custom ``[RTHYM]`` section uses the same ``Units`` setting: with ``UNITS LPS`` (or other SI variants), write standpipe areas in m², vessel volumes in m³, diameters in mm, vent offsets in m, and pipe-survey chainage/elevation in m.  With ``UNITS GPM`` (or other US variants), use ft², ft³, inches, ft, and ft for surveys.  Example pipe survey row::
+
+    P_LONG   PipeElevation   0=120   26400=340   52800=95
+
+No separate flag is required.
 
 ### Pump, valve, and check-valve generated IDs
 

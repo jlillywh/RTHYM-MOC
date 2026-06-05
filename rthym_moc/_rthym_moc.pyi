@@ -26,6 +26,7 @@ class SimResultsDict(_SimResultsRequired, total=False):
     pipe_profile_head: dict[str, NDArray[np.float64]]
     pipe_profile_pressure: dict[str, NDArray[np.float64]]
     pipe_profile_velocity_fps: dict[str, NDArray[np.float64]]
+    pipe_profile_cavitation: dict[str, NDArray[np.int_]]
 
 
 class NodeInput:
@@ -74,6 +75,7 @@ class PipeInput:
     wall_thickness: float
     youngs_modulus: float
     poissons_ratio: float
+    elevation_profile: list[tuple[float, float]]
 
     def __init__(self) -> None: ...
 

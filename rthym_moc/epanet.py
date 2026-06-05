@@ -21,7 +21,8 @@ Supported sections
  [CURVES]      → Pump H-Q curves
  [STATUS]      → Per-link status overrides (OPEN / CLOSED / CV)
  [OPTIONS]     → Units, Headloss formula
- [RTHYM]       → Surge-control component overrides (Standpipe, HydropneumaticTank, AirValve)
+ [RTHYM]       → Surge-control overrides and optional per-pipe elevation surveys
+                 (``PipeElevation`` rows: ``chainage=elevation`` pairs)
 
 ``[RTHYM]`` numeric parameters follow the file's ``[OPTIONS] Units`` setting:
 US variants (GPM, CFS, …) use ft, ft², ft³, and inches; SI variants (LPS, LPM, …)
@@ -179,6 +180,8 @@ def _get_option(sec: dict, key: str, default: str) -> str:
 
 # NodeType strings that map to surge-control components
 _RTHYM_SURGE_TYPES = {"Standpipe", "HydropneumaticTank", "AirValve", "CheckValve", "Pump"}
+# Pipe-level [RTHYM] row types (handled separately from node overrides)
+_RTHYM_PIPE_ROW_TYPES = frozenset({"PipeElevation"})
 
 _RTHYM_LENGTH_KEYS = frozenset({"air_release_head"})
 _RTHYM_AREA_KEYS = frozenset({"tank_area"})
@@ -251,6 +254,8 @@ def _parse_rthym_overrides(
             continue
         nid   = row[0]
         ntype = row[1]
+        if ntype in _RTHYM_PIPE_ROW_TYPES:
+            continue
         if ntype not in _RTHYM_SURGE_TYPES:
             # Type-only rows (no key=value tokens) are treated as comments/placeholders.
             if len(row) >= 3:
@@ -270,6 +275,58 @@ def _parse_rthym_overrides(
                     pass
         overrides[nid] = _convert_rthym_params_to_us(params, si_units=si_units)
     return overrides
+
+
+def _parse_rthym_pipe_elevation_profiles(
+    sec: dict,
+    units: str,
+) -> dict[str, list[tuple[float, float]]]:
+    """Parse optional ``[RTHYM]`` pipe elevation survey rows.
+
+    Each row has the form::
+
+        PipeID   PipeElevation   chainage=elevation …
+
+    Chainage is measured from the upstream pipe end (``from_node``).  Values
+    follow the EPANET ``[OPTIONS] Units`` keyword (ft or m).  At least two
+    ``chainage=elevation`` pairs are required per pipe.
+    """
+    si_units = units in _SI_UNITS
+    profiles: dict[str, list[tuple[float, float]]] = {}
+
+    for row in sec.get("RTHYM", []):
+        if len(row) < 3 or row[1] != "PipeElevation":
+            continue
+
+        pipe_id = row[0]
+        points: list[tuple[float, float]] = []
+        for tok in row[2:]:
+            if "=" not in tok:
+                continue
+            chainage_s, _, elev_s = tok.partition("=")
+            try:
+                chainage = float(chainage_s.strip())
+                elevation = float(elev_s.strip())
+            except ValueError:
+                continue
+            if si_units:
+                chainage = length_m_to_ft(chainage)
+                elevation = length_m_to_ft(elevation)
+            points.append((chainage, elevation))
+
+        if len(points) < 2:
+            warnings.warn(
+                f"[RTHYM] section: pipe '{pipe_id}' PipeElevation row needs at least "
+                "two chainage=elevation pairs; skipped.",
+                UserWarning,
+                stacklevel=4,
+            )
+            continue
+
+        points.sort(key=lambda pair: pair[0])
+        profiles[pipe_id] = points
+
+    return profiles
 
 
 # ── Roughness conversions ─────────────────────────────────────────────────────
@@ -671,6 +728,7 @@ def load_inp(
 
     curves = _parse_curves(sec)
     rthym_overrides = _parse_rthym_overrides(sec, units)
+    rthym_pipe_elevations = _parse_rthym_pipe_elevation_profiles(sec, units)
     patterns = _parse_patterns(sec)
     base_demands: dict[str, float] = {}
     demand_patterns: dict[str, str] = {}
@@ -980,6 +1038,20 @@ def load_inp(
 
     for p in pipes:
         p.flow_gpm = init_flows.get(p.id, p.flow_gpm)
+
+    if rthym_pipe_elevations:
+        pipe_by_id = {p.id: p for p in pipes}
+        for pipe_id, profile in rthym_pipe_elevations.items():
+            pipe = pipe_by_id.get(pipe_id)
+            if pipe is None:
+                warnings.warn(
+                    f"[RTHYM] section: pipe '{pipe_id}' PipeElevation references an "
+                    "unknown [PIPES] link; skipped.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                continue
+            pipe.elevation_profile = list(profile)
 
     # Stub pipes inherit the flow of the corresponding pump/valve link
     for i, lid in enumerate(pump_link_ids):
