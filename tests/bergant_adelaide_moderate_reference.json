@@ -1,0 +1,36 @@
+{
+  "case_id": "moderate_cavitation",
+  "label": "Bergant Adelaide — moderate vaporous cavitation (V₀ = 0.3 m/s)",
+  "source": [
+    "Bergant & Simpson (1999), J. Hydraul. Eng. 125(8):835–848",
+    "He, Li & Guo (2025), Processes 13:3510 — Table 1, Fig. 3 (experimental maximum valve pressure)"
+  ],
+  "geometry": {
+    "pipe_length_m": 37.23,
+    "pipe_diameter_mm": 22.1,
+    "wall_thickness_mm": 1.63,
+    "wave_speed_m_s": 1319,
+    "elevation_difference_m": 2.03,
+    "valve_closure_time_s": 0.009
+  },
+  "steady_velocity_m_s": 0.3,
+  "upstream_head_m": 22.0,
+  "peak_metric": "maximum_absolute_kPa",
+  "experimental_valve_kPa": {
+    "maximum_peak_kPa": 1015
+  },
+  "tolerances": {
+    "maximum_peak_rel": 0.15
+  },
+  "analysis": {
+    "ignore_before_s": 0.02,
+    "require_cavity": false
+  },
+  "solver": {
+    "dt_s": 0.0001,
+    "total_time_s": 0.6,
+    "notes": "Scalar peak check only. Full traces not in open repos; see docs/bergant_adelaide_verification.md. Fu et al. (2025) use ~64 segments for mesh independence; DVCM collapse peaks are grid-sensitive."
+  },
+  "data_status": "scalar_peaks_from_literature",
+  "trace_artifact": null
+}

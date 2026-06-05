@@ -2,9 +2,15 @@
 
 **New users:** start with [validation_notebooks.md](validation_notebooks.md) or [examples/validation_notebooks_index.ipynb](../examples/validation_notebooks_index.ipynb) (recommended order, runtimes, pytest mirrors).
 
-Pytest is the **source of truth** for regression gates. Jupyter notebooks are **interactive mirrors**: they replay the same geometries, references, and tolerances where a Binder walkthrough adds review value. This map shows what is mirrored today and what remains pytest-only.
+Pytest is the **CI source of truth**. Jupyter notebooks are **interactive mirrors** with the same pass/fail metrics where noted. Each notebook is labeled by **trust model** — see [validation.md § Verification vs regression](validation.md#verification-vs-regression-read-this-first):
 
-**Legend**
+| Trust model | Meaning |
+|---|---|
+| **Independent** | Compared to theory or another engine (not a prior rthym-moc snapshot) |
+| **Snapshot** | Compared to golden JSON from an earlier rthym-moc run |
+| **Design-rule** | Monotonic or bounded trends on a fixed geometry |
+
+**Legend (coverage)**
 
 | Status | Meaning |
 |--------|---------|
@@ -15,51 +21,53 @@ Pytest is the **source of truth** for regression gates. Jupyter notebooks are **
 
 ## Binder verification notebooks
 
-| Notebook | Primary pytest mirror | Status |
-|----------|----------------------|--------|
-| [examples/quickstart_notebook.ipynb](../examples/quickstart_notebook.ipynb) | `test_joukowsky_rthym.py` | **Partial** — Joukowsky R-THYM cross-engine (not long-pipe) |
-| [examples/long_pipe_valve_verification.ipynb](../examples/long_pipe_valve_verification.ipynb) | `test_long_pipe_valve.py` | **Full** — second major R-THYM study (Appendix B.1–B.5) |
-| [examples/epanet_import_verification.ipynb](../examples/epanet_import_verification.ipynb) | `test_complex_topology_from_inp.py` | **Full** — requires `wntr` |
-| [examples/gradual_closure_verification.ipynb](../examples/gradual_closure_verification.ipynb) | `test_gradual_closure_benchmark.py` | **Full** — closure-time sweep |
-| [examples/dvcm_canonical_verification.ipynb](../examples/dvcm_canonical_verification.ipynb) | `test_dvcm_canonical_scenarios.py` | **Full** — **DVCM regression:** three `tests/dvcm_*_reference.json` traces (quickstart-style overlays) |
-| [examples/dvcm_physical_verification.ipynb](../examples/dvcm_physical_verification.ipynb) | `test_dvcm_physical_verification.py` | **Full** — formula checks (not JSON trace replay) |
-| [examples/dvcm_showcase.ipynb](../examples/dvcm_showcase.ipynb) | — | **Partial** — pedagogy (Legacy vs DVCM valve; not JSON regression) |
-| [examples/cross_engine_surge_verification.ipynb](../examples/cross_engine_surge_verification.ipynb) | `test_tsnet_standpipe_cross_engine.py`, `test_epanet_complex_topology_cross_engine.py` | **Full** — checked-in TSNet B.8 trace + EPANET pre-trip vs MOC (wntr) |
-| [examples/surge_device_verification.ipynb](../examples/surge_device_verification.ipynb) | `test_surge_device_verification.py`, `test_surge_device_mitigation.py`, `test_air_valve.py`, `test_standpipe_surge_protection.py` | **Full** — B.8 standpipe, valve-side SP/HPT closure, HPT & air-valve pump trip, air-valve restart; TSNet §B.8.5 uses checked-in trace (+ optional live re-export); sizing preview links to design-rules notebook |
-| [examples/surge_design_rules_verification.ipynb](../examples/surge_design_rules_verification.ipynb) | `test_tank_size_benchmark.py`, `test_device_placement_benchmark.py`, … | **Partial** — standpipe size + HPT placement sweeps |
+| Notebook | Trust model | Primary pytest mirror | Status |
+|----------|-------------|----------------------|--------|
+| [examples/quickstart_notebook.ipynb](../examples/quickstart_notebook.ipynb) | Independent | `test_joukowsky_rthym.py` | **Partial** — R-THYM cross-engine |
+| [examples/long_pipe_valve_verification.ipynb](../examples/long_pipe_valve_verification.ipynb) | Independent | `test_long_pipe_valve.py` | **Full** — R-THYM (Appendix B.1–B.5) |
+| [examples/epanet_import_verification.ipynb](../examples/epanet_import_verification.ipynb) | Independent | `test_complex_topology_from_inp.py` | **Full** — requires `wntr` |
+| [examples/cross_engine_surge_verification.ipynb](../examples/cross_engine_surge_verification.ipynb) | Independent | `test_tsnet_standpipe_cross_engine.py`, `test_epanet_complex_topology_cross_engine.py` | **Full** — TSNet B.8 + EPANET pre-trip |
+| [examples/gradual_closure_verification.ipynb](../examples/gradual_closure_verification.ipynb) | Independent | `test_gradual_closure_benchmark.py` | **Full** — closure-time sweep |
+| [examples/dvcm_physical_verification.ipynb](../examples/dvcm_physical_verification.ipynb) | Independent | `test_dvcm_physical_verification.py` | **Full** — formula checks |
+| [examples/bergant_adelaide_verification.ipynb](../examples/bergant_adelaide_verification.ipynb) | Independent | `test_dvcm_bergant_adelaide_experiment.py`, `test_dvcm_bergant_adelaide_trace.py` | **Full** — peaks + digitized trace overlay |
+| [examples/surge_device_verification.ipynb](../examples/surge_device_verification.ipynb) | Independent | `test_surge_device_verification.py`, … | **Full** — Joukowsky / B.8 / device laws |
+| [examples/dvcm_canonical_verification.ipynb](../examples/dvcm_canonical_verification.ipynb) | **Snapshot** | `test_dvcm_canonical_scenarios.py` | **Full** — golden `tests/dvcm_*_reference.json` |
+| [examples/surge_design_rules_verification.ipynb](../examples/surge_design_rules_verification.ipynb) | Design-rule | `test_tank_size_benchmark.py`, … | **Partial** — size + placement sweeps |
+| [examples/dvcm_showcase.ipynb](../examples/dvcm_showcase.ipynb) | — | — | **Partial** — pedagogy only |
 
-## Cross-engine and analytical
+## Cross-engine and analytical (independent verification)
 
-| Test module | Notebook mirror | Status |
-|-------------|-----------------|--------|
-| `test_joukowsky_rthym.py` | `quickstart_notebook.ipynb` | **Partial** |
-| `test_long_pipe_valve.py` | `long_pipe_valve_verification.ipynb` | **Full** |
-| `test_complex_topology_from_inp.py` | `epanet_import_verification.ipynb` | **Full** |
-| `test_gradual_closure_benchmark.py` | `gradual_closure_verification.ipynb` | **Full** |
-| `examples/test_gradual_closure.py` | `gradual_closure_verification.ipynb` | **Script** → superseded for Binder |
-| `examples/test_wave_reflections.py` | — | **Script** |
-| `examples/test_surge_tank.py` | `surge_device_verification.ipynb` | **Partial** |
+| Test module | Trust model | Notebook mirror | Status |
+|-------------|-------------|-----------------|--------|
+| `test_joukowsky_rthym.py` | Independent | `quickstart_notebook.ipynb` | **Partial** |
+| `test_long_pipe_valve.py` | Independent | `long_pipe_valve_verification.ipynb` | **Full** |
+| `test_complex_topology_from_inp.py` | Independent | `epanet_import_verification.ipynb` | **Full** |
+| `test_gradual_closure_benchmark.py` | Independent | `gradual_closure_verification.ipynb` | **Full** |
+| `examples/test_gradual_closure.py` | Independent | `gradual_closure_verification.ipynb` | **Script** |
+| `examples/test_wave_reflections.py` | Independent | — | **Script** |
+| `examples/test_surge_tank.py` | Independent | `surge_device_verification.ipynb` | **Partial** |
 
 ## DVCM
 
-| Test module | Notebook mirror | Status |
-|-------------|-----------------|--------|
-| `test_dvcm_canonical_scenarios.py` | `dvcm_canonical_verification.ipynb` | **Full** |
-| `test_dvcm_physical_verification.py` | `dvcm_physical_verification.ipynb` | **Full** |
-| `test_dvcm_junction_regime.py`, `test_dvcm_valve_check_valve.py`, … | — | **None** |
+| Test module | Trust model | Notebook mirror | Status |
+|-------------|-------------|-----------------|--------|
+| `test_dvcm_canonical_scenarios.py` | **Snapshot** | `dvcm_canonical_verification.ipynb` | **Full** |
+| `test_dvcm_physical_verification.py` | Independent | `dvcm_physical_verification.ipynb` | **Full** |
+| `test_dvcm_bergant_adelaide_experiment.py`, `test_dvcm_bergant_adelaide_trace.py` | Independent | `bergant_adelaide_verification.ipynb` | **Full** |
+| `test_dvcm_junction_regime.py`, `test_dvcm_valve_check_valve.py`, … | — | — | **None** |
 
 ## Surge design-rule sweeps
 
-| Test module | Notebook mirror | Status |
-|-------------|-----------------|--------|
-| `test_tank_size_benchmark.py` | `surge_design_rules_verification.ipynb` | **Partial** (size sweep) |
-| `test_device_placement_benchmark.py` | `surge_design_rules_verification.ipynb` | **Partial** (placement sweep) |
-| `test_hydropneumatic_size_benchmark.py` | — | **None** |
-| `test_pipe_length_benchmark.py` | — | **None** |
-| `test_multi_device_placement_benchmark.py` | — | **None** |
-| `test_mixed_device_interaction_benchmark.py` | — | **None** |
-| `test_air_valve_dominant_*.py` | — | **None** |
-| `test_surge_device_verification.py` | `surge_device_verification.ipynb` | **Full** |
+| Test module | Trust model | Notebook mirror | Status |
+|-------------|-------------|-----------------|--------|
+| `test_tank_size_benchmark.py` | Design-rule | `surge_design_rules_verification.ipynb` | **Partial** |
+| `test_device_placement_benchmark.py` | Design-rule | `surge_design_rules_verification.ipynb` | **Partial** |
+| `test_hydropneumatic_size_benchmark.py` | Design-rule | — | **None** |
+| `test_pipe_length_benchmark.py` | Design-rule | — | **None** |
+| `test_multi_device_placement_benchmark.py` | Design-rule | — | **None** |
+| `test_mixed_device_interaction_benchmark.py` | Design-rule | — | **None** |
+| `test_air_valve_dominant_*.py` | Design-rule | — | **None** |
+| `test_surge_device_verification.py` | Independent | `surge_device_verification.ipynb` | **Full** |
 
 ## Controls, devices, materials, SI (pytest-only today)
 
@@ -89,7 +97,8 @@ Pytest is the **source of truth** for regression gates. Jupyter notebooks are **
 
 ## Policy
 
-1. **New cross-engine or anchored-trace studies** should add both pytest and a notebook row in this table when the scenario is reviewer-facing.
+1. **New studies** should declare a trust model (independent / snapshot / design-rule) in this table and in [validation.md](validation.md).
+2. **Independent verification** should add pytest and a notebook when reviewer-facing.
 2. **Parameterized sweeps** may start as a partial notebook (one chart per sweep family) rather than duplicating every `@pytest.mark.parametrize` id.
 3. **Binder runtime**: `long_pipe_valve_verification.ipynb` runs a ~230 s simulation; other notebooks are typically under 30 s.
 4. **Optional deps**: EPANET import notebook requires `wntr` (`pip install 'rthym-moc[inp]'` or `pip install wntr`).

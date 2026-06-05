@@ -400,6 +400,83 @@ write(
 )
 
 write(
+    "bergant_adelaide_verification.ipynb",
+    [
+        md(
+            "# Bergant–Simpson Adelaide Rig (Independent DVCM Verification)\n\n"
+            "Compares rthym-moc DVCM against **published laboratory data** (He et al. 2025, Fig. 4 / Table 1), "
+            "not golden rthym-moc JSON.\n\n"
+            "Mirrors **`tests/test_dvcm_bergant_adelaide_experiment.py`** (scalar peaks) and "
+            "**`tests/test_dvcm_bergant_adelaide_trace.py`** (digitized experimental trace, peak-window gauge check).\n\n"
+            "Details: [`docs/bergant_adelaide_verification.md`](../docs/bergant_adelaide_verification.md)"
+        ),
+        md("## 1. Setup"),
+        code(SETUP),
+        md("## 2. Scalar peak checks (moderate + severe)"),
+        code(
+            "from bergant_adelaide_verification_utils import CASES, CASE_LABELS, run_and_evaluate\n\n"
+            "for case_id in sorted(CASES):\n"
+            "    _, ref, m = run_and_evaluate(case_id)\n"
+            "    label = CASE_LABELS[case_id]\n"
+            "    print(\n"
+            "        f\"{label}: peak PASS={m.passed_peak} \"\n"
+            "        f\"sim={m.sim_peak_kpa:.0f} exp={m.exp_peak_kpa:.0f} kPa abs rel={m.peak_rel_err:.3f}\"\n"
+            "    )"
+        ),
+        md("## 3. Digitized Fig. 4 trace overlay"),
+        code(
+            "from pathlib import Path\n"
+            "from bergant_adelaide_verification_utils import (\n"
+            "    SEVERE_VALVE_TRACE_CSV,\n"
+            "    evaluate_bergant_valve_trace,\n"
+            "    load_reference,\n"
+            "    load_valve_trace_csv,\n"
+            "    run_bergant_case,\n"
+            "    valve_gauge_pressure_kpa,\n"
+            "    validate_valve_trace_csv,\n"
+            ")\n\n"
+            "if not SEVERE_VALVE_TRACE_CSV.is_file():\n"
+            "    raise FileNotFoundError(\n"
+            "        'Missing digitized trace; see docs/bergant_adelaide_verification.md'\n"
+            "    )\n"
+            "errs = validate_valve_trace_csv(SEVERE_VALVE_TRACE_CSV)\n"
+            "assert not errs, errs\n"
+            "ref = load_reference('severe_cavitation')\n"
+            "trace = load_valve_trace_csv(SEVERE_VALVE_TRACE_CSV)\n"
+            "results = run_bergant_case(ref)\n"
+            "trace_m = evaluate_bergant_valve_trace('severe_cavitation', results, ref, trace)\n"
+            "t_s, p_g = valve_gauge_pressure_kpa(results)\n"
+            "t_e = trace['t_s']\n"
+            "p_e = trace['p_gauge_kPa']\n"
+            "fig, ax = plt.subplots(figsize=(10, 4))\n"
+            "ax.plot(t_e, p_e, 'o', ms=2, color='C1', label='Digitized experiment (gauge)')\n"
+            "ax.plot(t_s, p_g, '-', lw=1.2, color='C0', label='rthym-moc DVCM (gauge)')\n"
+            "ax.set_xlabel('t (s)')\n"
+            "ax.set_ylabel('P gauge (kPa)')\n"
+            "ax.set_title('Bergant Adelaide severe — valve pressure')\n"
+            "ax.legend()\n"
+            "ax.grid(True, alpha=0.3)\n"
+            "fig.tight_layout()\n"
+            "plt.show()\n"
+            "print(\n"
+            "    f\"Trace peak check: PASS={trace_m.passed_peak} \"\n"
+            "    f\"exp={trace_m.exp_peak_gauge_kpa:.0f} sim={trace_m.sim_peak_gauge_kpa:.0f} kPa \"\n"
+            "    f\"rel={trace_m.peak_rel_err:.3f} (limit {trace_m.peak_rel_limit})\"\n"
+            ")\n"
+            "print(f\"RMS (informational): {trace_m.rms_kpa:.1f} kPa\")"
+        ),
+        md("## 4. Summary"),
+        code(
+            "scalar_ok = all(run_and_evaluate(c)[2].passed for c in CASES)\n"
+            "trace_ok = trace_m.passed_peak\n"
+            "print('Scalars:', 'PASS' if scalar_ok else 'FAIL')\n"
+            "print('Trace peak window:', 'PASS' if trace_ok else 'FAIL')\n"
+            "print('Overall:', 'PASS' if scalar_ok and trace_ok else 'FAIL')"
+        ),
+    ],
+)
+
+write(
     "surge_design_rules_verification.ipynb",
     [
         md(
@@ -710,6 +787,7 @@ write(
             "    ('quickstart_notebook.ipynb', 'R-THYM Joukowsky cross-engine'),\n"
             "    ('dvcm_canonical_verification.ipynb', 'DVCM JSON regression'),\n"
             "    ('dvcm_physical_verification.ipynb', 'DVCM mass step + collapse dH'),\n"
+            "    ('bergant_adelaide_verification.ipynb', 'Bergant Adelaide lab + digitized trace'),\n"
             "    ('cross_engine_surge_verification.ipynb', 'TSNet + EPANET cross-engine'),\n"
             "    ('surge_device_verification.ipynb', 'Standpipe / HPT / air valve'),\n"
             "    ('epanet_import_verification.ipynb', 'complex_topology.inp + pump trip'),\n"

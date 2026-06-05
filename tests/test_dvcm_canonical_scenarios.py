@@ -1,13 +1,12 @@
-"""Canonical DVCM cavitation scenarios for Phase 3 validation.
+"""Canonical DVCM cavitation scenarios — **snapshot regression** (not independent verification).
 
-Three junction-only cases anchored to ``tests/dvcm_*_reference.json``:
-
-- rapid closure analogue with cavity formation followed by a collapse spike
-- pressure-recovery analogue where the cavity collapses and the junction
-  settles back above vapor pressure
-- long-run repeated-event analogue that exercises multiple collapse cycles
+Three junction-only cases replay checked-in golden traces in
+``tests/dvcm_*_reference.json``. These detect drift from a prior accepted
+rthym-moc run; they do **not** compare against textbook physics or another
+engine. For independent DVCM checks see ``test_dvcm_physical_verification.py``.
 
 Interactive overlays: ``examples/dvcm_canonical_verification.ipynb``.
+Trust model: [docs/validation.md](../docs/validation.md#verification-vs-regression-read-this-first).
 """
 
 import pytest
