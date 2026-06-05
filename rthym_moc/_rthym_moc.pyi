@@ -22,6 +22,10 @@ class SimResultsDict(_SimResultsRequired, total=False):
     valve_position: dict[str, NDArray[np.float64]]
     valve_velocity: dict[str, NDArray[np.float64]]
     pump_speed: dict[str, NDArray[np.float64]]
+    pipe_profile_chainage_ft: dict[str, NDArray[np.float64]]
+    pipe_profile_head: dict[str, NDArray[np.float64]]
+    pipe_profile_pressure: dict[str, NDArray[np.float64]]
+    pipe_profile_velocity_fps: dict[str, NDArray[np.float64]]
 
 
 class NodeInput:
@@ -133,6 +137,8 @@ class MOCSolver:
         usf_tau: float = 0.5,
         k_bru: float = -1.0,
         cavitation_model: CavitationModel | None = None,
+        record_pipe_profiles: bool = False,
+        profile_stride: int = 1,
     ) -> SimResultsDict: ...
 
 

@@ -144,6 +144,14 @@ struct SimResults {
     std::unordered_map<std::string, std::vector<double>> pump_speed;
     // Turbine speed telemetry (%)
     std::unordered_map<std::string, std::vector<double>> turbine_speed;
+
+    // Optional per-pipe MOC grid profiles (populated when record_pipe_profiles is enabled)
+    // chainage_ft: (num_profile_points,) distances from upstream pipe end [ft]
+    // head_ft / pressure_psi / velocity_fps: (num_steps, num_profile_points)
+    std::unordered_map<std::string, std::vector<double>> pipe_profile_chainage_ft;
+    std::unordered_map<std::string, std::vector<std::vector<double>>> pipe_profile_head_ft;
+    std::unordered_map<std::string, std::vector<std::vector<double>>> pipe_profile_pressure_psi;
+    std::unordered_map<std::string, std::vector<std::vector<double>>> pipe_profile_velocity_fps;
 };
 
 enum class ControlType {
@@ -288,7 +296,9 @@ public:
                    double p_vapor_psi   = -14.0,
                    double usf_tau       = 0.5,
                    double k_bru         = -1.0,
-                   std::optional<CavitationModel> cavitation_model = std::nullopt); // -1 = auto Vardy-Brown; 0 = no USF; >0 = static
+                   std::optional<CavitationModel> cavitation_model = std::nullopt,
+                   bool record_pipe_profiles = false,
+                   int profile_stride = 1); // -1 = auto Vardy-Brown; 0 = no USF; >0 = static
 
     // Step-by-step API for WASM integration
     void   initGrid();
@@ -377,6 +387,16 @@ private:
 
     double getInitialHead(const NodeState& ns) const;
     void   recordStep(SimResults& results) const;
+
+    bool record_pipe_profiles_ = false;
+    int  profile_stride_       = 1;
+    // Grid indices and chainage captured once per run() after initGrid()
+    std::unordered_map<std::string, std::vector<int>>    profile_point_indices_;
+    std::unordered_map<std::string, std::vector<double>> profile_chainage_ft_;
+
+    double pipeGridElevationFt(const PipeState& ps, int grid_index) const;
+    static std::vector<int> buildProfilePointIndices(int num_nodes, int stride);
+    void initializePipeProfileCapture(SimResults& results);
 };
 
 } // namespace rthym

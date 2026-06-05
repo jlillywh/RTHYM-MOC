@@ -59,6 +59,26 @@ static py::array_t<int> to_numpy_int(std::vector<int>&& v) {
     );
 }
 
+static py::array_t<double> to_numpy_2d(std::vector<std::vector<double>>&& rows) {
+    const py::ssize_t nrows = static_cast<py::ssize_t>(rows.size());
+    const py::ssize_t ncols = rows.empty() ? 0 : static_cast<py::ssize_t>(rows[0].size());
+    auto* data = new std::vector<double>(static_cast<std::size_t>(nrows * ncols));
+    for (py::ssize_t r = 0; r < nrows; ++r) {
+        for (py::ssize_t c = 0; c < ncols; ++c) {
+            (*data)[static_cast<std::size_t>(r * ncols + c)] = rows[r][static_cast<std::size_t>(c)];
+        }
+    }
+    auto capsule = py::capsule(data, [](void* p) {
+        delete reinterpret_cast<std::vector<double>*>(p);
+    });
+    return py::array_t<double>(
+        {nrows, ncols},
+        {ncols * static_cast<py::ssize_t>(sizeof(double)), static_cast<py::ssize_t>(sizeof(double))},
+        data->data(),
+        capsule
+    );
+}
+
 // Convert SimResults → Python dict of numpy arrays
 static py::dict results_to_dict(SimResults&& r) {
     py::dict out;
@@ -130,6 +150,32 @@ static py::dict results_to_dict(SimResults&& r) {
     py::dict ts;
     for (auto& [k, v] : r.turbine_speed) ts[k.c_str()] = to_numpy(std::move(v));
     out["turbine_speed"] = ts;
+
+    if (!r.pipe_profile_chainage_ft.empty()) {
+        py::dict chainage;
+        for (auto& [k, v] : r.pipe_profile_chainage_ft) {
+            chainage[k.c_str()] = to_numpy(std::move(v));
+        }
+        out["pipe_profile_chainage_ft"] = chainage;
+
+        py::dict head_profiles;
+        for (auto& [k, v] : r.pipe_profile_head_ft) {
+            head_profiles[k.c_str()] = to_numpy_2d(std::move(v));
+        }
+        out["pipe_profile_head"] = head_profiles;
+
+        py::dict pressure_profiles;
+        for (auto& [k, v] : r.pipe_profile_pressure_psi) {
+            pressure_profiles[k.c_str()] = to_numpy_2d(std::move(v));
+        }
+        out["pipe_profile_pressure"] = pressure_profiles;
+
+        py::dict velocity_profiles;
+        for (auto& [k, v] : r.pipe_profile_velocity_fps) {
+            velocity_profiles[k.c_str()] = to_numpy_2d(std::move(v));
+        }
+        out["pipe_profile_velocity_fps"] = velocity_profiles;
+    }
 
     return out;
 }
@@ -480,13 +526,16 @@ PYBIND11_MODULE(_rthym_moc, m) {
                double p_vapor_psi,
                double usf_tau,
                double k_bru,
-               py::object cavitation_model) -> py::dict {
+               py::object cavitation_model,
+               bool record_pipe_profiles,
+               int profile_stride) -> py::dict {
                 std::optional<CavitationModel> cavitation_model_opt = std::nullopt;
                 if (!cavitation_model.is_none()) {
                     cavitation_model_opt = cavitation_model.cast<CavitationModel>();
                 }
                 return results_to_dict(
-                    self.run(total_time, dt, p_vapor_psi, usf_tau, k_bru, cavitation_model_opt));
+                    self.run(total_time, dt, p_vapor_psi, usf_tau, k_bru, cavitation_model_opt,
+                             record_pipe_profiles, profile_stride));
             },
             py::arg("total_time"),
             py::arg("dt")          = 0.01,
@@ -494,6 +543,8 @@ PYBIND11_MODULE(_rthym_moc, m) {
             py::arg("usf_tau")     = 0.5,
             py::arg("k_bru")       = -1.0,
             py::arg("cavitation_model") = py::none(),
+            py::arg("record_pipe_profiles") = false,
+            py::arg("profile_stride") = 1,
             R"pbdoc(
             Run the transient simulation and return results.
 
@@ -535,6 +586,12 @@ PYBIND11_MODULE(_rthym_moc, m) {
               "node_pressure"    : dict[node_id] → numpy.ndarray (num_steps,)  psi
               "node_cavitation"  : dict[node_id] → numpy.ndarray (num_steps,)  0/1
               "pipe_flow_gpm"    : dict[pipe_id] → numpy.ndarray (num_steps,)  GPM
+
+              Optional pipe-profile keys (when record_pipe_profiles=True):
+                  "pipe_profile_chainage_ft" : dict[pipe_id] → numpy.ndarray (num_profile_points,)  ft
+                  "pipe_profile_head"        : dict[pipe_id] → numpy.ndarray (num_steps, num_profile_points)  ft
+                  "pipe_profile_pressure"    : dict[pipe_id] → numpy.ndarray (num_steps, num_profile_points)  psi
+                  "pipe_profile_velocity_fps": dict[pipe_id] → numpy.ndarray (num_steps, num_profile_points)  ft/s
 
               Diagnostic keys (populated when simulating with DVCM):
                   "node_cavity_volume" : dict[node_id] → numpy.ndarray (num_steps,)  ft³
