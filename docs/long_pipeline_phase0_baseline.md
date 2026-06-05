@@ -466,8 +466,8 @@ With `pip install -e .`, the same formulas are exercised in
 
 ## 4. Performance budget (20-mile reference case)
 
-**Status:** Budget defined (Phase 0 checklist item 4). First timed calibration
-pending — run `scripts/benchmark_long_pipeline_budget.py` after `pip install -e .`.
+**Status:** Budget defined (Phase 0 checklist item 4). Calibrated via
+`scripts/benchmark_long_pipeline_budget.py` after Phase 4 grid scaling.
 
 ### Reference case `LP-PERF-01`
 
@@ -542,7 +542,7 @@ lands; `budget_met` should become `True`.
 | Date | Git ref | `N` | Steps | Elapsed (s) | Grid cap | `budget_met` |
 |------|---------|-----|-------|-------------|----------|--------------|
 | 2026-06-05 | pre-Phase-1 | 26400 | 60000 | **3.438** (median, 5 runs) | none | yes (≪ 30 s) |
-| — | — | 2000 | 60000 | *pending* | Phase 4 | *pending* |
+| 2026-06-05 | Phase 4 grid scaling | 2000 | 60000 | **1.197** (median, 5 runs) | 2000 | yes |
 
 ### CI / regression policy
 

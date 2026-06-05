@@ -9,6 +9,7 @@ versioning for package releases.
 ## [Unreleased]
 
 ### Added
+- **Long-pipeline Phase 4 — grid scaling**: `set_grid_policy()` / `set_max_segments_per_pipe()` cap MOC segment count with Courant wave-speed adjustment; per-pipe `wave_speed_design_fps`, `wave_speed_adjusted_fps`, and `distortion_pct` in `run()` results and `summarize_study()`; configurable distortion warn/error; sparse interior DVCM via `PipeInput.interior_dvcm_chainages_ft`; LP-PERF-01 benchmark (`scripts/benchmark_long_pipeline_budget.py`); §6 tradeoffs in `docs/dvcm_timestep_guidance.md`.
 - **Long-pipeline Phase 3 — interior-point DVCM**: opt-in `enable_interior_dvcm` on `MOCSolver.run()` applies junction-style regime switching at interior MOC grid points using local `z(x)` and segment capacity `dx·A`; exports `pipe_profile_cavity_volume` and `pipe_profile_cavity_active` when profiles are enabled; default off preserves junction-only DVCM behavior.
 - **Long-pipeline Phase 2 — pipe elevation profiles**: optional `PipeInput.elevation_profile` survey tables populate per-grid `z[j]`; profile gauge pressure and `pipe_profile_cavitation` screening use local elevation; terrain reaches get interior `LegacyClamp` at local vapor head; EPANET `[RTHYM] PipeElevation` import rows; `pipe_si(..., elevation_profile_m=...)`.
 - DVCM independent physical verification (`tests/test_dvcm_physical_verification.py`) for junction mass-balance step checks and post-collapse head-rise estimates.

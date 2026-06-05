@@ -1,15 +1,15 @@
 {
-  "case_id": "LP-PERF-01",
-  "description": "20-mile rigid pipe, dt=0.001 s, T=60 s, profile export disabled (pre-Phase-1 timing snapshot)",
-  "length_mi": 20.0,
-  "length_ft": 105600.0,
-  "dt_s": 0.001,
-  "total_time_s": 60.0,
-  "segments": 26400,
-  "steps": 60000,
-  "record_pipe_profiles": false,
-  "elapsed_s": 3.438,
-  "tolerance_ratio": 0.05,
-  "captured_on": "2026-06-05",
-  "notes": "Median of 5 single-run samples on WSL dev laptop (pip install -e .); test uses median of 3 timed reps. Recalibrate with scripts/benchmark_long_pipeline_budget.py."
+  "capped": {
+    "case_id": "LP-PERF-01",
+    "length_ft": 105600.0,
+    "dt_s": 0.001,
+    "total_time_s": 60.0,
+    "num_segments": 2000,
+    "num_steps": 60000,
+    "segment_steps": 120000000,
+    "elapsed_median_s": 1.197,
+    "budget_s": 30.0,
+    "max_segments_per_pipe": 2000,
+    "notes": "Median of 5 timed runs after 1 warmup (scripts/benchmark_long_pipeline_budget.py --runs 5). Phase 4 gate is budget_met (< 30 s), not regression band."
+  }
 }

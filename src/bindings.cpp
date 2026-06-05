@@ -23,6 +23,7 @@
 //   head_J1  = np.array(results["node_head"]["J1"])
 //   flow_P1  = np.array(results["pipe_flow_gpm"]["P1"])
 
+#include <cctype>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
@@ -219,6 +220,40 @@ static py::dict results_to_dict(SimResults&& r) {
         }
     }
 
+    if (!r.pipe_wave_speed_design_fps.empty()) {
+        py::dict design_a;
+        for (const auto& [k, v] : r.pipe_wave_speed_design_fps) {
+            design_a[k.c_str()] = v;
+        }
+        out["pipe_wave_speed_design_fps"] = design_a;
+
+        py::dict adjusted_a;
+        for (const auto& [k, v] : r.pipe_wave_speed_adjusted_fps) {
+            adjusted_a[k.c_str()] = v;
+        }
+        out["pipe_wave_speed_adjusted_fps"] = adjusted_a;
+
+        py::dict distortion;
+        for (const auto& [k, v] : r.pipe_distortion_pct) {
+            distortion[k.c_str()] = v;
+        }
+        out["pipe_distortion_pct"] = distortion;
+
+        py::dict num_segments;
+        for (const auto& [k, v] : r.pipe_num_segments) {
+            num_segments[k.c_str()] = v;
+        }
+        out["pipe_num_segments"] = num_segments;
+    }
+
+    if (!r.pipe_interior_dvcm_grid_indices.empty()) {
+        py::dict dvcm_indices;
+        for (const auto& [k, v] : r.pipe_interior_dvcm_grid_indices) {
+            dvcm_indices[k.c_str()] = v;
+        }
+        out["pipe_interior_dvcm_grid_indices"] = dvcm_indices;
+    }
+
     return out;
 }
 
@@ -361,6 +396,10 @@ PYBIND11_MODULE(_rthym_moc, m) {
             Optional piecewise-linear survey as (chainage_ft, elevation_ft) from
             the upstream pipe end. Empty → linear between from_node and to_node
             elevations (default).
+        interior_dvcm_chainages_ft : list[float]
+            Sparse interior DVCM watchpoints (chainage ft from from_node). When
+            non-empty and enable_interior_dvcm is on, cavity physics runs only at
+            the nearest MOC grid index for each chainage.
         )pbdoc")
         .def(py::init<>())
         .def_readwrite("id",             &PipeInput::id)
@@ -374,7 +413,8 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def_readwrite("wall_thickness", &PipeInput::wall_thickness)
         .def_readwrite("youngs_modulus", &PipeInput::youngs_modulus)
         .def_readwrite("poissons_ratio", &PipeInput::poissons_ratio)
-        .def_readwrite("elevation_profile", &PipeInput::elevation_profile);
+        .def_readwrite("elevation_profile", &PipeInput::elevation_profile)
+        .def_readwrite("interior_dvcm_chainages_ft", &PipeInput::interior_dvcm_chainages_ft);
 
     // ── CavitationModel Enum ─────────────────────────────────────────────
     py::enum_<CavitationModel>(m, "CavitationModel")
@@ -479,6 +519,35 @@ PYBIND11_MODULE(_rthym_moc, m) {
             "Enable interior-point DVCM on uninterrupted pipe reaches (default off).")
         .def("get_enable_interior_dvcm", &MOCSolver::get_enable_interior_dvcm,
             "Return whether interior-point DVCM is enabled for subsequent run() calls.")
+        .def("set_max_segments_per_pipe", &MOCSolver::set_max_segments_per_pipe,
+            py::arg("max_segments"),
+            "Cap MOC segments per pipe (0 = uncapped). Minimum 2 segments enforced in initGrid().")
+        .def("get_max_segments_per_pipe", &MOCSolver::get_max_segments_per_pipe,
+            "Return the per-pipe MOC segment cap (0 = uncapped).")
+        .def("set_max_wave_speed_distortion", &MOCSolver::set_max_wave_speed_distortion,
+            py::arg("max_fraction"),
+            "Set max |a'-a|/a fraction before warn/error (e.g. 0.15); negative disables.")
+        .def("get_max_wave_speed_distortion", &MOCSolver::get_max_wave_speed_distortion,
+            "Return the wave-speed distortion limit fraction (<0 = disabled).")
+        .def("set_wave_speed_distortion_action",
+            [](MOCSolver& self, const std::string& action) {
+                std::string lowered = action;
+                for (char& ch : lowered) {
+                    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                }
+                if (lowered == "warn") {
+                    self.set_wave_speed_distortion_action(WaveSpeedDistortionAction::Warn);
+                } else if (lowered == "error") {
+                    self.set_wave_speed_distortion_action(WaveSpeedDistortionAction::Error);
+                } else {
+                    throw std::invalid_argument(
+                        "wave_speed_distortion_action must be 'warn' or 'error'");
+                }
+            },
+            py::arg("action"),
+            "Select warn vs error when distortion exceeds set_max_wave_speed_distortion().")
+        .def("get_grid_distortion_warning", &MOCSolver::get_grid_distortion_warning,
+            "Return the warning message from the last run(), or empty if none.")
         .def("set_generator_connected", &MOCSolver::set_pump_power,
             py::arg("id"), py::arg("connected"),
             "Set whether a turbine's generator is connected to the grid (equivalent to has_power).")

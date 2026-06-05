@@ -116,3 +116,133 @@ At $dt = 0.001$ s this case is grid-independent to well within 1% on interior ga
 ### Pytest mirror
 
 `tests/test_interior_dvcm_sloping_pipe.py::test_interior_dvcm_dt_halving_chainage_envelope_converges`
+
+---
+
+## 6. Long-Pipeline Grid Scaling Tradeoffs (Phase 4)
+
+On uninterrupted reaches (10+ mile lines, few graph nodes), choosing $dt$ for DVCM
+grade resolution can yield tens of thousands of MOC segments per pipe. Phase 4 adds
+**grid policy** controls that cap segment count independently of the Courant
+rounding in §1, plus optional **sparse interior DVCM** so cavity physics runs only
+at watchpoints (summits, user chainages) while the full wave grid still propagates
+transients.
+
+### When to use grid scaling
+
+| Situation | Recommendation |
+|---|---|
+| Short network, junction-heavy | Leave `max_segments_per_pipe = 0` (uncapped); tune $dt$ per §1–§3 |
+| Long line, screening / envelope study | `max_segments_per_pipe ≤ 2000`, review distortion in study meta |
+| Long line, sign-off DVCM case | Prefer smaller $dt$ **or** uncapped grid; halve-$dt$ convergence per §5 |
+| Interactive R-THYM / batch budget | Capped grid + sparse watchpoints at high points |
+
+**Do not** treat a heavily capped grid as a substitute for $dt$ convergence on
+severe column-separation cases. Capping reduces **spatial** resolution; it does not
+fix coarse **temporal** integration of cavity volume (§2).
+
+### Grid policy API
+
+```python
+solver.set_grid_policy(
+    max_segments_per_pipe=2000,      # 0 = uncapped
+    max_wave_speed_distortion=0.15,  # fraction |a' − a| / a
+    distortion_action="warn",        # or "error"
+)
+```
+
+Or set individually: `set_max_segments_per_pipe()`, `set_max_wave_speed_distortion()`,
+`set_wave_speed_distortion_action()`.
+
+When a cap is active, each pipe uses at least **two** segments. Uncapped pipes
+may still use a single segment on very short links.
+
+### Courant adjustment under a segment cap
+
+Without a cap (§1):
+
+$$N = \max\!\left(1,\ \mathrm{round}\!\left(\frac{L}{a_0 \Delta t}\right)\right), \qquad
+a' = \frac{L}{N \Delta t}$$
+
+With `max_segments_per_pipe = N_{\max} > 0`:
+
+$$N = \max\!\left(2,\ \min\!\left(N_{\text{uncapped}},\ N_{\max}\right)\right), \qquad
+a' = \frac{L}{N \Delta t}$$
+
+Distortion reported per pipe after each `run()`:
+
+$$\text{distortion\_pct} = 100 \times \frac{|a' - a_0|}{a_0}$$
+
+Keys: `pipe_wave_speed_design_fps`, `pipe_wave_speed_adjusted_fps`, `pipe_distortion_pct`,
+`pipe_num_segments`. `summarize_study()` copies these onto each pipe entry
+(`wave_speed_design_fps`, `wave_speed_adjusted_fps`, `distortion_pct`, `num_segments`).
+
+If `max_wave_speed_distortion` is set, the solver **warns** (default) or **raises**
+when any pipe exceeds the limit—typical when a cap forces $a' \gg a_0$ on a long
+reach at DVCM-grade $\Delta t$.
+
+#### Worked example (20 mi, rigid pipe)
+
+| Setting | $N$ | $a'$ (ft/s) | Distortion |
+|---|---|---|---|
+| $L = 105{,}600$ ft, $a_0 = 4000$, $\Delta t = 0.001$ s, uncapped | 26 400 | 4000 | 0% |
+| Same with `max_segments_per_pipe = 2000` | 2000 | 52 800 | 1220% |
+
+The capped case meets the **LP-PERF-01** wall-clock budget ($\ll 30$ s on a laptop;
+see [long_pipeline_phase0_baseline.md](long_pipeline_phase0_baseline.md) §4) but
+**does not** satisfy the §1 $\pm 15\%$ wave-speed guideline. Use capped runs for
+screening; document distortion in study meta and tighten $dt$ or remove the cap
+for validation.
+
+Calibration:
+
+```bash
+pip install -e .
+python scripts/benchmark_long_pipeline_budget.py
+python scripts/benchmark_long_pipeline_budget.py --strict   # exit 1 if > 30 s
+```
+
+### Sparse interior DVCM
+
+Full interior DVCM (`enable_interior_dvcm=True`, empty chainage list) updates cavity
+state at every interior grid index $j = 1 \ldots N-2$. For long pipes this is
+often unnecessary except at terrain high points.
+
+```python
+pipe.interior_dvcm_chainages_ft = [13200.0, 39600.0]  # ft from upstream end
+solver.run(..., enable_interior_dvcm=True, cavitation_model=CavitationModel.DVCM)
+```
+
+Each chainage snaps to the nearest grid index (clamped to interior range). Results
+include `pipe_interior_dvcm_grid_indices` when the list is non-empty.
+
+| Mode | Cavity physics | Wave propagation | Cost |
+|---|---|---|---|
+| Junction DVCM only | End nodes | Full MOC grid | Baseline |
+| Full interior DVCM | All interior $j$ | Full MOC grid | Higher per step |
+| Sparse interior DVCM | Listed chainages only | Full MOC grid | Lower DVCM overhead |
+
+Non-watchpoint interior cells use standard MOC (no cavity regime switching). On
+short pipes with watchpoints covering all interior chainages, sparse and full
+interior DVCM agree within test tolerance
+(`tests/test_sparse_interior_dvcm.py`).
+
+### Practical selection matrix
+
+1. **Pick $dt$** from §3 (often $10^{-4}$–$10^{-3}$ s for DVCM).
+2. **Check uncapped** $N$ and distortion via `run()` metadata or `summarize_study()`.
+3. If $N$ is too large for runtime, apply `max_segments_per_pipe` and accept
+   documented distortion **or** increase $\Delta t$ (which also coarsens time
+   integration—different tradeoff).
+4. For sloping long lines, set `interior_dvcm_chainages_ft` at survey summits
+   instead of full interior DVCM when screening.
+5. **Validate** critical cases: halve $\Delta t$ (§5) or remove the segment cap
+   and confirm peak envelopes change $\le 1\%$.
+
+### Pytest mirrors
+
+| Test module | What it checks |
+|---|---|
+| `tests/test_grid_scaling_long_pipe.py` | Cap, distortion meta, warn/error thresholds |
+| `tests/test_sparse_interior_dvcm.py` | Chainage snap, summit activation, sparse vs full |
+| `tests/test_long_pipeline_perf.py` (`pytest -m slow`) | LP-PERF-01 budget with cap ≤ 2000 |

@@ -36,6 +36,8 @@ Quick-start
 >>> head_J1 = results["node_head"]["J1"]   # head time series at junction (ft)
 """
 
+from __future__ import annotations
+
 import warnings
 from ._rthym_moc import (
     CavitationModel,
@@ -124,6 +126,20 @@ class MOCSolver(_RawMOCSolver):
             )
         super().set_cavitation_model(cavitation_model)
 
+    def set_grid_policy(
+        self,
+        *,
+        max_segments_per_pipe: int | None = None,
+        max_wave_speed_distortion: float | None = None,
+        distortion_action: str = "warn",
+    ) -> None:
+        """Configure long-pipe MOC grid scaling and distortion limits."""
+        if max_segments_per_pipe is not None:
+            self.set_max_segments_per_pipe(max_segments_per_pipe)
+        if max_wave_speed_distortion is not None:
+            self.set_max_wave_speed_distortion(max_wave_speed_distortion)
+            self.set_wave_speed_distortion_action(distortion_action)
+
     def run(self, *args, **kwargs):
         # Determine the cavitation model being used
         cav_model = kwargs.get("cavitation_model")
@@ -146,7 +162,11 @@ class MOCSolver(_RawMOCSolver):
                 UserWarning,
                 stacklevel=2
             )
-        return super().run(*args, **kwargs)
+        result = super().run(*args, **kwargs)
+        grid_msg = self.get_grid_distortion_warning()
+        if grid_msg:
+            warnings.warn(grid_msg, UserWarning, stacklevel=2)
+        return result
 
 __all__ = [
     "CavitationModel",
