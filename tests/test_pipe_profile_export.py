@@ -1,5 +1,7 @@
 """Phase 1: optional per-pipe MOC grid profile export."""
 
+from __future__ import annotations
+
 import math
 import time
 
@@ -13,7 +15,7 @@ GPM_TO_CFS = m.GPM_TO_CFS
 MIDPIPE_JOUKOWSKY_TOL_FT = 25.0
 
 
-def _make_node(node_id: str, node_type: str, **kwargs: float | str | bool) -> m.NodeInput:
+def _make_node(node_id: str, node_type: str, **kwargs) -> m.NodeInput:
     node = m.NodeInput()
     node.id = node_id
     node.type = node_type
@@ -22,7 +24,7 @@ def _make_node(node_id: str, node_type: str, **kwargs: float | str | bool) -> m.
     return node
 
 
-def _make_pipe(pipe_id: str, from_node: str, to_node: str, **kwargs: float | str) -> m.PipeInput:
+def _make_pipe(pipe_id: str, from_node: str, to_node: str, **kwargs) -> m.PipeInput:
     pipe = m.PipeInput()
     pipe.id = pipe_id
     pipe.from_node = from_node

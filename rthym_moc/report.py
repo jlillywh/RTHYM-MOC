@@ -275,7 +275,9 @@ def summarize_study(
     velocity_by_pipe = results.get("pipe_profile_velocity_fps", {})
     for pipe_id, chainage_series in chainage_by_pipe.items():
         pid = str(pipe_id)
-        entry = pipes_out.setdefault(pid, {})
+        if pid not in pipes_out:
+            pipes_out[pid] = {}
+        pipe_entry: PipeStudySummary = pipes_out[pid]
         envelope, peaks = _summarize_pipe_profile(
             time_s,
             np.asarray(chainage_series, dtype=float),
@@ -283,9 +285,9 @@ def summarize_study(
             np.asarray(pressure_by_pipe[pipe_id], dtype=float) if pipe_id in pressure_by_pipe else None,
             np.asarray(velocity_by_pipe[pipe_id], dtype=float) if pipe_id in velocity_by_pipe else None,
         )
-        entry["chainage_envelope"] = envelope
+        pipe_entry["chainage_envelope"] = envelope
         if peaks:
-            entry["profile_peak"] = peaks
+            pipe_entry["profile_peak"] = peaks
 
     summary = StudySummary(
         meta={
@@ -386,14 +388,14 @@ def study_summary_to_si(summary: StudySummary) -> StudySummarySI:
 
     pipes_out: dict[str, PipeStudySummarySI] = {}
     for pipe_id, pipe_row in summary["pipes"].items():
-        entry: PipeStudySummarySI = {}
+        pipe_entry: PipeStudySummarySI = {}
         if "flow_gpm" in pipe_row:
-            entry["flow_m3s"] = _scale_extrema(pipe_row["flow_gpm"], GPM_TO_M3S)
+            pipe_entry["flow_m3s"] = _scale_extrema(pipe_row["flow_gpm"], GPM_TO_M3S)
         if "chainage_envelope" in pipe_row:
-            entry["chainage_envelope"] = _chainage_envelope_to_si(pipe_row["chainage_envelope"])
+            pipe_entry["chainage_envelope"] = _chainage_envelope_to_si(pipe_row["chainage_envelope"])
         if "profile_peak" in pipe_row:
-            entry["profile_peak"] = _profile_peak_to_si(pipe_row["profile_peak"])
-        pipes_out[str(pipe_id)] = entry
+            pipe_entry["profile_peak"] = _profile_peak_to_si(pipe_row["profile_peak"])
+        pipes_out[str(pipe_id)] = pipe_entry
 
     si_summary = StudySummarySI(meta=dict(summary["meta"]), nodes=nodes_out, pipes=pipes_out)
 
