@@ -324,13 +324,45 @@ vs DVCM at a valve. See [Validation](#validation) for regression-style DVCM note
 
 ## Validation
 
+> **Feeling lost?** Most checks run in **`pytest`**, not in notebooks. The README
+> lists the full program; below is what you can **see** without reading every test file.
+>
+> **For external reviewers:** R-THYM web-app trace comparisons are **maintainer parity**
+> checks (same author, same lineage) — useful for port regression, not a third-party
+> oracle. Lead with theory, **wntr**, TSNet exports, and published lab data instead.
+
+### Start here (externally credible)
+
+| If you want to… | Open / run | What you'll see |
+|-----------------|------------|-----------------|
+| **Textbook closure regimes** | [`gradual_closure_verification.ipynb`](examples/gradual_closure_verification.ipynb) | Instant / moderate / slow closure vs Joukowsky and Allievi expectations |
+| **Another engine + EPANET** | [`cross_engine_surge_verification.ipynb`](examples/cross_engine_surge_verification.ipynb) | TSNet B.8 export + **wntr** steady state before trip |
+| **Surge devices vs formulas** | [`surge_device_verification.ipynb`](examples/surge_device_verification.ipynb) | Standpipe, HPT, air valve vs analytical / Appendix B.8 refs |
+| **DVCM vs continuity math** | [`dvcm_physical_verification.ipynb`](examples/dvcm_physical_verification.ipynb) | Mass-step and collapse ΔH **PASS/FAIL** metrics |
+| **Published lab benchmark** (loose; see doc) | [`bergant_adelaide_verification.ipynb`](examples/bergant_adelaide_verification.ipynb) | Digitized He Fig. 4 vs DVCM — [limitations](docs/bergant_adelaide_verification.md) |
+| **Same checks, no Jupyter** | `pytest tests/test_gradual_closure_benchmark.py tests/test_tsnet_standpipe_cross_engine.py tests/test_dvcm_physical_verification.py -v` | CI gates on the rows above |
+
+**Why quickstart feels like “only Joukowsky”:** [`quickstart_notebook.ipynb`](examples/quickstart_notebook.ipynb) is mainly a **tutorial**. §2 plots the first-step surge vs the analytical estimate; that is the externally meaningful part. §3 overlays the checked-in **R-THYM web-app CSV** — a **maintainer** cross-check, not something to cite to outside reviewers.
+
+**What pytest covers but notebooks barely show:** EPANET import fidelity, Bergant scalar peaks, pipe-material wave speed, and dozens of regression modules — see [validation_notebook_coverage.md](docs/validation_notebook_coverage.md) for **Full / Partial / None**.
+
+### Maintainer parity (R-THYM web app — author cross-check)
+
+| Case | Open / run | Notes |
+|------|------------|-------|
+| Joukowsky benchmark | `pytest tests/test_joukowsky_rthym.py -v` | Also asserts analytical Joukowsky **< 0.05 %**; R-THYM trace RMS ≤ 4 psi is parity only |
+| Long-pipe valve study | [`long_pipe_valve_verification.ipynb`](examples/long_pipe_valve_verification.ipynb) (~3 min) | Five-pipe equal-% closure vs checked-in R-THYM JSON/CSV |
+
+---
+
 Validation and regression live under `tests/` with explicit tolerances. This is
 separate from [Examples](#examples): examples teach usage; the material below
 states **what kind of check** each test is.
 
 | Trust model | Question | Where |
 |---|---|---|
-| **Independent verification** | Does rthym-moc match theory or another engine? | Cross-engine, analytical, and physics-invariant tests — [docs/validation.md](docs/validation.md#verification-vs-regression-read-this-first) |
+| **Independent verification** | Does rthym-moc match theory, EPANET/**wntr**, TSNet, or published measurements? | Analytical, cross-engine (non-author), and lab-anchored tests — [docs/validation.md](docs/validation.md#verification-vs-regression-read-this-first) |
+| **Maintainer parity** | Does the Python port still match the author's R-THYM web-app exports? | `test_joukowsky_rthym.py`, `test_long_pipe_valve.py`; quickstart §3, `long_pipe_valve_verification.ipynb` — **not** a third-party oracle |
 | **Snapshot regression** | Did we drift from a prior accepted rthym-moc answer? | e.g. `tests/dvcm_*_reference.json` + `test_dvcm_canonical_scenarios.py` |
 | **Design-rule / behavioral** | Do sizing and placement sweeps behave as expected? | Surge benchmark modules (monotonic trends on fixed geometries) |
 
@@ -345,33 +377,50 @@ states **what kind of check** each test is.
 pytest -q
 ```
 
-Headline **independent verification** checks:
+Headline **independent verification** checks (external references):
 
 ```bash
-pytest tests/test_joukowsky_rthym.py tests/test_long_pipe_valve.py \
-  tests/test_complex_topology_from_inp.py tests/test_gradual_closure_benchmark.py \
+pytest tests/test_gradual_closure_benchmark.py tests/test_complex_topology_from_inp.py \
+  tests/test_tsnet_standpipe_cross_engine.py tests/test_surge_device_verification.py \
   tests/test_dvcm_physical_verification.py \
   tests/test_dvcm_bergant_adelaide_experiment.py \
   tests/test_dvcm_bergant_adelaide_trace.py -q
+```
+
+Maintainer parity (R-THYM web app):
+
+```bash
+pytest tests/test_joukowsky_rthym.py tests/test_long_pipe_valve.py -q
 ```
 
 ### Independent verification (source of truth outside rthym-moc)
 
 | Category | Reference | Key tests / notebooks |
 |---|---|---|
-| R-THYM cross-engine | Checked-in web-app JSON/CSV | `test_joukowsky_rthym.py`, `test_long_pipe_valve.py`; `quickstart_notebook.ipynb`, `long_pipe_valve_verification.ipynb` |
+| Analytical hydraulics | Joukowsky / Allievi / B.8 formulas | `test_gradual_closure_benchmark.py`, `test_standpipe_surge_protection.py`, `test_surge_device_verification.py`; `gradual_closure_verification.ipynb`, `surge_device_verification.ipynb` |
 | EPANET steady state | **wntr** on `complex_topology.inp` | `test_complex_topology_from_inp.py`; `epanet_import_verification.ipynb` |
 | TSNet standpipe | Checked-in TSNet B.8 export | `test_tsnet_standpipe_cross_engine.py`; `cross_engine_surge_verification.ipynb` |
-| Analytical hydraulics | Joukowsky / Allievi / B.8 formulas | `test_gradual_closure_benchmark.py`, `test_standpipe_surge_protection.py`, `test_surge_device_verification.py` |
 | DVCM physics | Wylie mass step + collapse ΔH | `test_dvcm_physical_verification.py`; `dvcm_physical_verification.ipynb` |
 | DVCM Bergant Adelaide rig | Published lab peaks + digitized Fig. 4 (He et al. 2025) | `test_dvcm_bergant_adelaide_experiment.py`, `test_dvcm_bergant_adelaide_trace.py`; [bergant_adelaide_verification.md](docs/bergant_adelaide_verification.md), `bergant_adelaide_verification.ipynb` |
 
+### Maintainer parity (R-THYM web app — author cross-check)
+
+| Category | Reference | Key tests / notebooks |
+|---|---|---|
+| R-THYM Joukowsky | Checked-in web-app JSON/CSV **+** analytical Joukowsky in same test | `test_joukowsky_rthym.py`; `quickstart_notebook.ipynb` (§3 = parity overlay; §2 = analytical) |
+| R-THYM long-pipe valve | Checked-in web-app JSON/CSV | `test_long_pipe_valve.py`; `long_pipe_valve_verification.ipynb` |
+
 Headline results (independent checks):
 
-- Bergant Adelaide severe case: literature second-peak **~2057 kPa** abs; digitized Fig. 4 rebound peak within **35%** of simulation gauge peak (`test_dvcm_bergant_adelaide_*`)
-- Joukowsky first-step surge vs analytical: **< 0.05 %** (`test_joukowsky_rthym.py`)
-- R-THYM pressure trace RMS (early post-closure window): **≤ 4 psi** (`test_joukowsky_rthym.py`)
+- Joukowsky first-step surge vs analytical: **< 0.05 %** (`test_joukowsky_rthym.py` — analytical assertion; same module also runs R-THYM parity)
 - Wave oscillation period vs $T_0 = 4L/a$: **< 0.2 %** (`examples/test_wave_reflections.py`)
+- Bergant Adelaide severe: literature second-peak **~2057 kPa** abs; pytest anchors peak
+  ratio in a narrow window (**35%** limit) — full trace overlay is **not** a tight match
+  (`test_dvcm_bergant_adelaide_*`; see [bergant doc](docs/bergant_adelaide_verification.md))
+
+Maintainer parity (cite only for port regression, not external proof):
+
+- R-THYM pressure trace RMS (early post-closure window): **≤ 4 psi** (`test_joukowsky_rthym.py`)
 
 ### Snapshot regression (detect drift, not absolute correctness)
 
@@ -401,14 +450,14 @@ Long-form cross-engine narratives:
 | Notebook | Trust model | Purpose |
 |---|---|---|
 | `validation_notebooks_index.ipynb` | — | Navigation only — pick a walkthrough |
-| `quickstart_notebook.ipynb` | Independent | R-THYM Joukowsky cross-engine |
-| `cross_engine_surge_verification.ipynb` | Independent | TSNet B.8 + EPANET pre-trip vs MOC |
-| `long_pipe_valve_verification.ipynb` | Independent | Five-pipe equal-% closure vs R-THYM JSON/CSV (~3 min) |
-| `epanet_import_verification.ipynb` | Independent | `complex_topology.inp` + steady-state overlay (`wntr`) |
 | `gradual_closure_verification.ipynb` | Independent | Closure-time sweep vs Joukowsky / Allievi |
+| `cross_engine_surge_verification.ipynb` | Independent | TSNet B.8 + EPANET pre-trip vs MOC |
+| `surge_device_verification.ipynb` | Independent | Standpipe, HPT, air valve vs analytical / B.8 refs |
+| `epanet_import_verification.ipynb` | Independent | `complex_topology.inp` + steady-state overlay (`wntr`) |
 | `dvcm_physical_verification.ipynb` | Independent | Mass-balance steps + collapse ΔH formulas |
 | `bergant_adelaide_verification.ipynb` | Independent | Bergant lab peaks + digitized He Fig. 4 trace |
-| `surge_device_verification.ipynb` | Independent | Standpipe, HPT, air valve vs analytical / B.8 refs |
+| `quickstart_notebook.ipynb` | Maintainer parity | Tutorial + optional R-THYM Joukowsky overlay (§3) |
+| `long_pipe_valve_verification.ipynb` | Maintainer parity | Five-pipe equal-% closure vs R-THYM JSON/CSV (~3 min) |
 | `dvcm_canonical_verification.ipynb` | **Snapshot** | Replay golden `tests/dvcm_*_reference.json` traces |
 | `surge_design_rules_verification.ipynb` | Design-rule | Standpipe size + HPT placement sweeps |
 
