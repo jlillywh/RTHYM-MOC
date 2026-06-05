@@ -221,6 +221,12 @@ EMSCRIPTEN_BINDINGS(rthym_moc) {
         .value("LegacyClamp", CavitationModel::LegacyClamp)
         .value("DVCM", CavitationModel::DVCM);
 
+    enum_<TransientFrictionModel>("TransientFrictionModel")
+        .value("Steady", TransientFrictionModel::Steady)
+        .value("QuasiSteady", TransientFrictionModel::QuasiSteady)
+        .value("BrunoneIIR", TransientFrictionModel::BrunoneIIR)
+        .value("Vitkovsky", TransientFrictionModel::Vitkovsky);
+
     class_<ControlRuleInput>("ControlRuleInput")
         .constructor<>()
         .property("id", &ControlRuleInput::id)
@@ -260,6 +266,8 @@ EMSCRIPTEN_BINDINGS(rthym_moc) {
         .function("set_p_vapor_psi", &MOCSolver::set_p_vapor_psi)
         .function("set_usf_tau", &MOCSolver::set_usf_tau)
         .function("set_k_bru", &MOCSolver::set_k_bru)
+        .function("set_friction_model", &MOCSolver::set_friction_model)
+        .function("get_friction_model", &MOCSolver::get_friction_model)
         .function("set_cavitation_model", &MOCSolver::set_cavitation_model)
         .function("get_cavitation_model", &MOCSolver::get_cavitation_model)
         .function("get_step_results", &MOCSolver::get_step_results);

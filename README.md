@@ -623,7 +623,9 @@ solver = rthym_moc.MOCSolver()
 | `solver.set_pump_schedule(id, schedule)` | Register a time-varying pump-speed schedule. |
 | `solver.set_demand_schedule(id, schedule)` | Register a time-varying junction demand schedule. |
 | `solver.set_head_schedule(id, schedule)` | Register a time-varying fixed-head schedule for a `PressureBoundary` or `Tank`. |
-| `solver.run(total_time, dt, p_vapor, usf_tau, k_bru)` | Execute the transient and retun results. |
+| `solver.set_friction_model(model)` | Set the transient friction selector (`TransientFrictionModel`; default `BrunoneIIR`). |
+| `solver.get_friction_model()` | Return the current transient friction selector. |
+| `solver.run(...)` | Execute the transient and return results (see below). |
 
 #### `run()` parameters
 
@@ -632,21 +634,30 @@ results = solver.run(
     total_time = 10.0,    # float, seconds — simulation duration
     dt         = 0.01,    # float, seconds — time step
     p_vapor    = -14.0,   # float, psi     — vapour pressure (negative = subatmospheric)
-    usf_tau    = 0.5,     # float, seconds — unsteady-friction IIR time constant
-                          #   set to dt to disable unsteady friction entirely
-    k_bru      = -1.0,    # float — Brunone USF coefficient (see below)
+    usf_tau    = 0.5,     # float, seconds — unsteady-friction IIR time constant (BrunoneIIR only)
+                          #   set to dt to disable the IIR filter (USF still active unless Steady)
+    k_bru      = -1.0,    # float — Brunone USF coefficient (BrunoneIIR / Vitkovsky; see below)
+    friction_model = None,  # TransientFrictionModel | None — override selector for this run
     record_pipe_profiles = False,  # bool — export interior MOC grid H/P/V per pipe (optional)
     profile_stride       = 1,      # int  — spatial downsampling along each pipe (optional; ≥ 1)
 )
 ```
+
+**`friction_model` (transient friction selector).**  When `None` (default), the
+solver uses the mode set by `set_friction_model()` (initially `BrunoneIIR`).
+Pass an explicit value to override for a single `run()` without changing the
+persistent setting.  See [Transient friction](#transient-friction) below.
 
 **`k_bru` (Brunone unsteady friction).**
 
 | Value | Behavior |
 |---|---|
 | `-1` (default) | Dynamic Vardy–Brown: coefficient computed each step from local Reynolds number |
-| `0` | Steady friction only (no unsteady-friction correction) |
+| `0` | No USF term (same effect as `TransientFrictionModel.Steady` for the unsteady part) |
 | `> 0` | User-supplied static coefficient (typical turbulent range: 0.02–0.15) |
+
+Applies to **`BrunoneIIR`** and **`Vitkovsky`** only; `Steady` and `QuasiSteady` ignore
+the unsteady term regardless of `k_bru`.
 
 **`record_pipe_profiles` / `profile_stride` (optional interior pipe export).**
 
@@ -1568,7 +1579,57 @@ where $B = a/g$ (ft·s²/ft = s²) is the pipe impedance and $R = f \Delta x / (
 - *Standpipe*: $H$ updated from the standpipe continuity equation each step.
 - *HydropneumaticTank*: $H$ updated from the polytropic gas law combined with the orifice flow equation each step.
 
-**Unsteady friction.**  An optional IIR low-pass filter on pipe velocity (time constant `usf_tau`) approximates the Brunone–Vítkovský unsteady friction correction, with `k_bru` selecting dynamic Vardy–Brown (default), steady-only, or a user coefficient.  Set `usf_tau = dt` to disable the filter entirely (quasi-steady friction only).
+### Transient friction
+
+The solver exposes four friction modes through `rthym_moc.TransientFrictionModel`.
+**Default is `BrunoneIIR`**, which preserves pre–Phase 6 behavior (IIR-filtered
+Brunone / Vardy–Brown unsteady friction with fixed Darcy $f$ from the initial
+Hazen–Williams steady state).
+
+```python
+import rthym_moc
+
+solver = rthym_moc.MOCSolver()
+
+# Persist across runs:
+solver.set_friction_model(rthym_moc.TransientFrictionModel.Vitkovsky)
+
+# Or override for one run only:
+results = solver.run(
+    total_time=60.0,
+    dt=0.001,
+    friction_model=rthym_moc.TransientFrictionModel.QuasiSteady,
+)
+```
+
+| Mode | Steady resistance $R$ | Unsteady term (USF) | Typical use |
+|------|----------------------|---------------------|-------------|
+| **`BrunoneIIR`** (default) | Fixed $f$ from initial $Q$ | IIR residual $(V - \bar V)$; `usf_tau` sets filter time constant | General transients; backward-compatible default |
+| **`Steady`** | Fixed $f$ | None | Baseline without USF; equivalent to `k_bru = 0` for damping |
+| **`QuasiSteady`** | Variable $f(V)$ recomputed from Hazen–Williams at each characteristic foot | None | Long lines where local velocity changes friction but USF is omitted |
+| **`Vitkovsky`** | Fixed $f$ | Bergant acceleration: temporal $(V - V^{n-1})$ minus convective $a\,\mathrm{sign}(V)\,|\partial V/\partial x|\,\Delta t$ | Stronger multi-period envelope decay on long pipelines |
+
+**Mode selection guidance.**
+
+- Leave the default **`BrunoneIIR`** unless you are studying friction-model
+  sensitivity or need long-line envelope decay (Phase 6 / LP-07).
+- Use **`Steady`** for a fixed-$f$ reference with no unsteady correction.
+- Use **`QuasiSteady`** when friction should track instantaneous local velocity
+  (variable Darcy $f$) but you do not want an explicit USF term — common in
+  screening studies on multi-mile pipes.
+- Use **`Vitkovsky`** when late-time oscillation peaks should dissipate faster
+  than quasi-steady on long transmission mains; validated directionally in
+  `tests/test_transient_friction_model.py` (`@pytest.mark.slow`).
+
+Legacy knobs **`k_bru`** and **`usf_tau`** remain available: `k_bru` scales the
+USF coefficient for `BrunoneIIR` and `Vitkovsky`; `usf_tau` controls the IIR
+low-pass filter on velocity for **`BrunoneIIR` only**.  Setting `usf_tau = dt`
+disables the IIR filter but does not select quasi-steady friction — use
+`TransientFrictionModel.QuasiSteady` for variable-$f$ without USF.
+
+Formulation details and equations: [`docs/appendix_hydraulic_reference.md`](docs/appendix_hydraulic_reference.md) §6.4–6.6.
+Long-pipeline context: [`docs/long_pipeline_surge_roadmap.md`](docs/long_pipeline_surge_roadmap.md) Phase 6.
+Literature cross-checks: [`docs/transient_friction_verification.md`](docs/transient_friction_verification.md).
 
 ---
 

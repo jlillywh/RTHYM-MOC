@@ -407,21 +407,26 @@ results = solver.run(..., friction_model=TransientFrictionModel.Vitkovsky)
 
 ### Checklist
 
-- [ ] Add enum and solver plumbing.
-- [ ] Implement Vitkovsky acceleration term in interior loop (replace or augment
+- [x] Add enum and solver plumbing.
+- [x] Implement Vitkovsky acceleration term in interior loop (replace or augment
       IIR residual).
-- [ ] Implement quasi-steady variable-`f` option.
-- [ ] Add damping comparison test on 5+ mile pipe: peak envelope decay differs
+- [x] Implement quasi-steady variable-`f` option.
+- [x] Add damping comparison test on 5+ mile pipe: peak envelope decay differs
       between quasi-steady and Vitkovsky.
-- [ ] Document mode selection in README Numerical method section.
-- [ ] Cross-check one case against published literature or third-party engine
+- [x] Document mode selection in README Numerical method section.
+- [x] Cross-check one case against published literature or third-party engine
       exports if available.
 
 ### Exit criteria
 
-- Default friction behavior unchanged for existing tests.
-- Vitkovsky produces stronger damping than quasi-steady on reference long-pipe
-  case (directional acceptance, not exact match to external reference data).
+- [x] Default friction behavior unchanged for existing tests
+      (`test_default_run_matches_explicit_brunone_iir`; full suite 462 passed).
+- [x] Vitkovsky produces stronger damping than quasi-steady on reference long-pipe
+      case (directional acceptance, not exact match to external reference data)
+      (`test_long_pipe_peak_envelope_decay_differs_quasi_steady_vs_vitkovsky`,
+      `test_lp07_vitkovsky_envelope_matches_bergant_et_al_direction`).
+
+**Status:** Complete — [#86](https://github.com/jlillywh/RTHYM-MOC/issues/86).
 
 ---
 
@@ -517,7 +522,7 @@ separation regimes; He et al. / Adelaide rig for severe collapse (loose anchor).
 - [x] Phase 3 complete — interior DVCM ([#83](https://github.com/jlillywh/RTHYM-MOC/issues/83))
 - [x] Phase 4 complete — grid scaling
 - [x] Phase 5 complete — chainage air valves
-- [ ] Phase 6 complete — Vitkovsky friction selector
+- [x] Phase 6 complete — Vitkovsky friction selector ([#86](https://github.com/jlillywh/RTHYM-MOC/issues/86))
 - [ ] Phase 7 complete — validation hardening
 - [ ] README and CHANGELOG updated
 - [ ] R-THYM integration doc updated (`dvcm_web_integration.md` or successor)

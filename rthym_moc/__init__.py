@@ -46,6 +46,7 @@ from ._rthym_moc import (
     PipeInput,
     ControlType,
     ControlRuleInput,
+    TransientFrictionModel,
     G_FT_S2,
     GPM_TO_CFS,
     PSI_TO_FT,
@@ -180,6 +181,7 @@ class MOCSolver(_RawMOCSolver):
 
 __all__ = [
     "CavitationModel",
+    "TransientFrictionModel",
     "MOCSolver",
     "NodeInput",
     "PipeInput",

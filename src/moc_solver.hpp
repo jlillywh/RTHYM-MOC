@@ -49,6 +49,13 @@ enum class CavitationModel {
     DVCM,
 };
 
+enum class TransientFrictionModel {
+    Steady = 0,
+    QuasiSteady = 1,
+    BrunoneIIR = 2,
+    Vitkovsky = 3,
+};
+
 enum class WaveSpeedDistortionAction {
     Warn,
     Error,
@@ -257,6 +264,7 @@ struct PipeState {
     std::vector<double> H;          // head (ft)          [num_nodes]
     std::vector<double> V;          // velocity (ft/s)    [num_nodes]
     std::vector<double> V_filtered; // IIR-filtered V for unsteady friction
+    std::vector<double> V_prev;     // previous-step V for Vitkovsky dV/dt
     std::vector<double> z;          // ground elevation (ft) at each grid point [num_nodes]
     bool has_terrain_elevation = false; // survey table or sloping endpoint elevations
     std::vector<PipeSegmentState> segments; // cavity state per grid index [num_nodes]
@@ -342,7 +350,8 @@ public:
                    std::optional<CavitationModel> cavitation_model = std::nullopt,
                    bool record_pipe_profiles = false,
                    int profile_stride = 1,
-                   bool enable_interior_dvcm = false);
+                   bool enable_interior_dvcm = false,
+                   std::optional<TransientFrictionModel> friction_model = std::nullopt);
 
     // Step-by-step API for WASM integration
     void   initGrid();
@@ -352,6 +361,10 @@ public:
     void   set_p_vapor_psi(double p_vapor_psi) { p_vapor_ = p_vapor_psi * PSI_TO_FT; }
     void   set_usf_tau(double usf_tau) { usf_tau_ = usf_tau; }
     void   set_k_bru(double k_bru) { k_Bru_ = k_bru; }
+    void   set_friction_model(TransientFrictionModel friction_model) {
+        friction_model_ = friction_model;
+    }
+    TransientFrictionModel get_friction_model() const { return friction_model_; }
     void   set_cavitation_model(CavitationModel cavitation_model) { cavitation_model_ = cavitation_model; }
     CavitationModel get_cavitation_model() const { return cavitation_model_; }
     void   set_enable_interior_dvcm(bool enable) { enable_interior_dvcm_ = enable; }
@@ -415,6 +428,7 @@ private:
     //   = 0  :  steady friction only (no USF damping)
     //   > 0  :  user-supplied static value (typical calibrated range: 0.02–0.15)
     double k_Bru_   = -1.0;
+    TransientFrictionModel friction_model_ = TransientFrictionModel::BrunoneIIR;
 
     // Operational control rules
     std::vector<ControlRuleInput> control_rules_;
@@ -463,6 +477,24 @@ private:
     bool interiorDvcmActiveAt(const PipeState& ps, int grid_index) const;
     static void initializePipeSegmentStates(PipeState& ps);
     void enforceWaveSpeedDistortionPolicy();
+    double unsteadyFrictionScale(const PipeState& ps, double B) const;
+    static double velocityGradientAt(const PipeState& ps, int grid_index, double dx);
+    static double darcyFFromHazenWilliamsAtVelocity(
+        const PipeState& ps,
+        const PipeInput& p,
+        double velocity_fps,
+        double fallback_f = 0.02);
+    double steadyFrictionResistance(
+        const PipeState& ps,
+        const PipeInput& p,
+        double dx,
+        double velocity_fps) const;
+    double unsteadyFrictionHeadTerm(
+        const PipeState& ps,
+        double k_u,
+        int grid_index,
+        double V_foot,
+        double dx) const;
     static double interpolateElevationAtChainageFt(
         const std::vector<std::pair<double, double>>& profile,
         double chainage_ft);

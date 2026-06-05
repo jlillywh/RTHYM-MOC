@@ -603,10 +603,9 @@ void MOCSolver::initGrid() {
         }
         double f_calc = 0.02;
         if (std::abs(vel_init) > 1e-4) {
-            f_calc = (Hf_pipe_hw * ps.D * 2.0 * G_FT_S2)
-                   / (p.length * vel_init * vel_init);
+            f_calc = darcyFFromHazenWilliamsAtVelocity(ps, p, vel_init, f_calc);
         }
-        ps.f = std::max(0.001, std::min(f_calc, 0.5));
+        ps.f = f_calc;
         const double Hf_minor = std::max(0.0, p.minor_loss) * vel_init * vel_init / (2.0 * G_FT_S2);
         const double Hf_pipe = Hf_pipe_hw + Hf_minor;
 
@@ -690,6 +689,7 @@ void MOCSolver::initGrid() {
         ps.H.resize(ps.num_nodes);
         ps.V.resize(ps.num_nodes, vel_init);
         ps.V_filtered.resize(ps.num_nodes, vel_init); // filter starts at steady state
+        ps.V_prev.resize(ps.num_nodes, vel_init);
         for (int j = 0; j < ps.num_nodes; ++j) {
             const double t_frac = (ps.num_nodes > 1)
                 ? static_cast<double>(j) / (ps.num_nodes - 1) : 0.0;
@@ -984,47 +984,27 @@ void MOCSolver::stepMOC() {
         const int  N    = ps.num_nodes;
         const double dx = ps.a_wave * dt_;
         const double B  = ps.a_wave / g;               // ft·s/ft² = s/ft
-        const double R  = (ps.f * dx / ps.D + ps.k_minor) / (2.0 * g); // distributed steady + minor-loss resistance
-        // Brunone (1991) unsteady-friction scale:  k_u = k_Bru_eff * B  [units: s]
-        // Vardy-Brown (1996):  k_Bru = C*/sqrt(π),  C* = 7.41/Re^0.352  (turbulent)
-        // Typical range: 0.02–0.15.
-        //
-        // k_Bru_ < 0  → compute dynamically from instantaneous Reynolds number (default)
-        // k_Bru_ = 0  → steady friction only
-        // k_Bru_ > 0  → user-supplied static value
-        //
-        // BUG HISTORY: was  k_u = dt_ * B  (timestep-dependent, 10–50× too large).
-        //   That coefficient has units s² not s and amplified the first Joukowsky
-        //   peak ~22 % rather than providing mild physical damping.  Fixed here by
-        //   decoupling k_u from the timestep and using the correct Brunone formula.
-        double k_Bru_eff;
-        if (k_Bru_ < 0.0) {
-            // Dynamic Vardy-Brown: sample velocity at pipe midpoint
-            const int    mid   = ps.num_nodes / 2;
-            const double Re    = std::abs(ps.V[mid]) * ps.D / NU_FT2_S;
-            const double C_star = Re > 100.0 ? 7.41 / std::pow(Re, 0.352) : 0.0;
-            k_Bru_eff = C_star / std::sqrt(M_PI_);
-        } else {
-            k_Bru_eff = k_Bru_;          // static (0 = no USF, >0 = calibrated)
-        }
-        const double k_u = k_Bru_eff * B * (dt_ / 0.01);             // unsteady-friction scale  [s]
+        const auto& pipe_input = pipe_inputs_[i];
+        const double k_u = unsteadyFrictionScale(ps, B);
 
-        // ── IIR low-pass filter ───────────────────────────────────────────
-        // V̄_j ← V̄_j + (V_j − V̄_j) · α
-        // The residual (V − V̄) is the high-frequency (transient) acceleration
-        // component, used to approximate the Zielke boundary-layer shear.
-        for (int j = 0; j < N; ++j)
-            ps.V_filtered[j] += (ps.V[j] - ps.V_filtered[j]) * alpha_filt;
+        // ── IIR low-pass filter (BrunoneIIR only) ─────────────────────────
+        if (friction_model_ == TransientFrictionModel::BrunoneIIR) {
+            for (int j = 0; j < N; ++j) {
+                ps.V_filtered[j] += (ps.V[j] - ps.V_filtered[j]) * alpha_filt;
+            }
+        }
 
         // ── Interior nodes  j = 1 … N-2  (C+ from left, C- from right) ───
         for (int j = 1; j < N - 1; ++j) {
             const double H_A = ps.H[j-1], V_A = ps.V[j-1];
             const double H_B = ps.H[j+1], V_B = ps.V[j+1];
-            const double vt_A = V_A - ps.V_filtered[j-1];
-            const double vt_B = V_B - ps.V_filtered[j+1];
+            const double R_A = steadyFrictionResistance(ps, pipe_input, dx, V_A);
+            const double R_B = steadyFrictionResistance(ps, pipe_input, dx, V_B);
+            const double usf_A = unsteadyFrictionHeadTerm(ps, k_u, j - 1, V_A, dx);
+            const double usf_B = unsteadyFrictionHeadTerm(ps, k_u, j + 1, V_B, dx);
 
-            const double C_P = H_A + B*V_A  - (R*V_A*std::abs(V_A) + k_u*vt_A);
-            const double C_M = H_B - B*V_B  + (R*V_B*std::abs(V_B) + k_u*vt_B);
+            const double C_P = H_A + B*V_A  - (R_A*V_A*std::abs(V_A) + usf_A);
+            const double C_M = H_B - B*V_B  + (R_B*V_B*std::abs(V_B) + usf_B);
 
             double Hj = (C_P + C_M) / 2.0;
             double Vj = (C_P - C_M) / (2.0 * B);
@@ -1072,13 +1052,15 @@ void MOCSolver::stepMOC() {
         // C_M arrives at the upstream end    (from node 1)
         const double V_up = ps.V[N-2]; // penultimate node → downstream BC
         const double V_dn = ps.V[1];   // second node      → upstream BC
-        const double damp_up = k_u * (V_up - ps.V_filtered[N-2]);
-        const double damp_dn = k_u * (V_dn - ps.V_filtered[1]);
+        const double R_up = steadyFrictionResistance(ps, pipe_input, dx, V_up);
+        const double R_dn = steadyFrictionResistance(ps, pipe_input, dx, V_dn);
+        const double damp_up = unsteadyFrictionHeadTerm(ps, k_u, N - 2, V_up, dx);
+        const double damp_dn = unsteadyFrictionHeadTerm(ps, k_u, 1, V_dn, dx);
 
         bndry[i].area = ps.area;
         bndry[i].B    = B;
-        bndry[i].C_P  = ps.H[N-2] + B*V_up - (R*V_up*std::abs(V_up) + damp_up);
-        bndry[i].C_M  = ps.H[1]   - B*V_dn + (R*V_dn*std::abs(V_dn) + damp_dn);
+        bndry[i].C_P  = ps.H[N-2] + B*V_up - (R_up*V_up*std::abs(V_up) + damp_up);
+        bndry[i].C_M  = ps.H[1]   - B*V_dn + (R_dn*V_dn*std::abs(V_dn) + damp_dn);
     }
 
     // ── Node boundary conditions ──────────────────────────────────────────────
@@ -2338,6 +2320,7 @@ void MOCSolver::stepMOC() {
 
     // Commit new state
     for (int i = 0; i < num_pipes; ++i) {
+        pipes_[i].V_prev = pipes_[i].V;
         pipes_[i].H.swap(newH[i]);
         pipes_[i].V.swap(newV[i]);
     }
@@ -2517,6 +2500,106 @@ double MOCSolver::pipeGridElevationFt(const PipeState& ps, int grid_index) const
 
 double MOCSolver::pipeGridVaporHeadFt(const PipeState& ps, int grid_index) const {
     return pipeGridElevationFt(ps, grid_index) + p_vapor_;
+}
+
+double MOCSolver::darcyFFromHazenWilliamsAtVelocity(
+    const PipeState& ps,
+    const PipeInput& p,
+    double velocity_fps,
+    double fallback_f) {
+    const double vel = std::abs(velocity_fps);
+    if (vel < 1e-4) {
+        return std::max(0.001, std::min(fallback_f, 0.5));
+    }
+
+    const double d_in = std::max(p.diameter, 1e-2);
+    const double Q_gpm = vel * ps.area / GPM_TO_CFS;
+    const double Hf_pipe_hw = (10.44 * p.length * std::pow(Q_gpm, 1.852))
+        / (std::pow(p.roughness, 1.852) * std::pow(d_in, 4.871));
+    const double f_calc = (Hf_pipe_hw * ps.D * 2.0 * G_FT_S2)
+        / (p.length * vel * vel);
+    return std::max(0.001, std::min(f_calc, 0.5));
+}
+
+double MOCSolver::steadyFrictionResistance(
+    const PipeState& ps,
+    const PipeInput& p,
+    double dx,
+    double velocity_fps) const {
+    double f_eff = ps.f;
+    if (friction_model_ == TransientFrictionModel::QuasiSteady) {
+        f_eff = darcyFFromHazenWilliamsAtVelocity(ps, p, velocity_fps, ps.f);
+    }
+    return (f_eff * dx / ps.D + ps.k_minor) / (2.0 * G_FT_S2);
+}
+
+double MOCSolver::unsteadyFrictionScale(const PipeState& ps, double B) const {
+    switch (friction_model_) {
+        case TransientFrictionModel::Steady:
+        case TransientFrictionModel::QuasiSteady:
+            return 0.0;
+        case TransientFrictionModel::Vitkovsky:
+        case TransientFrictionModel::BrunoneIIR:
+            break;
+    }
+
+    double k_Bru_eff;
+    if (k_Bru_ < 0.0) {
+        const int    mid   = ps.num_nodes / 2;
+        const double Re    = std::abs(ps.V[mid]) * ps.D / NU_FT2_S;
+        const double C_star = Re > 100.0 ? 7.41 / std::pow(Re, 0.352) : 0.0;
+        k_Bru_eff = C_star / std::sqrt(M_PI_);
+    } else {
+        k_Bru_eff = k_Bru_;
+    }
+    return k_Bru_eff * B * (dt_ / 0.01);
+}
+
+double MOCSolver::velocityGradientAt(
+    const PipeState& ps,
+    int grid_index,
+    double dx) {
+    if (ps.num_nodes < 2 || dx <= 0.0) {
+        return 0.0;
+    }
+    if (grid_index > 0 && grid_index + 1 < ps.num_nodes) {
+        return (ps.V[grid_index + 1] - ps.V[grid_index - 1]) / (2.0 * dx);
+    }
+    if (grid_index > 0) {
+        return (ps.V[grid_index] - ps.V[grid_index - 1]) / dx;
+    }
+    if (grid_index + 1 < ps.num_nodes) {
+        return (ps.V[grid_index + 1] - ps.V[grid_index]) / dx;
+    }
+    return 0.0;
+}
+
+double MOCSolver::unsteadyFrictionHeadTerm(
+    const PipeState& ps,
+    double k_u,
+    int grid_index,
+    double V_foot,
+    double dx) const {
+    switch (friction_model_) {
+        case TransientFrictionModel::Steady:
+        case TransientFrictionModel::QuasiSteady:
+            return 0.0;
+        case TransientFrictionModel::BrunoneIIR:
+            return k_u * (V_foot - ps.V_filtered[static_cast<std::size_t>(grid_index)]);
+        case TransientFrictionModel::Vitkovsky: {
+            if (ps.V_prev.empty()) {
+                return 0.0;
+            }
+            const double V_sign = (V_foot >= 0.0) ? 1.0 : -1.0;
+            const double temporal =
+                V_foot - ps.V_prev[static_cast<std::size_t>(grid_index)];
+            const double dV_dx = velocityGradientAt(ps, grid_index, dx);
+            const double convective = V_sign * std::abs(dV_dx);
+            const double vit_residual = temporal - ps.a_wave * convective * dt_;
+            return k_u * vit_residual;
+        }
+    }
+    return 0.0;
 }
 
 void MOCSolver::initializePipeSegmentStates(PipeState& ps) {
@@ -2764,7 +2847,8 @@ SimResults MOCSolver::run(double total_time_s, double dt,
                           double p_vapor_psi, double usf_tau,
                           double k_bru, std::optional<CavitationModel> cavitation_model,
                           bool record_pipe_profiles, int profile_stride,
-                          bool enable_interior_dvcm) {
+                          bool enable_interior_dvcm,
+                          std::optional<TransientFrictionModel> friction_model) {
     if (dt <= 0.0) {
         throw std::invalid_argument("Timestep dt must be strictly positive");
     }
@@ -2785,6 +2869,9 @@ SimResults MOCSolver::run(double total_time_s, double dt,
     }
     usf_tau_ = usf_tau;
     k_Bru_   = k_bru;
+    if (friction_model.has_value()) {
+        friction_model_ = *friction_model;
+    }
     record_pipe_profiles_ = record_pipe_profiles;
     profile_stride_       = profile_stride;
     enable_interior_dvcm_ = enable_interior_dvcm;

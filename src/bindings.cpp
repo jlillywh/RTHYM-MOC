@@ -422,6 +422,14 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .value("DVCM", CavitationModel::DVCM)
         .export_values();
 
+    // ── TransientFrictionModel Enum ──────────────────────────────────────
+    py::enum_<TransientFrictionModel>(m, "TransientFrictionModel")
+        .value("Steady", TransientFrictionModel::Steady)
+        .value("QuasiSteady", TransientFrictionModel::QuasiSteady)
+        .value("BrunoneIIR", TransientFrictionModel::BrunoneIIR)
+        .value("Vitkovsky", TransientFrictionModel::Vitkovsky)
+        .export_values();
+
     // ── ControlType Enum ───────────────────────────────────────────────────
     py::enum_<ControlType>(m, "ControlType")
         .value("Threshold", ControlType::Threshold)
@@ -514,6 +522,11 @@ PYBIND11_MODULE(_rthym_moc, m) {
             "Select the cavitation model used by subsequent run() calls.")
         .def("get_cavitation_model", &MOCSolver::get_cavitation_model,
             "Return the currently configured cavitation model.")
+        .def("set_friction_model", &MOCSolver::set_friction_model,
+            py::arg("friction_model"),
+            "Select the transient friction model used by subsequent run() calls.")
+        .def("get_friction_model", &MOCSolver::get_friction_model,
+            "Return the currently configured transient friction model.")
         .def("set_enable_interior_dvcm", &MOCSolver::set_enable_interior_dvcm,
             py::arg("enable"),
             "Enable interior-point DVCM on uninterrupted pipe reaches (default off).")
@@ -650,14 +663,20 @@ PYBIND11_MODULE(_rthym_moc, m) {
                py::object cavitation_model,
                bool record_pipe_profiles,
                int profile_stride,
-               bool enable_interior_dvcm) -> py::dict {
+               bool enable_interior_dvcm,
+               py::object friction_model) -> py::dict {
                 std::optional<CavitationModel> cavitation_model_opt = std::nullopt;
                 if (!cavitation_model.is_none()) {
                     cavitation_model_opt = cavitation_model.cast<CavitationModel>();
                 }
+                std::optional<TransientFrictionModel> friction_model_opt = std::nullopt;
+                if (!friction_model.is_none()) {
+                    friction_model_opt = friction_model.cast<TransientFrictionModel>();
+                }
                 return results_to_dict(
                     self.run(total_time, dt, p_vapor_psi, usf_tau, k_bru, cavitation_model_opt,
-                             record_pipe_profiles, profile_stride, enable_interior_dvcm));
+                             record_pipe_profiles, profile_stride, enable_interior_dvcm,
+                             friction_model_opt));
             },
             py::arg("total_time"),
             py::arg("dt")          = 0.01,
@@ -668,6 +687,7 @@ PYBIND11_MODULE(_rthym_moc, m) {
             py::arg("record_pipe_profiles") = false,
             py::arg("profile_stride") = 1,
             py::arg("enable_interior_dvcm") = false,
+            py::arg("friction_model") = py::none(),
             R"pbdoc(
             Run the transient simulation and return results.
 
@@ -700,6 +720,14 @@ PYBIND11_MODULE(_rthym_moc, m) {
                 Optional cavitation model selector. When omitted, run() uses
                 the solver's current setting from ``set_cavitation_model()``.
                 The default solver setting is ``LegacyClamp``.
+            friction_model : TransientFrictionModel | None
+                Optional transient friction model selector. When omitted, run()
+                uses the solver's current setting from ``set_friction_model()``.
+                Default is ``BrunoneIIR`` (IIR Brunone / Vardy-Brown unsteady
+                friction). ``Steady`` disables the unsteady term. ``Vitkovsky``
+                uses local and convective acceleration (Bergant et al.).
+                ``QuasiSteady`` updates Darcy ``f`` from Hazen–Williams at each
+                characteristic foot from instantaneous local velocity (no USF).
 
             Returns
             -------

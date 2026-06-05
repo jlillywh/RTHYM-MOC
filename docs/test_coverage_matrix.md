@@ -51,6 +51,7 @@ Status meanings:
 | Pipe material / wave speed sensitivity | Direct | `tests/test_pipe_materials.py` | Wave-speed effect on surge magnitude. |
 | Pipe minor loss import and response | Direct | `tests/test_pipe_minor_losses.py` | Direct and INP-loaded variants. |
 | Unsteady friction toggle | Direct | `tests/test_boundary_variations_and_losses.py` | Late-time damping comparison. |
+| Transient friction selector (Phase 6) | Direct | `tests/test_transient_friction_model.py`, `tests/test_transient_friction_literature.py` | Wylie & Streeter wave-decay + Bergant et al. LP-07 ordering; [transient_friction_verification.md](transient_friction_verification.md). |
 | Pump trip / restart | Direct | `tests/test_pump_valve_transients_from_inp.py` | Imported network transient regression. |
 | Complex imported topology | Direct | `tests/test_complex_topology_from_inp.py` | EPANET/wntr operating-point and transient checks. |
 | Standpipe protection | Direct | `tests/test_standpipe_surge_protection.py`, `tests/test_tank_size_benchmark.py` | Analytical and sweep coverage. |

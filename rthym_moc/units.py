@@ -15,7 +15,7 @@ from typing import Any
 
 import numpy as np
 
-from ._rthym_moc import CavitationModel, ControlRuleInput, ControlType, MOCSolver, NodeInput, PipeInput
+from ._rthym_moc import CavitationModel, ControlRuleInput, ControlType, MOCSolver, NodeInput, PipeInput, TransientFrictionModel
 
 TimeSeriesSchedule = Sequence[tuple[float, float]]
 
@@ -447,6 +447,7 @@ def run_si(
     record_pipe_profiles: bool = False,
     profile_stride: int = 1,
     enable_interior_dvcm: bool = False,
+    friction_model: TransientFrictionModel | None = None,
 ) -> dict[str, Any]:
     """Run a transient and return an SI-unit results dictionary.
 
@@ -472,6 +473,8 @@ def run_si(
     }
     if cavitation_model is not None:
         run_kwargs["cavitation_model"] = cavitation_model
+    if friction_model is not None:
+        run_kwargs["friction_model"] = friction_model
 
     results = solver.run(total_time, dt, **run_kwargs)
     return results_to_si(results)

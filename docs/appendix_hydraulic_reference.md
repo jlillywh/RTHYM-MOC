@@ -266,6 +266,32 @@ $$C_- = H_B - B \cdot V_B + R \cdot V_B|V_B| + k_u(V_B - \bar{V}_B)$$
 Setting $k_\text{Bru} = 0$ (the default) reduces these to the standard
 steady-friction equations.
 
+### 6.5 Vitkovsky Model (Phase 6)
+
+The **Vitkovsky** selector (`TransientFrictionModel.Vitkovsky`) replaces the
+IIR residual with a discrete form of the Bergant–Simpson–Vitkovsky acceleration
+term (Eq. 9, Water 2021 / HAMMER documentation):
+
+$$\text{USF term} = k_u \left[ (V - V^{n-1}) - a \cdot \mathrm{sign}(V)\,|\partial V/\partial x|\,\Delta t \right]$$
+
+where $V^{n-1}$ is stored from the previous time step, $a$ is the pipe wave
+speed, and $\partial V/\partial x$ is estimated at the characteristic foot
+(central difference on interior nodes). The same $k_u$ scale as BrunoneIIR
+(Vardy–Brown dynamic $k_\text{Bru}$ when `k_bru=-1`) is used so the two models
+differ in acceleration definition, not coefficient calibration.
+
+### 6.6 Quasi-Steady Variable-$f$ (Phase 6)
+
+The **QuasiSteady** selector disables unsteady friction ($k_u = 0$) but recomputes
+the Darcy–Weisbach factor $f$ at each characteristic foot from the instantaneous
+local velocity using the same Hazen–Williams conversion as `initGrid()`:
+
+$$f(V) = \frac{H_f^\text{HW}(Q(V)) \cdot D \cdot 2g}{L \cdot V^2}$$
+
+Resistance at each foot uses $R = (f(V)\,dx/D + K_\text{minor}) / (2g)$. At uniform
+initial flow, $f(V)$ equals the design $f$ stored on the pipe; during transients
+$|V|$ changes and quasi-steady friction diverges from fixed-$f$ **Steady** mode.
+
 ---
 
 ## 7. Boundary Conditions
