@@ -9,6 +9,7 @@ versioning for package releases.
 ## [Unreleased]
 
 ### Added
+- **Long-pipeline Phase 2 — pipe elevation profiles**: optional `PipeInput.elevation_profile` survey tables populate per-grid `z[j]`; profile gauge pressure and `pipe_profile_cavitation` screening use local elevation; terrain reaches get interior `LegacyClamp` at local vapor head; EPANET `[RTHYM] PipeElevation` import rows; `pipe_si(..., elevation_profile_m=...)`.
 - DVCM independent physical verification (`tests/test_dvcm_physical_verification.py`) for junction mass-balance step checks and post-collapse head-rise estimates.
 - Binder-ready notebook `examples/dvcm_physical_verification.ipynb` with charts and pass/fail metrics aligned to the pytest tolerances.
 - DVCM regression notebook `examples/dvcm_canonical_verification.ipynb` (quickstart-style overlays vs all three `tests/dvcm_*_reference.json` anchors); shared `tests/dvcm_canonical_verification_utils.py`; gate `scripts/verify_dvcm_canonical.py`.

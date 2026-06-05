@@ -612,6 +612,8 @@ void MOCSolver::initGrid() {
             }
         }
 
+        buildPipeGridElevations(ps, p);
+
         // ── Linear HGL + uniform velocity initial condition ───────────────
         ps.H.resize(ps.num_nodes);
         ps.V.resize(ps.num_nodes, vel_init);
@@ -843,8 +845,21 @@ void MOCSolver::stepMOC() {
             const double C_P = H_A + B*V_A  - (R*V_A*std::abs(V_A) + k_u*vt_A);
             const double C_M = H_B - B*V_B  + (R*V_B*std::abs(V_B) + k_u*vt_B);
 
-            newH[i][j] = (C_P + C_M) / 2.0;
-            newV[i][j] = (C_P - C_M) / (2.0 * B);
+            double Hj = (C_P + C_M) / 2.0;
+            double Vj = (C_P - C_M) / (2.0 * B);
+
+            // LegacyClamp on terrain reaches: vapor floor uses local z[j], not node z.
+            // Flat pipes (constant z) keep legacy junction-only clamping.
+            if (cavitation_model_ == CavitationModel::LegacyClamp && ps.has_terrain_elevation) {
+                const double H_vap_j = pipeGridVaporHeadFt(ps, j);
+                if (Hj < H_vap_j) {
+                    Hj = H_vap_j;
+                    Vj = (C_P - H_vap_j) / B;
+                }
+            }
+
+            newH[i][j] = Hj;
+            newV[i][j] = Vj;
         }
 
         // ── Pipe-end boundary characteristics ────────────────────────────
@@ -2191,6 +2206,85 @@ void MOCSolver::stepMOC() {
     t_now_ += dt_;
 }
 
+// ── Pipe elevation profile helpers ────────────────────────────────────────────
+
+double MOCSolver::interpolateElevationAtChainageFt(
+    const std::vector<std::pair<double, double>>& profile,
+    double chainage_ft) {
+    if (profile.empty()) {
+        return 0.0;
+    }
+    if (chainage_ft <= profile.front().first) {
+        return profile.front().second;
+    }
+    if (chainage_ft >= profile.back().first) {
+        return profile.back().second;
+    }
+    for (std::size_t k = 1; k < profile.size(); ++k) {
+        const double x0 = profile[k - 1].first;
+        const double x1 = profile[k].first;
+        if (chainage_ft <= x1) {
+            const double z0 = profile[k - 1].second;
+            const double z1 = profile[k].second;
+            const double denom = x1 - x0;
+            if (std::abs(denom) < 1e-12) {
+                return z1;
+            }
+            const double frac = (chainage_ft - x0) / denom;
+            return z0 + frac * (z1 - z0);
+        }
+    }
+    return profile.back().second;
+}
+
+void MOCSolver::buildPipeGridElevations(PipeState& ps, const PipeInput& p) const {
+    ps.z.resize(ps.num_nodes);
+
+    double z_from = 0.0;
+    double z_to   = 0.0;
+    const auto fit = node_idx_map_.find(p.from_node);
+    const auto tit = node_idx_map_.find(p.to_node);
+    if (fit != node_idx_map_.end()) {
+        z_from = nodes_[fit->second].input.elevation;
+    }
+    if (tit != node_idx_map_.end()) {
+        z_to = nodes_[tit->second].input.elevation;
+    }
+
+    const double dx = (ps.num_nodes > 1)
+        ? (ps.L / static_cast<double>(ps.num_nodes - 1))
+        : 0.0;
+
+    if (p.elevation_profile.empty()) {
+        for (int j = 0; j < ps.num_nodes; ++j) {
+            const double frac = (ps.num_nodes > 1)
+                ? static_cast<double>(j) / static_cast<double>(ps.num_nodes - 1)
+                : 0.0;
+            ps.z[j] = z_from + frac * (z_to - z_from);
+        }
+        ps.has_terrain_elevation = std::abs(z_from - z_to) > 1e-3;
+        return;
+    }
+
+    if (p.elevation_profile.size() < 2) {
+        throw std::invalid_argument(
+            "Pipe '" + p.id + "': elevation_profile requires at least 2 "
+            "(chainage_ft, elevation_ft) points");
+    }
+
+    std::vector<std::pair<double, double>> profile = p.elevation_profile;
+    std::sort(profile.begin(), profile.end(),
+              [](const std::pair<double, double>& a, const std::pair<double, double>& b) {
+                  return a.first < b.first;
+              });
+
+    for (int j = 0; j < ps.num_nodes; ++j) {
+        const double chainage_ft = static_cast<double>(j) * dx;
+        ps.z[j] = interpolateElevationAtChainageFt(profile, chainage_ft);
+    }
+    ps.has_terrain_elevation = true;
+}
+
 // ── Pipe profile capture helpers ──────────────────────────────────────────────
 
 std::vector<int> MOCSolver::buildProfilePointIndices(int num_nodes, int stride) {
@@ -2210,21 +2304,14 @@ std::vector<int> MOCSolver::buildProfilePointIndices(int num_nodes, int stride) 
 }
 
 double MOCSolver::pipeGridElevationFt(const PipeState& ps, int grid_index) const {
-    double z_from = 0.0;
-    double z_to   = 0.0;
-    const auto fit = node_idx_map_.find(ps.from_id);
-    const auto tit = node_idx_map_.find(ps.to_id);
-    if (fit != node_idx_map_.end()) {
-        z_from = nodes_[fit->second].input.elevation;
+    if (grid_index >= 0 && grid_index < static_cast<int>(ps.z.size())) {
+        return ps.z[static_cast<std::size_t>(grid_index)];
     }
-    if (tit != node_idx_map_.end()) {
-        z_to = nodes_[tit->second].input.elevation;
-    }
-    if (ps.num_nodes <= 1) {
-        return z_from;
-    }
-    const double frac = static_cast<double>(grid_index) / static_cast<double>(ps.num_nodes - 1);
-    return z_from + frac * (z_to - z_from);
+    return 0.0;
+}
+
+double MOCSolver::pipeGridVaporHeadFt(const PipeState& ps, int grid_index) const {
+    return pipeGridElevationFt(ps, grid_index) + p_vapor_;
 }
 
 void MOCSolver::initializePipeProfileCapture(SimResults& results) {
@@ -2234,6 +2321,7 @@ void MOCSolver::initializePipeProfileCapture(SimResults& results) {
     results.pipe_profile_head_ft.clear();
     results.pipe_profile_pressure_psi.clear();
     results.pipe_profile_velocity_fps.clear();
+    results.pipe_profile_cavitation.clear();
 
     for (int i = 0; i < static_cast<int>(pipes_.size()); ++i) {
         const auto& ps = pipes_[i];
@@ -2344,9 +2432,13 @@ void MOCSolver::recordStep(SimResults& results) const {
             std::vector<double> head_row;
             std::vector<double> pressure_row;
             std::vector<double> velocity_row;
+            std::vector<int> cavitation_row;
             head_row.reserve(idx_it->second.size());
             pressure_row.reserve(idx_it->second.size());
             velocity_row.reserve(idx_it->second.size());
+            cavitation_row.reserve(idx_it->second.size());
+
+            const double P_vapor_psi = p_vapor_ / PSI_TO_FT;
 
             for (int j : idx_it->second) {
                 const double Hj = ps.H[j];
@@ -2359,14 +2451,17 @@ void MOCSolver::recordStep(SimResults& results) const {
                     throw std::runtime_error(
                         "Numerical instability: NaN/Inf detected in profile velocity for pipe '" + pipe_id + "'");
                 }
+                const double P_psi = (Hj - zj) / PSI_TO_FT;
                 head_row.push_back(Hj);
-                pressure_row.push_back((Hj - zj) / PSI_TO_FT);
+                pressure_row.push_back(P_psi);
                 velocity_row.push_back(ps.V[j]);
+                cavitation_row.push_back(P_psi <= P_vapor_psi ? 1 : 0);
             }
 
             results.pipe_profile_head_ft[pipe_id].push_back(std::move(head_row));
             results.pipe_profile_pressure_psi[pipe_id].push_back(std::move(pressure_row));
             results.pipe_profile_velocity_fps[pipe_id].push_back(std::move(velocity_row));
+            results.pipe_profile_cavitation[pipe_id].push_back(std::move(cavitation_row));
         }
     }
 }
@@ -2432,6 +2527,7 @@ SimResults MOCSolver::run(double total_time_s, double dt,
             results.pipe_profile_head_ft[pi.id].reserve(num_steps);
             results.pipe_profile_pressure_psi[pi.id].reserve(num_steps);
             results.pipe_profile_velocity_fps[pi.id].reserve(num_steps);
+            results.pipe_profile_cavitation[pi.id].reserve(num_steps);
         }
     }
 

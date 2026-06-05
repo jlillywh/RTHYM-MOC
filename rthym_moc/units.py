@@ -205,6 +205,7 @@ def pipe_si(
     wall_thickness_mm: float | None = None,
     youngs_modulus_pa: float | None = None,
     poissons_ratio: float | None = None,
+    elevation_profile_m: list[tuple[float, float]] | None = None,
 ) -> PipeInput:
     """Create a :class:`PipeInput` from SI-unit keyword arguments."""
 
@@ -225,6 +226,11 @@ def pipe_si(
         pipe.youngs_modulus = float(youngs_modulus_pa) * PA_TO_PSI
     if poissons_ratio is not None:
         pipe.poissons_ratio = float(poissons_ratio)
+    if elevation_profile_m is not None:
+        pipe.elevation_profile = [
+            (length_m_to_ft(chainage_m), length_m_to_ft(elevation_m))
+            for chainage_m, elevation_m in elevation_profile_m
+        ]
 
     return pipe
 
@@ -549,5 +555,9 @@ def results_to_si(results: Mapping[str, Any]) -> dict[str, Any]:
         out["pipe_profile_pressure_kpa"] = _convert_series_dict(results["pipe_profile_pressure"], PSI_TO_KPA)
     if "pipe_profile_velocity_fps" in results:
         out["pipe_profile_velocity_m_s"] = _convert_series_dict(results["pipe_profile_velocity_fps"], FTS_TO_MS)
+    if "pipe_profile_cavitation" in results:
+        out["pipe_profile_cavitation"] = {
+            str(key): np.asarray(value, dtype=int) for key, value in results["pipe_profile_cavitation"].items()
+        }
 
     return out

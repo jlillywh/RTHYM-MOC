@@ -61,6 +61,7 @@ def test_profile_export_disabled_by_default() -> None:
     assert "pipe_profile_head" not in results
     assert "pipe_profile_pressure" not in results
     assert "pipe_profile_velocity_fps" not in results
+    assert "pipe_profile_cavitation" not in results
 
 
 def test_profile_export_shapes_and_endpoints() -> None:
@@ -320,6 +321,7 @@ def test_profile_export_enabled_materializes_interior_grids() -> None:
         "pipe_profile_head",
         "pipe_profile_pressure",
         "pipe_profile_velocity_fps",
+        "pipe_profile_cavitation",
     )
     for key in profile_keys:
         assert key not in disabled
