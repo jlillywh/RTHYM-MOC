@@ -36,6 +36,8 @@ Quick-start
 >>> head_J1 = results["node_head"]["J1"]   # head time series at junction (ft)
 """
 
+from __future__ import annotations
+
 import warnings
 from ._rthym_moc import (
     CavitationModel,
