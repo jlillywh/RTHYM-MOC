@@ -8,12 +8,15 @@ from pathlib import Path
 import pytest
 
 import rthym_moc as m
+import numpy as np
+
 from rthym_moc.epanet import (
     _apply_pattern_demands,
     _attach_import_schedules,
     _build_step_schedule,
     _parse_link_controls,
     _parse_patterns,
+    _parse_rthym_pipe_elevation_profiles,
     _pattern_timestep_seconds,
 )
 
@@ -364,3 +367,135 @@ HEADLOSS H-W
             initial_heads={"J2": 95.0},
         )
     assert added["_VALVE_V1"].head == pytest.approx(95.0)
+
+
+def test_parse_rthym_pipe_elevation_profiles_us_and_si() -> None:
+    sec = {
+        "RTHYM": [
+            ["P1", "PipeElevation", "0=100", "500=250", "1000=200"],
+            ["J1", "Standpipe", "tank_area=1.0"],
+        ]
+    }
+    us = _parse_rthym_pipe_elevation_profiles(sec, "GPM")
+    assert us == {"P1": [(0.0, 100.0), (500.0, 250.0), (1000.0, 200.0)]}
+
+    sec_si = {
+        "RTHYM": [
+            ["P1", "PipeElevation", "0=30.48", "152.4=91.44", "304.8=60.96"],
+        ]
+    }
+    si = _parse_rthym_pipe_elevation_profiles(sec_si, "LPS")
+    assert si["P1"][0][0] == pytest.approx(0.0, abs=1e-6)
+    assert si["P1"][1][0] == pytest.approx(500.0, rel=1e-3)
+    assert si["P1"][1][1] == pytest.approx(300.0, rel=1e-3)
+
+
+def test_load_inp_applies_rthym_pipe_elevation_profile(tmp_path: Path) -> None:
+    inp_path = tmp_path / "rthym_pipe_elev.inp"
+    inp_path.write_text(
+        """[TITLE]
+Pipe elevation survey
+
+[JUNCTIONS]
+J1   100        0
+J2   200        0
+
+[RESERVOIRS]
+R1   350
+R2   350
+
+[PIPES]
+P1   R1  J1  1000    12        130        0
+P2   J1  J2  1000    12        130        0
+P3   J2  R2  1000    12        130        0
+
+[RTHYM]
+P2   PipeElevation   0=100   500=300   1000=200
+
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+
+[END]
+""",
+        encoding="utf-8",
+    )
+
+    added_pipes: dict[str, m.PipeInput] = {}
+    original_add_pipe = m.MOCSolver.add_pipe
+
+    def capture_pipe(self, pipe):
+        added_pipes[pipe.id] = pipe
+        return original_add_pipe(self, pipe)
+
+    with mock.patch.object(m.MOCSolver, "add_pipe", capture_pipe):
+        solver = m.load_inp(
+            str(inp_path),
+            use_wntr=False,
+            initial_flows={"P1": 0.0, "P2": 0.0, "P3": 0.0},
+        )
+
+    assert added_pipes["P1"].elevation_profile == []
+    assert added_pipes["P2"].elevation_profile == [(0.0, 100.0), (500.0, 300.0), (1000.0, 200.0)]
+    assert added_pipes["P3"].elevation_profile == []
+
+    survey = added_pipes["P2"].elevation_profile
+    results = solver.run(total_time=0.05, dt=0.01, record_pipe_profiles=True)
+    chainage = np.asarray(results["pipe_profile_chainage_ft"]["P2"])
+    head = np.asarray(results["pipe_profile_head"]["P2"])
+    pressure = np.asarray(results["pipe_profile_pressure"]["P2"])
+    summit_idx = int(np.argmin(np.abs(chainage - 500.0)))
+    x_ft = float(chainage[summit_idx])
+
+    def _survey_z_ft(chainage_ft: float) -> float:
+        ordered = sorted(survey, key=lambda pair: pair[0])
+        if chainage_ft <= ordered[0][0]:
+            return ordered[0][1]
+        if chainage_ft >= ordered[-1][0]:
+            return ordered[-1][1]
+        for (x0, z0), (x1, z1) in zip(ordered, ordered[1:]):
+            if chainage_ft <= x1:
+                frac = (chainage_ft - x0) / (x1 - x0)
+                return z0 + frac * (z1 - z0)
+        return ordered[-1][1]
+
+    z_at = _survey_z_ft(x_ft)
+    z_linear = 100.0 + (x_ft / 1000.0) * (200.0 - 100.0)
+
+    assert pressure[0, summit_idx] == pytest.approx(
+        (head[0, summit_idx] - z_at) / m.PSI_TO_FT,
+        rel=1e-6,
+    )
+    assert pressure[0, summit_idx] < (head[0, summit_idx] - z_linear) / m.PSI_TO_FT
+
+
+def test_parse_rthym_pipe_elevation_requires_two_points_warns() -> None:
+    sec = {"RTHYM": [["P1", "PipeElevation", "0=10"]]}
+    with pytest.warns(UserWarning, match="at least two chainage=elevation"):
+        assert _parse_rthym_pipe_elevation_profiles(sec, "GPM") == {}
+
+
+def test_load_inp_rthym_pipe_elevation_unknown_pipe_warns(tmp_path: Path) -> None:
+    inp_path = tmp_path / "missing_pipe_elev.inp"
+    inp_path.write_text(
+        """[JUNCTIONS]
+J1   0   0
+J2   0   0
+[RESERVOIRS]
+R1   100
+R2   100
+[PIPES]
+P1   R1  J1  100   12   130   0
+P2   J1  R2  100   12   130   0
+[RTHYM]
+PX   PipeElevation   0=0   100=10
+[OPTIONS]
+UNITS GPM
+HEADLOSS H-W
+[END]
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.warns(UserWarning, match="unknown \\[PIPES\\] link"):
+        m.load_inp(str(inp_path), use_wntr=False, initial_flows={"P1": 0.0, "P2": 0.0})

@@ -1420,11 +1420,15 @@ For `initial_flows`, use the original EPANET link ID for pumps and valves (e.g. 
 | `[TIMES]` | Patten timestep (hours → seconds) |
 | `[CURVES]` | Pump design points |
 | `[OPTIONS]` | `Units`, `Headloss` formula |
-| `[RTHYM]` | Surge-device overrides (`Standpipe`, `HydropneumaticTank`, `AirValve`, `CheckValve`); units follow `[OPTIONS] Units` |
+| `[RTHYM]` | Surge-device overrides (`Standpipe`, `HydropneumaticTank`, `AirValve`, `CheckValve`); optional `PipeID PipeElevation chainage=elevation …` survey rows; units follow `[OPTIONS] Units` |
 
 All US customary unit variants (GPM, CFS, MGD, IMGD, AFD) and SI metric variants (LPS, LPM, MLD, CMH, CMD) are supported.
 
-The custom ``[RTHYM]`` section uses the same ``Units`` setting: with ``UNITS LPS`` (or other SI variants), write standpipe areas in m², vessel volumes in m³, diameters in mm, and vent offsets in m.  With ``UNITS GPM`` (or other US variants), use ft², ft³, inches, and ft.  No separate flag is required.
+The custom ``[RTHYM]`` section uses the same ``Units`` setting: with ``UNITS LPS`` (or other SI variants), write standpipe areas in m², vessel volumes in m³, diameters in mm, vent offsets in m, and pipe-survey chainage/elevation in m.  With ``UNITS GPM`` (or other US variants), use ft², ft³, inches, ft, and ft for surveys.  Example pipe survey row::
+
+    P_LONG   PipeElevation   0=120   26400=340   52800=95
+
+No separate flag is required.
 
 ### Pump, valve, and check-valve generated IDs
 

@@ -217,7 +217,7 @@ pipe_si(..., elevation_profile_m=[(0.0, 36.6), ...])
 - [x] Use `z[j]` when computing gauge pressure for profile export.
 - [x] Use `z[j]` for **LegacyClamp** at interior points (see Phase 3) and for
       pre-DVCM vapor screening tests (`pipe_profile_cavitation`, interior clamp in `stepMOC()`).
-- [ ] EPANET import: optional `[RTHYM]` elevation table per pipe (defer if heavy).
+- [x] EPANET import: optional `[RTHYM]` elevation table per pipe (`PipeElevation` rows).
 - [x] Add `tests/test_pipe_elevation_profile.py`:
       - [x] Summit elevation produces lowest static pressure at correct chainage.
       - [x] Linear fallback matches current behavior for two-node pipes.
