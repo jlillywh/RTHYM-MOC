@@ -65,6 +65,10 @@ class PipeStudySummary(TypedDict, total=False):
     flow_gpm: Extrema
     chainage_envelope: ChainageEnvelope
     profile_peak: ProfilePeakSummary
+    wave_speed_design_fps: float
+    wave_speed_adjusted_fps: float
+    distortion_pct: float
+    num_segments: int
 
 
 class StudySummary(TypedDict, total=False):
@@ -109,6 +113,10 @@ class PipeStudySummarySI(TypedDict, total=False):
     flow_m3s: Extrema
     chainage_envelope: ChainageEnvelopeSI
     profile_peak: ProfilePeakSummarySI
+    wave_speed_design_m_s: float
+    wave_speed_adjusted_m_s: float
+    distortion_pct: float
+    num_segments: int
 
 
 class StudySummarySI(TypedDict, total=False):
@@ -235,6 +243,26 @@ def cavitation_summary(
     )
 
 
+def _attach_pipe_grid_scaling(
+    pipes_out: dict[str, PipeStudySummary],
+    results: Mapping[str, Any],
+) -> None:
+    """Copy per-pipe Courant grid-scaling metadata from run() results into pipe summaries."""
+    design = results.get("pipe_wave_speed_design_fps", {})
+    adjusted = results.get("pipe_wave_speed_adjusted_fps", {})
+    distortion = results.get("pipe_distortion_pct", {})
+    num_segments = results.get("pipe_num_segments", {})
+    for pipe_id in design:
+        pid = str(pipe_id)
+        if pid not in pipes_out:
+            pipes_out[pid] = {}
+        pipes_out[pid]["wave_speed_design_fps"] = float(design[pipe_id])
+        pipes_out[pid]["wave_speed_adjusted_fps"] = float(adjusted[pipe_id])
+        pipes_out[pid]["distortion_pct"] = float(distortion[pipe_id])
+        if pipe_id in num_segments:
+            pipes_out[pid]["num_segments"] = int(num_segments[pipe_id])
+
+
 def summarize_study(
     results: Mapping[str, Any],
     *,
@@ -288,6 +316,8 @@ def summarize_study(
         pipe_entry["chainage_envelope"] = envelope
         if peaks:
             pipe_entry["profile_peak"] = peaks
+
+    _attach_pipe_grid_scaling(pipes_out, results)
 
     summary = StudySummary(
         meta={
@@ -395,6 +425,12 @@ def study_summary_to_si(summary: StudySummary) -> StudySummarySI:
             pipe_entry["chainage_envelope"] = _chainage_envelope_to_si(pipe_row["chainage_envelope"])
         if "profile_peak" in pipe_row:
             pipe_entry["profile_peak"] = _profile_peak_to_si(pipe_row["profile_peak"])
+        if "wave_speed_design_fps" in pipe_row:
+            pipe_entry["wave_speed_design_m_s"] = pipe_row["wave_speed_design_fps"] * FTS_TO_MS
+            pipe_entry["wave_speed_adjusted_m_s"] = pipe_row["wave_speed_adjusted_fps"] * FTS_TO_MS
+            pipe_entry["distortion_pct"] = pipe_row["distortion_pct"]
+        if "num_segments" in pipe_row:
+            pipe_entry["num_segments"] = pipe_row["num_segments"]
         pipes_out[str(pipe_id)] = pipe_entry
 
     si_summary = StudySummarySI(meta=dict(summary["meta"]), nodes=nodes_out, pipes=pipes_out)

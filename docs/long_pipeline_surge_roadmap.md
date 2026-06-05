@@ -297,6 +297,8 @@ pipe_si(..., elevation_profile_m=[(0.0, 36.6), ...])
 
 ## Phase 4: Grid Scaling for Long Reaches (Tier 2)
 
+**Status:** Complete — [#84](https://github.com/jlillywh/RTHYM-MOC/issues/84) (pending PR merge).
+
 **Priority:** Medium–high — makes Phase 3 practical on 10+ mile pipes.
 
 ### Deliverables
@@ -320,23 +322,25 @@ pipe.interior_dvcm_chainages_ft = [13200.0, 39600.0]  # e.g. summit + user point
 
 ### Checklist
 
-- [ ] Implement `max_segments_per_pipe` in `initGrid()` (minimum 2 segments).
-- [ ] Emit per-pipe `wave_speed_design_fps`, `wave_speed_adjusted_fps`,
+- [x] Implement `max_segments_per_pipe` in `initGrid()` (minimum 2 segments).
+- [x] Emit per-pipe `wave_speed_design_fps`, `wave_speed_adjusted_fps`,
       `distortion_pct` in study meta.
-- [ ] Warn or fail when distortion exceeds threshold (configurable).
-- [ ] Implement sparse interior DVCM at listed chainages (snap to nearest grid
+- [x] Warn or fail when distortion exceeds threshold (configurable).
+- [x] Implement sparse interior DVCM at listed chainages (snap to nearest grid
       index).
-- [ ] Performance benchmark: `LP-PERF-01` via `scripts/benchmark_long_pipeline_budget.py`
+- [x] Performance benchmark: `LP-PERF-01` via `scripts/benchmark_long_pipeline_budget.py`
       (see [long_pipeline_phase0_baseline.md](long_pipeline_phase0_baseline.md) §4).
-- [ ] Document tradeoffs in new section of [dvcm_timestep_guidance.md](dvcm_timestep_guidance.md).
-- [ ] Add `tests/test_grid_scaling_long_pipe.py`.
+- [x] Document tradeoffs in new section of [dvcm_timestep_guidance.md](dvcm_timestep_guidance.md).
+- [x] Add `tests/test_grid_scaling_long_pipe.py`.
 
 ### Exit criteria
 
-- `LP-PERF-01` completes in **&lt; 30 s** with `max_segments_per_pipe ≤ 2000`
-  (baseline §4).
-- Distortion report matches hand calculation for a short test pipe.
-- Sparse DVCM matches full interior DVCM on a short pipe within tolerance.
+- [x] `LP-PERF-01` completes in **&lt; 30 s** with `max_segments_per_pipe ≤ 2000`
+      (baseline §4; `tests/test_long_pipeline_perf.py`, `scripts/benchmark_long_pipeline_budget.py`).
+- [x] Distortion report matches hand calculation for a short test pipe
+      (`tests/test_grid_scaling_long_pipe.py::test_distortion_report_matches_hand_calculation`).
+- [x] Sparse DVCM matches full interior DVCM on a short pipe within tolerance
+      (`tests/test_sparse_interior_dvcm.py::test_sparse_matches_full_when_watchpoints_cover_interior`).
 
 ---
 
@@ -511,7 +515,7 @@ separation regimes; He et al. / Adelaide rig for severe collapse (loose anchor).
 - [x] Phase 1 complete — profile export ([#81](https://github.com/jlillywh/RTHYM-MOC/issues/81), [#88](https://github.com/jlillywh/RTHYM-MOC/pull/88))
 - [x] Phase 2 complete — elevation profile ([#82](https://github.com/jlillywh/RTHYM-MOC/issues/82))
 - [x] Phase 3 complete — interior DVCM ([#83](https://github.com/jlillywh/RTHYM-MOC/issues/83))
-- [ ] Phase 4 complete — grid scaling
+- [x] Phase 4 complete — grid scaling
 - [ ] Phase 5 complete — chainage air valves
 - [ ] Phase 6 complete — Vitkovsky friction selector
 - [ ] Phase 7 complete — validation hardening

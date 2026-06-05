@@ -352,6 +352,27 @@ def test_summarize_study_without_profiles_omits_chainage_envelope():
     assert "profile_peak" not in summary["pipes"]["P1"]
 
 
+def test_summarize_study_grid_scaling_without_pipe_flow() -> None:
+    """Grid-scaling metadata attaches even when pipe_flow_gpm is absent."""
+    summary = summarize_study(
+        {
+            "time": np.array([0.0, 0.01]),
+            "node_head": {"R1": np.array([100.0, 100.0])},
+            "pipe_wave_speed_design_fps": {"P1": 4000.0},
+            "pipe_wave_speed_adjusted_fps": {"P1": 4000.0},
+            "pipe_distortion_pct": {"P1": 0.0},
+            "pipe_num_segments": {"P1": 100},
+        },
+        dt_s=0.01,
+    )
+    pipe = summary["pipes"]["P1"]
+    assert pipe["wave_speed_design_fps"] == pytest.approx(4000.0)
+    assert pipe["wave_speed_adjusted_fps"] == pytest.approx(4000.0)
+    assert pipe["distortion_pct"] == pytest.approx(0.0)
+    assert pipe["num_segments"] == 100
+    assert "flow_gpm" not in pipe
+
+
 def test_summarize_study_with_acceptance_limits():
     time_s = np.array([0.0, 0.01, 0.02])
     results = {

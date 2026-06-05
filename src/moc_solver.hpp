@@ -49,6 +49,11 @@ enum class CavitationModel {
     DVCM,
 };
 
+enum class WaveSpeedDistortionAction {
+    Warn,
+    Error,
+};
+
 enum class CavityRegime {
     LiquidFull,
     CavityActive,
@@ -125,6 +130,10 @@ struct PipeInput {
     // Optional piecewise-linear survey (chainage_ft from from_node, elevation_ft).
     // Empty → linear interpolation between from_node and to_node elevations.
     std::vector<std::pair<double, double>> elevation_profile;
+
+    // Sparse interior DVCM watchpoints (chainage ft from from_node). When non-empty
+    // and enable_interior_dvcm is on, cavity physics runs only at snapped grid indices.
+    std::vector<double> interior_dvcm_chainages_ft;
 };
 
 // ── Simulation results ───────────────────────────────────────────────────────
@@ -161,6 +170,14 @@ struct SimResults {
     // Interior DVCM diagnostics at profile points (enable_interior_dvcm + record_pipe_profiles)
     std::unordered_map<std::string, std::vector<std::vector<double>>> pipe_profile_cavity_volume;
     std::unordered_map<std::string, std::vector<std::vector<int>>>    pipe_profile_cavity_active;
+
+    // Per-pipe MOC grid scaling (populated every run() after initGrid())
+    std::unordered_map<std::string, double> pipe_wave_speed_design_fps;
+    std::unordered_map<std::string, double> pipe_wave_speed_adjusted_fps;
+    std::unordered_map<std::string, double> pipe_distortion_pct;
+    std::unordered_map<std::string, int>    pipe_num_segments;
+    // Snapped MOC grid indices for sparse interior DVCM (empty → full interior grid)
+    std::unordered_map<std::string, std::vector<int>> pipe_interior_dvcm_grid_indices;
 };
 
 enum class ControlType {
@@ -232,6 +249,7 @@ struct PipeState {
     double L         = 100.0;  // ft
     double D         = 8.0/12; // ft
     double area      = 0.0;    // ft²
+    double a_wave_design = 4000.0; // ft/s  (Korteweg / rigid default before Courant rounding)
     double a_wave    = 4000.0; // ft/s  (Courant-adjusted)
     double f         = 0.02;   // Darcy-Weisbach friction factor
     double k_minor   = 0.0;    // dimensionless local-loss K distributed across the pipe
@@ -242,6 +260,7 @@ struct PipeState {
     std::vector<double> z;          // ground elevation (ft) at each grid point [num_nodes]
     bool has_terrain_elevation = false; // survey table or sloping endpoint elevations
     std::vector<PipeSegmentState> segments; // cavity state per grid index [num_nodes]
+    std::vector<int> interior_dvcm_indices; // sparse watchpoints; empty → all interior j
 };
 
 // ── Internal node runtime state ──────────────────────────────────────────────
@@ -337,6 +356,15 @@ public:
     CavitationModel get_cavitation_model() const { return cavitation_model_; }
     void   set_enable_interior_dvcm(bool enable) { enable_interior_dvcm_ = enable; }
     bool   get_enable_interior_dvcm() const { return enable_interior_dvcm_; }
+    void   set_max_segments_per_pipe(int max_segments);
+    int    get_max_segments_per_pipe() const { return max_segments_per_pipe_; }
+    void   set_max_wave_speed_distortion(double max_fraction);
+    double get_max_wave_speed_distortion() const { return max_wave_speed_distortion_; }
+    void   set_wave_speed_distortion_action(WaveSpeedDistortionAction action);
+    WaveSpeedDistortionAction get_wave_speed_distortion_action() const {
+        return wave_speed_distortion_action_;
+    }
+    const std::string& get_grid_distortion_warning() const { return grid_distortion_warning_; }
 
 #if defined(EMSCRIPTEN) || defined(__EMSCRIPTEN__)
     emscripten::val get_step_results() const;
@@ -376,6 +404,10 @@ private:
     double p_vapor_ = -14.0 * PSI_TO_FT; // ft (converted from psi at init)
     CavitationModel cavitation_model_ = CavitationModel::LegacyClamp;
     bool enable_interior_dvcm_ = false;
+    int  max_segments_per_pipe_ = 0; // 0 = uncapped; minimum 2 segments enforced in initGrid()
+    double max_wave_speed_distortion_ = -1.0; // fraction |a'-a|/a; <0 disables check
+    WaveSpeedDistortionAction wave_speed_distortion_action_ = WaveSpeedDistortionAction::Warn;
+    std::string grid_distortion_warning_;
     double usf_tau_ = 0.5;               // s  boundary-layer relaxation time constant
     // Brunone (1991) dimensionless USF coefficient.
     //   < 0  (default -1): compute dynamically each timestep via Vardy-Brown (1996)
@@ -427,7 +459,10 @@ private:
     static std::vector<int> buildProfilePointIndices(int num_nodes, int stride);
     void initializePipeProfileCapture(SimResults& results);
     void buildPipeGridElevations(PipeState& ps, const PipeInput& p) const;
+    static void buildInteriorDvcmIndices(PipeState& ps, const PipeInput& p);
+    bool interiorDvcmActiveAt(const PipeState& ps, int grid_index) const;
     static void initializePipeSegmentStates(PipeState& ps);
+    void enforceWaveSpeedDistortionPolicy();
     static double interpolateElevationAtChainageFt(
         const std::vector<std::pair<double, double>>& profile,
         double chainage_ft);

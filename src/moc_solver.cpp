@@ -179,6 +179,69 @@ void MOCSolver::clear_control_rules() {
     control_rule_states_.clear();
 }
 
+void MOCSolver::set_max_segments_per_pipe(int max_segments) {
+    if (max_segments < 0) {
+        throw std::invalid_argument("max_segments_per_pipe must be >= 0 (0 = uncapped)");
+    }
+    max_segments_per_pipe_ = max_segments;
+}
+
+void MOCSolver::set_max_wave_speed_distortion(double max_fraction) {
+    if (max_fraction < 0.0) {
+        max_wave_speed_distortion_ = -1.0;
+        return;
+    }
+    if (max_fraction > 1.0) {
+        throw std::invalid_argument(
+            "max_wave_speed_distortion must be in [0, 1] as a fraction, or negative to disable");
+    }
+    max_wave_speed_distortion_ = max_fraction;
+}
+
+void MOCSolver::set_wave_speed_distortion_action(WaveSpeedDistortionAction action) {
+    wave_speed_distortion_action_ = action;
+}
+
+void MOCSolver::enforceWaveSpeedDistortionPolicy() {
+    grid_distortion_warning_.clear();
+    if (max_wave_speed_distortion_ < 0.0) {
+        return;
+    }
+
+    std::ostringstream msg;
+    bool any = false;
+    for (const auto& pi : pipe_inputs_) {
+        auto pit = pipe_idx_map_.find(pi.id);
+        if (pit == pipe_idx_map_.end()) continue;
+        const PipeState& ps = pipes_[pit->second];
+        const double a_design = ps.a_wave_design;
+        const double a_adj = ps.a_wave;
+        const double distortion_frac = (a_design > 1e-9)
+            ? std::abs(a_adj - a_design) / a_design
+            : 0.0;
+        if (distortion_frac <= max_wave_speed_distortion_ + 1e-12) {
+            continue;
+        }
+        if (any) {
+            msg << "; ";
+        }
+        any = true;
+        msg << "pipe '" << pi.id << "' wave-speed distortion "
+            << (distortion_frac * 100.0) << "% exceeds limit "
+            << (max_wave_speed_distortion_ * 100.0) << "% "
+            << "(design=" << a_design << " ft/s, adjusted=" << a_adj << " ft/s)";
+    }
+    if (!any) {
+        return;
+    }
+
+    const std::string text = "Wave-speed distortion limit exceeded: " + msg.str();
+    if (wave_speed_distortion_action_ == WaveSpeedDistortionAction::Error) {
+        throw std::runtime_error(text);
+    }
+    grid_distortion_warning_ = text;
+}
+
 double MOCSolver::get_node_head(const std::string& id) const {
     auto it = node_idx_map_.find(id);
     if (it == node_idx_map_.end()) {
@@ -516,8 +579,15 @@ void MOCSolver::initGrid() {
         // ── Courant condition: Cr = a·dt/dx = 1 ───────────────────────────
         // Round number of segments to nearest integer, then back-compute
         // the exact wave speed that gives Cr = 1.0 for that integer count.
+        // Optional max_segments_per_pipe cap (Phase 4) coarsens the grid;
+        // at least two segments are always used.
         const double dx_target = wave_speed * dt_;
-        const int    num_segs  = std::max(1, static_cast<int>(std::round(p.length / dx_target)));
+        int num_segs = std::max(1, static_cast<int>(std::round(p.length / dx_target)));
+        if (max_segments_per_pipe_ > 0) {
+            num_segs = std::min(num_segs, max_segments_per_pipe_);
+            num_segs = std::max(num_segs, 2);
+        }
+        ps.a_wave_design = wave_speed;
         ps.a_wave    = (p.length / num_segs) / dt_; // adjusted wave speed
         ps.num_nodes = num_segs + 1;
         ps.k_minor   = std::max(0.0, p.minor_loss) / num_segs;
@@ -614,6 +684,7 @@ void MOCSolver::initGrid() {
 
         buildPipeGridElevations(ps, p);
         initializePipeSegmentStates(ps);
+        buildInteriorDvcmIndices(ps, p);
 
         // ── Linear HGL + uniform velocity initial condition ───────────────
         ps.H.resize(ps.num_nodes);
@@ -958,7 +1029,7 @@ void MOCSolver::stepMOC() {
             double Hj = (C_P + C_M) / 2.0;
             double Vj = (C_P - C_M) / (2.0 * B);
 
-            if (enable_interior_dvcm_ && cavitation_model_ == CavitationModel::DVCM) {
+            if (interiorDvcmActiveAt(ps, j)) {
                 auto& seg = ps.segments[static_cast<std::size_t>(j)];
                 const double H_vap_j = pipeGridVaporHeadFt(ps, j);
                 const double cavity_capacity_ft3 = dx * ps.area;
@@ -2452,6 +2523,41 @@ void MOCSolver::initializePipeSegmentStates(PipeState& ps) {
     ps.segments.assign(static_cast<std::size_t>(ps.num_nodes), PipeSegmentState{});
 }
 
+void MOCSolver::buildInteriorDvcmIndices(PipeState& ps, const PipeInput& p) {
+    ps.interior_dvcm_indices.clear();
+    if (p.interior_dvcm_chainages_ft.empty() || ps.num_nodes < 3) {
+        return;
+    }
+
+    const double dx = ps.L / static_cast<double>(ps.num_nodes - 1);
+    std::vector<int> indices;
+    indices.reserve(p.interior_dvcm_chainages_ft.size());
+    for (double chainage_ft : p.interior_dvcm_chainages_ft) {
+        int j = static_cast<int>(std::round(chainage_ft / dx));
+        j = std::max(1, std::min(j, ps.num_nodes - 2));
+        indices.push_back(j);
+    }
+    std::sort(indices.begin(), indices.end());
+    indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
+    ps.interior_dvcm_indices = std::move(indices);
+}
+
+bool MOCSolver::interiorDvcmActiveAt(const PipeState& ps, int grid_index) const {
+    if (!enable_interior_dvcm_ || cavitation_model_ != CavitationModel::DVCM) {
+        return false;
+    }
+    if (grid_index <= 0 || grid_index >= ps.num_nodes - 1) {
+        return false;
+    }
+    if (ps.interior_dvcm_indices.empty()) {
+        return true;
+    }
+    return std::binary_search(
+        ps.interior_dvcm_indices.begin(),
+        ps.interior_dvcm_indices.end(),
+        grid_index);
+}
+
 void MOCSolver::initializePipeProfileCapture(SimResults& results) {
     profile_point_indices_.clear();
     profile_chainage_ft_.clear();
@@ -2565,10 +2671,7 @@ void MOCSolver::recordStep(SimResults& results) const {
             }
             avg_V += v;
 
-            if (enable_interior_dvcm_
-                && cavitation_model_ == CavitationModel::DVCM
-                && j > 0
-                && j < ps.num_nodes - 1) {
+            if (interiorDvcmActiveAt(ps, j)) {
                 const double Hj = ps.H[static_cast<std::size_t>(j)];
                 const auto& seg = ps.segments[static_cast<std::size_t>(j)];
                 throwIfInvalidInteriorSegmentState(
@@ -2685,6 +2788,7 @@ SimResults MOCSolver::run(double total_time_s, double dt,
     record_pipe_profiles_ = record_pipe_profiles;
     profile_stride_       = profile_stride;
     enable_interior_dvcm_ = enable_interior_dvcm;
+    grid_distortion_warning_.clear();
 
     initGrid();
 
@@ -2711,6 +2815,26 @@ SimResults MOCSolver::run(double total_time_s, double dt,
     for (const auto& pi : pipe_inputs_) {
         results.pipe_flow_gpm[pi.id].reserve(num_steps);
     }
+
+    for (const auto& pi : pipe_inputs_) {
+        auto pit = pipe_idx_map_.find(pi.id);
+        if (pit == pipe_idx_map_.end()) continue;
+        const PipeState& ps = pipes_[pit->second];
+        const double a_design = ps.a_wave_design;
+        const double a_adj = ps.a_wave;
+        const double distortion = (a_design > 1e-9)
+            ? std::abs(a_adj - a_design) / a_design * 100.0
+            : 0.0;
+        results.pipe_wave_speed_design_fps[pi.id] = a_design;
+        results.pipe_wave_speed_adjusted_fps[pi.id] = a_adj;
+        results.pipe_distortion_pct[pi.id] = distortion;
+        results.pipe_num_segments[pi.id] = ps.num_nodes - 1;
+        if (!ps.interior_dvcm_indices.empty()) {
+            results.pipe_interior_dvcm_grid_indices[pi.id] = ps.interior_dvcm_indices;
+        }
+    }
+
+    enforceWaveSpeedDistortionPolicy();
 
     if (record_pipe_profiles_) {
         initializePipeProfileCapture(results);
