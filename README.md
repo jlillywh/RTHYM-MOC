@@ -368,7 +368,7 @@ pytest tests/test_joukowsky_rthym.py tests/test_long_pipe_valve.py \
 
 Headline results (independent checks):
 
-- Bergant Adelaide severe case: literature second-peak **~2057 kPa** abs; digitized Fig. 4 rebound peak within **40%** of simulation gauge peak (`test_dvcm_bergant_adelaide_*`)
+- Bergant Adelaide severe case: literature second-peak **~2057 kPa** abs; digitized Fig. 4 rebound peak within **35%** of simulation gauge peak (`test_dvcm_bergant_adelaide_*`)
 - Joukowsky first-step surge vs analytical: **< 0.05 %** (`test_joukowsky_rthym.py`)
 - R-THYM pressure trace RMS (early post-closure window): **≤ 4 psi** (`test_joukowsky_rthym.py`)
 - Wave oscillation period vs $T_0 = 4L/a$: **< 0.2 %** (`examples/test_wave_reflections.py`)
@@ -392,7 +392,7 @@ Full trust-model map, tolerance policy, and artifact inventory:
 Long-form cross-engine narratives:
 [docs/appendix_b_verification.md](docs/appendix_b_verification.md).
 
-### Interactive notebooks (Binder)
+### Interactive verification notebooks (Binder)
 
 **Start here:** [`docs/validation_notebooks.md`](docs/validation_notebooks.md) or
 [`examples/validation_notebooks_index.ipynb`](examples/validation_notebooks_index.ipynb)
@@ -407,6 +407,7 @@ Long-form cross-engine narratives:
 | `epanet_import_verification.ipynb` | Independent | `complex_topology.inp` + steady-state overlay (`wntr`) |
 | `gradual_closure_verification.ipynb` | Independent | Closure-time sweep vs Joukowsky / Allievi |
 | `dvcm_physical_verification.ipynb` | Independent | Mass-balance steps + collapse ΔH formulas |
+| `bergant_adelaide_verification.ipynb` | Independent | Bergant lab peaks + digitized He Fig. 4 trace |
 | `surge_device_verification.ipynb` | Independent | Standpipe, HPT, air valve vs analytical / B.8 refs |
 | `dvcm_canonical_verification.ipynb` | **Snapshot** | Replay golden `tests/dvcm_*_reference.json` traces |
 | `surge_design_rules_verification.ipynb` | Design-rule | Standpipe size + HPT placement sweeps |
