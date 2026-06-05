@@ -324,15 +324,6 @@ vs DVCM at a valve. See [Validation](#validation) for regression-style DVCM note
 
 ## Validation
 
-> **Feeling lost?** Most checks run in **`pytest`**, not in notebooks. The README
-> lists the full program; below is what you can **see** without reading every test file.
->
-> **For external reviewers:** R-THYM web-app trace comparisons are **maintainer parity**
-> checks (same author, same lineage) — useful for port regression, not a third-party
-> oracle. Lead with theory, **wntr**, TSNet exports, and published lab data instead.
-
-### Start here (externally credible)
-
 | If you want to… | Open / run | What you'll see |
 |-----------------|------------|-----------------|
 | **Textbook closure regimes** | [`gradual_closure_verification.ipynb`](examples/gradual_closure_verification.ipynb) | Instant / moderate / slow closure vs Joukowsky and Allievi expectations |
