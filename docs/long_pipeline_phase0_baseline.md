@@ -548,8 +548,9 @@ lands; `budget_met` should become `True`.
 
 | Stage | Policy |
 |-------|--------|
-| **Now (Phases 0–3)** | Opt-in `pytest -m slow tests/test_long_pipeline_perf.py` vs `tests/long_pipeline_perf_baseline.json` (±5 %); default CI excludes `slow` |
-| **Phase 4 complete** | Add `tests/test_long_pipeline_perf.py` with `@pytest.mark.slow`; fail if elapsed &gt; 30 s on capped grid |
+| **Default CI** | Excludes `@pytest.mark.slow` via `pyproject.toml` `addopts` |
+| **PR CI (`long-pipeline-perf` job)** | `pytest -m slow tests/test_long_pipeline_perf.py` on `ubuntu-latest`: fail if capped LP-PERF-01 median elapsed &gt; 30 s **or** &gt; 150 % of `tests/long_pipeline_perf_baseline.json` |
+| **Local / maintainer** | Same test module; recalibrate baseline with `scripts/benchmark_long_pipeline_budget.py --runs 5` when grid policy changes materially |
 | **DVCM long-line** | Separate budget at `dt ≤ 10⁻⁴` — out of scope for this 30 s gate |
 
 ### Phase 4 linkage

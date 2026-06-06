@@ -32,6 +32,7 @@ Full pytest↔notebook matrix: [validation_notebook_coverage.md](validation_note
 | [`quickstart_notebook.ipynb`](../examples/quickstart_notebook.ipynb) | Maintainer parity | Tutorial + analytical Joukowsky (§2); R-THYM overlay (§3) | `test_joukowsky_rthym.py` | **~1 min** |
 | [`cross_engine_surge_verification.ipynb`](../examples/cross_engine_surge_verification.ipynb) | Independent | TSNet B.8 + EPANET pre-trip | `test_tsnet_standpipe_cross_engine.py`, `test_epanet_complex_topology_cross_engine.py` | **~25 s** |
 | [`long_pipe_valve_verification.ipynb`](../examples/long_pipe_valve_verification.ipynb) | Maintainer parity | R-THYM long-pipe valve study | `test_long_pipe_valve.py` | **~3 min** |
+| [`long_pipeline_surge_verification.ipynb`](../examples/long_pipeline_surge_verification.ipynb) | Independent | Multi-mile sloping interior DVCM (LP-02–04) | `test_long_pipeline_surge.py` | **~20 s** |
 | [`epanet_import_verification.ipynb`](../examples/epanet_import_verification.ipynb) | Independent | EPANET steady state + trip | `test_complex_topology_from_inp.py` | **~15 s** |
 | [`gradual_closure_verification.ipynb`](../examples/gradual_closure_verification.ipynb) | Independent | Joukowsky / Allievi sweep | `test_gradual_closure_benchmark.py` | **~30 s** |
 | [`dvcm_physical_verification.ipynb`](../examples/dvcm_physical_verification.ipynb) | Independent | Mass step + collapse ΔH formulas | `test_dvcm_physical_verification.py` | **~15 s** |
@@ -56,6 +57,7 @@ Full pytest↔notebook matrix: [validation_notebook_coverage.md](validation_note
 |----------|------|
 | Cross-engine confidence (TSNet trace + EPANET steady state)? | **`cross_engine_surge_verification.ipynb`** |
 | Device physics (standpipe Joukowsky, HPT trip, air valve restart)? | `surge_device_verification.ipynb` |
+| Long transmission line (terrain, interior DVCM, grid cap)? | `long_pipeline_surge_verification.ipynb` |
 | Sizing and placement trends? | `surge_design_rules_verification.ipynb` |
 
 ## Local quick gates (no Jupyter)
@@ -76,6 +78,7 @@ pytest tests/test_surge_device_verification.py -q
 | DVCM regression | [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fdvcm_canonical_verification.ipynb) |
 | Bergant Adelaide (digitized Fig. 4) | [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fbergant_adelaide_verification.ipynb) |
 | Surge devices | [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fsurge_device_verification.ipynb) |
+| Long pipeline surge (LP-02–04) | [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Flong_pipeline_surge_verification.ipynb) |
 
 All Binder badges are also listed in the [README Examples section](../README.md#examples).
 

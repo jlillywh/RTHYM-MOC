@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import json
 import statistics
 import time
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 import rthym_moc as m
 
 LP_PERF_01_ID = "LP-PERF-01"
+BASELINE_PATH = Path(__file__).resolve().parent / "long_pipeline_perf_baseline.json"
+# Checked-in baseline is calibrated on a dev laptop; CI runners vary. The 30 s
+# budget is the hard ceiling; this band catches multiplicative regressions.
+BASELINE_REGRESSION_FRACTION = 0.50
 FT_PER_MILE = 5280.0
 DEFAULT_LENGTH_MI = 20.0
 DEFAULT_LENGTH_FT = DEFAULT_LENGTH_MI * FT_PER_MILE
@@ -146,6 +153,20 @@ def run_lp_perf_01_benchmark(
         grid_cap_enabled=apply_grid_cap,
         budget_met=elapsed_median <= budget_s,
     )
+
+
+def load_lp_perf_baseline(*, key: str = "capped") -> dict[str, Any]:
+    """Load checked-in LP-PERF-01 timing baseline (see docs/long_pipeline_phase0_baseline.md §4)."""
+    with BASELINE_PATH.open(encoding="utf-8") as fp:
+        data = json.load(fp)
+    if key not in data:
+        raise KeyError(f"baseline key {key!r} not found in {BASELINE_PATH.name}")
+    return data[key]
+
+
+def baseline_regression_limit_s(baseline: dict[str, Any]) -> float:
+    """Maximum allowed median elapsed time vs the checked-in baseline."""
+    return float(baseline["elapsed_median_s"]) * (1.0 + BASELINE_REGRESSION_FRACTION)
 
 
 def format_lp_perf_report(metrics: LpPerfMetrics) -> str:

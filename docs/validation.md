@@ -38,6 +38,8 @@ are which.
 | `tests/test_dvcm_bergant_adelaide_trace.py` | Digitized He et al. (2025) Fig. 4 CSV; peak-window gauge check | `bergant_adelaide_verification.ipynb` |
 | `tests/test_standpipe_surge_protection.py` | Joukowsky peak + standpipe mass-oscillation formula | (partial) `surge_device_verification.ipynb` |
 | `tests/test_surge_device_verification.py` | Joukowsky, polytropic precharge law, Appendix B.8 refs | `surge_device_verification.ipynb` |
+| `tests/test_long_pipeline_surge.py` | LP-02–LP-04 directional checks on multi-mile sloping reach (summit static min, interior DVCM cavity, collapse spike); see [long_pipeline_surge_roadmap.md](long_pipeline_surge_roadmap.md) | `long_pipeline_surge_verification.ipynb` |
+| `tests/test_long_pipeline_surge_verification.py` | Same LP-SURGE-01 metrics as notebook (parity gate) | `long_pipeline_surge_verification.ipynb` |
 | `tests/test_tsnet_standpipe_cross_engine.py` | Checked-in **TSNet** B.8 trace (exported independently) | `cross_engine_surge_verification.ipynb` |
 | `tests/test_transient_friction_literature.py` | Wylie & Streeter 2·H<sub>f</sub> decay; Bergant et al. directional LP-07; see [transient_friction_verification.md](transient_friction_verification.md) | — |
 | `tests/test_pipe_materials.py` | Analytical Korteweg wave speed | — |
@@ -123,6 +125,7 @@ and notebooks (see [Verification vs regression](#verification-vs-regression-read
 | DVCM physics invariants | **Independent** | Mass step and collapse ΔH vs formulas | `test_dvcm_physical_verification.py` |
 | DVCM Bergant Adelaide rig | **Independent** | Literature peaks + digitized Fig. 4 trace (peak window) | `test_dvcm_bergant_adelaide_experiment.py`, `test_dvcm_bergant_adelaide_trace.py` |
 | Surge-device verification | **Independent** (mixed) | Joukowsky / B.8 / device laws on anchored cases | `test_surge_device_verification.py` |
+| Long-pipeline surge (LP-SURGE-01) | **Independent** (directional) | Multi-mile sloping main: summit static min, interior cavity, collapse spike (LP-02–04) | `test_long_pipeline_surge.py`, `test_long_pipeline_surge_verification.py` |
 | R-THYM web app parity | **Maintainer** | Heads, peaks, and traces match author's JS engine | `test_joukowsky_rthym.py`, `test_long_pipe_valve.py` |
 | DVCM canonical traces | **Snapshot** | Junction traces match checked-in golden JSON | `test_dvcm_canonical_scenarios.py` |
 | Surge sizing / placement | **Design-rule** | Monotonic sizing, placement, mixed-device trends | `test_tank_size_benchmark.py`, `test_hydropneumatic_size_benchmark.py`, … |
@@ -147,6 +150,8 @@ Representative headline results (automated in CI):
 | `tests/test_dvcm_physical_verification.py` | Independent | Mass step + collapse ΔH | Wylie + collision formula | `dvcm_physical_verification.ipynb` |
 | `tests/test_standpipe_surge_protection.py` | Independent | Standpipe vs Joukowsky + mass oscillation | Analytical Appendix B.8 | partial → `surge_device_verification.ipynb` |
 | `tests/test_surge_device_verification.py` | Independent | Standpipe, HPT, air-valve cases | Joukowsky, polytropic law, B.8 | `surge_device_verification.ipynb` |
+| `tests/test_long_pipeline_surge.py` | Independent (directional) | 5 mi sloping main, grid cap 2000, interior DVCM | LP-02 summit static min; LP-03 summit cavity; LP-04 collapse spike | `long_pipeline_surge_verification.ipynb` |
+| `tests/test_long_pipeline_surge_verification.py` | Independent (directional) | Notebook parity on LP-SURGE-01 | Same pass/fail as notebook | `long_pipeline_surge_verification.ipynb` |
 | `tests/test_dvcm_canonical_scenarios.py` | **Snapshot** | J1 traces match golden JSON | `tests/dvcm_*_reference.json` | `dvcm_canonical_verification.ipynb` |
 | `tests/test_tank_size_benchmark.py` | Design-rule | Larger standpipe → lower closure peak | Monotonic trend on fixed geometry | partial → `surge_design_rules_verification.ipynb` |
 | `tests/test_hydropneumatic_size_benchmark.py` | Design-rule | Larger vessel → better trip recovery | Monotonic trend | — |
@@ -269,6 +274,7 @@ Wall-clock performance comparisons against TSNet are documented separately in
 - **Notebook coverage** is tracked explicitly in
   [validation_notebook_coverage.md](validation_notebook_coverage.md). Major
   gaps filled by Binder walkthroughs include the long-pipe R-THYM study,
+  multi-mile sloping interior-DVCM surge (LP-SURGE-01),
   EPANET `complex_topology.inp` import, gradual-closure sweep, DVCM canonical
   JSON traces, and partial surge design-rule sweeps. Operational controls,
   check valves, PRV/PSV, pump inertia, and SI-only regressions remain

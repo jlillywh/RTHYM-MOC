@@ -6,6 +6,8 @@ This document provides developer reference details for integrating version `0.4.
 - **Batch profile export** — optional per-pipe interior head/pressure/velocity grids from the Python `run()` API (long-pipeline profile charts and envelope views).
 - **Interior DVCM & cavity prevention UX** — profile-level vapor-cavity telemetry on long reaches, summit air-valve placement, and before/after mitigation views (Phases 3–5).
 
+**Migration checklist (R-THYM):** [long_pipeline_rthym_migration.md](long_pipeline_rthym_migration.md) — incremental rollout for profile export and interior DVCM.
+
 ---
 
 ## 1. WebAssembly (WASM) step telemetry

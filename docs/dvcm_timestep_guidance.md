@@ -245,4 +245,4 @@ interior DVCM agree within test tolerance
 |---|---|
 | `tests/test_grid_scaling_long_pipe.py` | Cap, distortion meta, warn/error thresholds |
 | `tests/test_sparse_interior_dvcm.py` | Chainage snap, summit activation, sparse vs full |
-| `tests/test_long_pipeline_perf.py` (`pytest -m slow`) | LP-PERF-01 budget with cap ≤ 2000 |
+| `tests/test_long_pipeline_perf.py` (`pytest -m slow`) | LP-PERF-01 budget with cap ≤ 2000; PR CI `long-pipeline-perf` job |

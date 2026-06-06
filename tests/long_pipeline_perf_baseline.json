@@ -10,6 +10,6 @@
     "elapsed_median_s": 1.197,
     "budget_s": 30.0,
     "max_segments_per_pipe": 2000,
-    "notes": "Median of 5 timed runs after 1 warmup (scripts/benchmark_long_pipeline_budget.py --runs 5). Phase 4 gate is budget_met (< 30 s), not regression band."
+    "notes": "Median of 5 timed runs after 1 warmup (scripts/benchmark_long_pipeline_budget.py --runs 5). CI gate: budget_met (< 30 s) plus median <= baseline * 1.50 (tests/test_long_pipeline_perf.py, pytest -m slow)."
   }
 }

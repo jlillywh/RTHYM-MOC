@@ -149,6 +149,29 @@ jobs:
       - name: Run targeted DVCM baseline checks
         run: pytest -q tests/test_joukowsky_rthym.py tests/test_long_pipe_valve.py
 
+  long-pipeline-perf:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Upgrade packaging tools
+        run: python -m pip install --upgrade pip wheel "setuptools>=65,<81"
+
+      - name: Install package and LP-PERF-01 dependencies
+        run: python -m pip install -e ".[dev,inp]"
+
+      - name: Run LP-PERF-01 slow performance gate
+        run: pytest -m slow tests/test_long_pipeline_perf.py -v --tb=short
+
   verification-notebooks:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'

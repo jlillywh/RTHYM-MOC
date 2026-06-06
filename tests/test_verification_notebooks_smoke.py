@@ -21,6 +21,7 @@ FAST_NOTEBOOKS = [
     "dvcm_physical_verification.ipynb",
     "gradual_closure_verification.ipynb",
     "surge_device_verification.ipynb",
+    "long_pipeline_surge_verification.ipynb",
     "surge_design_rules_verification.ipynb",
     "epanet_import_verification.ipynb",
     "quickstart_notebook.ipynb",
