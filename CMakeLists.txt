@@ -10,19 +10,18 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# ── Pure C++17 solver core (no pybind11, no Emscripten) ───────────────────────
-add_library(rthym_core STATIC src/solver/moc_solver.cpp)
-set_target_properties(rthym_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(rthym_core PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/solver"
-)
+set(RTHYM_SOLVER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/solver")
+set(RTHYM_SOLVER_SOURCE "${RTHYM_SOLVER_DIR}/moc_solver.cpp")
 
-target_compile_options(rthym_core PRIVATE
+# Shared compile settings for the pure C++17 solver core.
+add_library(rthym_core INTERFACE)
+target_include_directories(rthym_core INTERFACE "${RTHYM_SOLVER_DIR}")
+target_compile_options(rthym_core INTERFACE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-O3 -funroll-loops>
     $<$<CXX_COMPILER_ID:MSVC>:/O2 /EHsc>
 )
 if("$ENV{RTHYM_MOC_NATIVE_OPT}" STREQUAL "1")
-    target_compile_options(rthym_core PRIVATE
+    target_compile_options(rthym_core INTERFACE
         $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-march=native>
     )
 endif()
@@ -55,7 +54,7 @@ endif()
 # ── Optional: standalone CLI test executable ──────────────────────────────────
 option(BUILD_TESTS "Build the standalone C++ unit-test binary" OFF)
 if(BUILD_TESTS)
-    add_executable(moc_test tests/test_waterhammer.cpp)
+    add_executable(moc_test tests/test_waterhammer.cpp "${RTHYM_SOLVER_SOURCE}")
     target_link_libraries(moc_test PRIVATE rthym_core)
     target_compile_options(moc_test PRIVATE
         $<$<CXX_COMPILER_ID:GNU,Clang>:-O2 -Wall -Wextra>

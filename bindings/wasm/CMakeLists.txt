@@ -1,4 +1,8 @@
-add_executable(rthym_moc wasm_bindings.cpp)
+add_executable(rthym_moc
+    wasm_bindings.cpp
+    "${RTHYM_SOLVER_SOURCE}"
+)
+
 target_link_libraries(rthym_moc PRIVATE rthym_core)
 
 target_compile_options(rthym_moc PRIVATE -O3)

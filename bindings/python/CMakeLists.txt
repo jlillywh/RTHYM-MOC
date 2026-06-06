@@ -1,4 +1,9 @@
-pybind11_add_module(_rthym_moc NO_EXTRAS bindings.cpp)
+# Compile solver sources in the extension module so pybind11 LTO applies across
+# bindings.cpp and moc_solver.cpp (see LP-PERF-01 perf gate).
+pybind11_add_module(_rthym_moc NO_EXTRAS
+    bindings.cpp
+    "${RTHYM_SOLVER_SOURCE}"
+)
 
 target_link_libraries(_rthym_moc PRIVATE rthym_core)
 
