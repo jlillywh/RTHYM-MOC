@@ -17,6 +17,7 @@ library for research, design studies, and automated validation.
 - [Installation](#installation)
 - [Maintainer WASM integration (internal)](#maintainer-wasm-integration-internal)
 - [Quickstart](#quickstart)
+- [Long-pipeline surge & interior DVCM](#long-pipeline-surge--interior-dvcm)
 - [Testing](#testing)
 - [Examples](#examples)
 - [Validation](#validation)
@@ -53,6 +54,7 @@ RTHYM-MOC solves the 1-D water-hammer equations using the Method of Characterist
 - **Cavitation detection**: supports two cavitation models (configured via `set_cavitation_model()` or the `cavitation_model` parameter):
   - **`LegacyClamp` (Default)**: A first-order head-clamping model. Clamps HGL at the vapor floor, best for mild transient systems where cavitation is minor.
   - **`DVCM`**: A Discrete Vapor Cavity Model. Tracks the growth, expansion, and collapse of discrete vapor cavities, simulating secondary pressure surges upon column collision (requires small timesteps, see [docs/dvcm_timestep_guidance.md](docs/dvcm_timestep_guidance.md)).
+- **Long-pipeline surge**: optional terrain surveys (`elevation_profile`), per-pipe MOC profile export, interior-point DVCM between junctions, segment-count caps for multi-mile runs, and chainage air valves at survey summits — see [Long-pipeline surge & interior DVCM](#long-pipeline-surge--interior-dvcm).
 - **Study summaries**: built-in helpers turn raw time series into node/pipe
   envelopes, cavitation duration, and CSV/JSON exports — see [Post-processing &
   study reports](#post-processing--study-reports).
@@ -255,6 +257,79 @@ Q_P1   = np.array(results["pipe_flow_gpm"]["P1"])  # GPM
 
 print(f"Joukowsky peak at V1: {H_V1.max():.1f} ft  at t = {t[H_V1.argmax()]:.3f} s")
 ```
+
+---
+
+## Long-pipeline surge & interior DVCM
+
+Use this workflow for **multi-mile transmission mains** where subatmospheric pressure and column separation can occur **between** network junctions — for example at a terrain summit on a sloping reach.
+
+All long-pipeline features are **opt-in** and default off, so existing `run()` callers see unchanged output until you enable them.
+
+| Layer | API | Purpose |
+|---|---|---|
+| Terrain | `PipeInput.elevation_profile` | Piecewise-linear ground survey along the pipe; local gauge pressure and cavitation screening use `z(x)` |
+| Profiles | `run(..., record_pipe_profiles=True)` | Export head, pressure, velocity, and cavitation flags along the MOC grid |
+| Interior DVCM | `CavitationModel.DVCM` + `enable_interior_dvcm=True` | Track vapor-cavity volume at interior grid points (not just junctions) |
+| Grid scaling | `solver.set_grid_policy(max_segments_per_pipe=2000, …)` | Cap segment count on 10–20 mile lines so runs stay within interactive budgets |
+| Summit protection | `attach_air_valve_at_survey_high_point()` | Split the pipe and insert an `AirValve` at the survey high point |
+
+**Minimal example** — 5-mile sloping main, downstream head drop, interior DVCM at the summit:
+
+```python
+import numpy as np
+import rthym_moc as m
+
+L_FT = 5.0 * 5280.0  # 5 miles
+
+solver = m.MOCSolver()
+solver.add_node(m.NodeInput(id="R1", type="PressureBoundary", elevation=200.0, head=520.0))
+solver.add_node(m.NodeInput(id="R2", type="PressureBoundary", elevation=150.0, head=520.0))
+
+pipe = m.PipeInput()
+pipe.id = "Pmain"
+pipe.from_node = "R1"
+pipe.to_node = "R2"
+pipe.length = L_FT
+pipe.diameter = 24.0
+pipe.roughness = 130.0
+pipe.flow_gpm = 2500.0
+pipe.elevation_profile = [(0.0, 200.0), (L_FT / 2.0, 450.0), (L_FT, 150.0)]
+solver.add_pipe(pipe)
+
+# Downsurge at the downstream boundary (opens a summit cavity under DVCM)
+solver.set_head_schedule("R2", [(0.0, 520.0), (0.05, 120.0)])
+
+# Cap grid size for long reaches (Courant wave-speed adjustment still enforced)
+solver.set_grid_policy(max_segments_per_pipe=2000, max_wave_speed_distortion=0.15)
+
+results = solver.run(
+    total_time=8.0,
+    dt=0.001,
+    p_vapor_psi=-14.0,
+    cavitation_model=m.CavitationModel.DVCM,
+    record_pipe_profiles=True,
+    enable_interior_dvcm=True,
+)
+
+x_ft = np.array(results["pipe_profile_chainage_ft"]["Pmain"])
+P_psi = np.array(results["pipe_profile_pressure"]["Pmain"])
+V_cav = np.array(results["pipe_profile_cavity_volume"]["Pmain"])  # ft³, DVCM only
+
+summit_idx = int(np.argmin(P_psi.min(axis=0)))  # chainage of worst min pressure
+print(f"Summit chainage ≈ {x_ft[summit_idx]:.0f} ft, min P = {P_psi[:, summit_idx].min():.1f} psi")
+print(f"Peak interior cavity volume = {V_cav.max():.4f} ft³")
+print(f"MOC segments = {results['pipe_num_segments']['Pmain']}")
+```
+
+**When to enable what**
+
+- **`record_pipe_profiles=True`** alone — HGL/pressure envelopes along the line; `pipe_profile_cavitation` is a screening flag (not physical cavity volume).
+- **`enable_interior_dvcm=True`** — requires `CavitationModel.DVCM` and typically `record_pipe_profiles=True`; populates `pipe_profile_cavity_volume` and `pipe_profile_cavity_active`.
+- **`interior_dvcm_chainages_ft`** on `PipeInput` — optional sparse watchpoints when full interior DVCM is too heavy; empty list with `enable_interior_dvcm=True` tracks all interior grid points.
+- **`set_grid_policy(...)`** — recommended for multi-mile pipes; inspect `pipe_num_segments`, `pipe_distortion_pct`, and `pipe_wave_speed_*` in results.
+
+R-THYM integrators: incremental rollout checklist in [docs/long_pipeline_rthym_migration.md](docs/long_pipeline_rthym_migration.md). Validation: [long_pipeline_surge_verification.ipynb](examples/long_pipeline_surge_verification.ipynb) and `pytest tests/test_long_pipeline_surge.py -q`.
 
 ---
 
@@ -474,6 +549,7 @@ Long-form cross-engine narratives:
 | `surge_device_verification.ipynb` | Independent | Standpipe, HPT, air valve vs analytical / B.8 refs |
 | `epanet_import_verification.ipynb` | Independent | `complex_topology.inp` + steady-state overlay (`wntr`) |
 | `dvcm_physical_verification.ipynb` | Independent | Mass-balance steps + collapse ΔH formulas |
+| `long_pipeline_surge_verification.ipynb` | Independent | Multi-mile sloping reach, interior DVCM (LP-02–04) |
 | `bergant_adelaide_verification.ipynb` | Independent | Bergant lab peaks + digitized He Fig. 4 trace |
 | `quickstart_notebook.ipynb` | Maintainer parity | Tutorial + optional R-THYM Joukowsky overlay (§3) |
 | `long_pipe_valve_verification.ipynb` | Maintainer parity | Five-pipe equal-% closure vs R-THYM JSON/CSV (~3 min) |
@@ -593,19 +669,25 @@ pipe.wall_thickness = 0.25     # inches (used only if youngs_modulus > 0; <= 0 i
 pipe.youngs_modulus = 0.0      # psi (0 = rigid pipe, default wave speed ~4000 ft/s)
 pipe.poissons_ratio = 0.3      # (used only if youngs_modulus > 0)
 pipe.elevation_profile = []    # optional [(chainage_ft, elevation_ft), ...] survey table
+pipe.interior_dvcm_chainages_ft = []  # optional sparse interior DVCM watchpoints (ft from upstream end)
 ```
 
 When `elevation_profile` is empty (default), each MOC grid point uses ground
 elevation linearly interpolated between `from_node` and `to_node` elevations.
 Provide at least two `(chainage_ft, elevation_ft)` pairs measured from the
-upstream pipe end to override with a piecewise-linear survey (used for profile
-gauge pressure and future interior cavitation checks).
+upstream pipe end to override with a piecewise-linear survey. Local elevation
+feeds profile gauge pressure, `pipe_profile_cavitation` screening, and interior
+DVCM vapor-head limits when `enable_interior_dvcm=True`.
 
 ```python
 pipe.elevation_profile = [(0.0, 120.0), (26400.0, 340.0), (52800.0, 95.0)]
+pipe.interior_dvcm_chainages_ft = [26400.0]  # optional: DVCM only at listed chainages
 ```
 
 SI helper: `pipe_si(..., elevation_profile_m=[(0.0, 36.6), ...])`.
+When `enable_interior_dvcm=True` and `interior_dvcm_chainages_ft` is empty, every
+interior MOC grid point on that pipe participates in DVCM. When the list is
+non-empty, only the nearest grid indices to those chainages are tracked (sparse mode).
 
 `pipe.minor_loss` is a dimensionless local-loss coefficient $K$ for bends,
 tees, fittings, entrance/exit losses, or any other concentrated resistance you
@@ -653,7 +735,28 @@ solver = rthym_moc.MOCSolver()
 | `solver.set_head_schedule(id, schedule)` | Register a time-varying fixed-head schedule for a `PressureBoundary` or `Tank`. |
 | `solver.set_friction_model(model)` | Set the transient friction selector (`TransientFrictionModel`; default `BrunoneIIR`). |
 | `solver.get_friction_model()` | Return the current transient friction selector. |
+| `solver.set_cavitation_model(model)` | Set persistent cavitation model (`LegacyClamp` or `DVCM`). |
+| `solver.get_cavitation_model()` | Return the current cavitation model. |
+| `solver.set_enable_interior_dvcm(enable)` | Persistently enable/disable interior-point DVCM (default `False`). |
+| `solver.get_enable_interior_dvcm()` | Return whether interior DVCM is enabled. |
+| `solver.set_grid_policy(...)` | Configure long-pipe grid cap and wave-speed distortion limits (see below). |
+| `solver.set_max_segments_per_pipe(n)` | Cap MOC segments per pipe (`0` = uncapped). |
+| `solver.get_max_segments_per_pipe()` | Return the segment cap. |
 | `solver.run(...)` | Execute the transient and return results (see below). |
+
+**`set_grid_policy()`** (long-pipe grid scaling):
+
+```python
+solver.set_grid_policy(
+    max_segments_per_pipe=2000,       # cap segments; 0 = uncapped (legacy behavior)
+    max_wave_speed_distortion=0.15,   # warn/error if |a_adj − a_design| / a_design exceeds this
+    distortion_action="warn",         # "warn" or "error"
+)
+```
+
+When a cap is active, `initGrid()` coarsens the spatial grid and adjusts wave speed
+to preserve Courant = 1. Per-pipe `pipe_num_segments`, `pipe_wave_speed_design_fps`,
+`pipe_wave_speed_adjusted_fps`, and `pipe_distortion_pct` appear in `run()` results.
 
 #### `run()` parameters
 
@@ -666,8 +769,10 @@ results = solver.run(
                           #   set to dt to disable the IIR filter (USF still active unless Steady)
     k_bru      = -1.0,    # float — Brunone USF coefficient (BrunoneIIR / Vitkovsky; see below)
     friction_model = None,  # TransientFrictionModel | None — override selector for this run
+    cavitation_model = None,  # CavitationModel | None — override junction/interior cavitation model
     record_pipe_profiles = False,  # bool — export interior MOC grid H/P/V per pipe (optional)
     profile_stride       = 1,      # int  — spatial downsampling along each pipe (optional; ≥ 1)
+    enable_interior_dvcm = False,  # bool — track vapor cavities at interior grid points (DVCM only)
 )
 ```
 
@@ -693,6 +798,18 @@ the unsteady term regardless of `k_bru`.
 |---|---|---|
 | `record_pipe_profiles` | `False` | When `True`, populate optional per-pipe profile keys in the results dict (see [Optional per-pipe MOC profiles](#optional-per-pipe-moc-profiles)). When `False`, those keys are omitted and `run()` output matches legacy behavior. |
 | `profile_stride` | `1` | Keep every `stride`-th interior MOC grid point along each pipe. Pipe-end stations are always retained. Must be ≥ 1. |
+
+**`cavitation_model`.** When `None` (default), the solver uses the model set by
+`set_cavitation_model()` (initially `LegacyClamp`). Pass `CavitationModel.DVCM` for
+discrete vapor cavities at junctions and — with `enable_interior_dvcm=True` — at
+interior grid points on pipes with terrain surveys. See [Cavitation models](#cavitation-models).
+
+**`enable_interior_dvcm`.** Default `False`. When `True` and `cavitation_model=DVCM`,
+the solver applies junction-style cavity regime switching at interior MOC stations
+using local `z(x)` from `elevation_profile`. Requires `record_pipe_profiles=True`
+to export `pipe_profile_cavity_volume` and `pipe_profile_cavity_active`. Use
+`PipeInput.interior_dvcm_chainages_ft` for sparse watchpoints only. See
+[Long-pipeline surge & interior DVCM](#long-pipeline-surge--interior-dvcm).
 
 Each call to `run()` rebuilds the MOC grid from the steady-state initial conditions stored in the `NodeInput` / `PipeInput` objects.  Node and pipe inputs persist across calls; call `set_valve_setting()` etc. *before* the next `run()` to change initial conditions for the next segment.
 
@@ -756,8 +873,20 @@ When `record_pipe_profiles=True`, five additional top-level keys appear.  They a
 | `pipe_profile_pressure` | `dict[str, ndarray]` | `(N, M)` per pipe | Gauge pressure at each chainage station, psi (uses local `z(x)` from `elevation_profile` or endpoint interpolation) |
 | `pipe_profile_velocity_fps` | `dict[str, ndarray]` | `(N, M)` per pipe | Flow velocity at each chainage station, ft/s |
 | `pipe_profile_cavitation` | `dict[str, ndarray]` | `(N, M)` per pipe | `1` when gauge pressure ≤ vapor pressure at local `z(x)` (pre-DVCM screening) |
+| `pipe_profile_cavity_volume` | `dict[str, ndarray]` | `(N, M)` per pipe | Integrated vapor-cavity volume at each station, ft³ (`DVCM` + `enable_interior_dvcm=True`) |
+| `pipe_profile_cavity_active` | `dict[str, ndarray]` | `(N, M)` per pipe | `1` when an interior vapor cavity is active at that station (`DVCM` + interior DVCM) |
 
 `N` is the number of recorded time steps (same as `len(results["time"])`).  `M` is the number of profile points along that pipe after spatial downsampling.  The first and last chainage values are the upstream and downstream pipe ends; the corresponding profile heads match `node_head` at those boundary nodes.
+
+When grid scaling is active, these optional top-level keys also appear:
+
+| Key | Type | Description |
+|---|---|---|
+| `pipe_num_segments` | `dict[str, int]` | MOC segment count per pipe after cap/adjustment |
+| `pipe_wave_speed_design_fps` | `dict[str, float]` | Design wave speed before Courant adjustment, ft/s |
+| `pipe_wave_speed_adjusted_fps` | `dict[str, float]` | Adjusted wave speed enforcing Courant = 1, ft/s |
+| `pipe_distortion_pct` | `dict[str, float]` | Percent difference between design and adjusted wave speed |
+| `pipe_interior_dvcm_grid_indices` | `dict[str, list[int]]` | Interior grid indices where DVCM is active (sparse or full) |
 
 ```python
 results = solver.run(total_time=10.0, dt=0.01, record_pipe_profiles=True, profile_stride=2)
@@ -777,8 +906,9 @@ C_prof = np.array(results["pipe_profile_cavitation"]["P1"])      # (N, M) int, 0
 | `pipe_profile_head` | `pipe_profile_head_m` |
 | `pipe_profile_pressure` | `pipe_profile_pressure_kpa` |
 | `pipe_profile_velocity_fps` | `pipe_profile_velocity_m_s` |
+| `pipe_profile_cavity_volume` | `pipe_profile_cavity_volume_m3` |
 
-Pass `record_pipe_profiles=True` (and optionally `profile_stride`) to `run_si()` the same way as `run()`.
+Pass `record_pipe_profiles=True` (and optionally `profile_stride`) to `run_si()` the same way as `run()`. Interior cavity volume uses the SI key when `enable_interior_dvcm=True`.
 
 ### Post-processing & study reports
 
@@ -1391,6 +1521,7 @@ RTHYM-MOC supports two cavitation modeling strategies to simulate transient vapo
      $$V_c^{n+1} = V_c^n + (Q_{\text{out}} - Q_{\text{in}}) \cdot dt$$
      When $V_c$ collapses back to zero, the solver returns to the liquid-full regime, generating a secondary water-hammer collision pressure spike.
    - **Use Case**: Recommended for pump trip transients, fast valve closures, and systems vulnerable to column-separation and severe water hammer.
+   - **Long pipelines**: Junction-only DVCM misses mid-reach summits on sloping transmission mains. Enable **`enable_interior_dvcm=True`** with `elevation_profile` surveys and `record_pipe_profiles=True` to track cavities along the line — see [Long-pipeline surge & interior DVCM](#long-pipeline-surge--interior-dvcm).
    - **Guidance**: Requires choosing a smaller timestep (typically $dt \le 0.001\text{ s}$ or $0.0001\text{ s}$) to prevent numerical volume integration overshoot. See [docs/dvcm_timestep_guidance.md](docs/dvcm_timestep_guidance.md).
    - **Showcase**: Run the showcase notebook interactively on Binder to see DVCM in action: [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fdvcm_showcase.ipynb)
 
@@ -1439,6 +1570,15 @@ When `DVCM` is selected, the solver automatically records additional diagnostic 
 | `"node_cavity_active"` | `"node_cavity_active"` | `dict[str] → ndarray` | Binary flag (0/1) indicating if a vapor cavity is active at this step. |
 | `"node_cavity_collapse_flag"` | `"node_cavity_collapse_flag"` | `dict[str] → ndarray` | Binary flag (0/1) indicating if a cavity collapsed on this specific step. |
 | `"node_cavity_collapse_count"` | `"node_cavity_collapse_count"` | `dict[str] → ndarray` | Cumulative count of cavity collapses at each node. |
+
+When **`enable_interior_dvcm=True`** and **`record_pipe_profiles=True`**, interior grid telemetry is exported per pipe:
+
+| Results Dict Key | SI Results Dict Key | Type | Description |
+|---|---|---|---|
+| `"pipe_profile_cavity_volume"` | `"pipe_profile_cavity_volume_m3"` | `dict[str] → ndarray (N, M)` | Integrated cavity volume along chainage, ft³ or m³. |
+| `"pipe_profile_cavity_active"` | `"pipe_profile_cavity_active"` | `dict[str] → ndarray (N, M)` | Binary flag (0/1) for active interior cavity at each profile station. |
+
+See [Optional per-pipe MOC profiles](#optional-per-pipe-moc-profiles) for the full profile key list.
 
 ---
 
@@ -1768,6 +1908,8 @@ RTHYM-MOC/
 │   ├── dvcm_comparison.md          # Cavitation model comparison guide (Legacy vs DVCM)
 │   ├── dvcm_migration.md           # Migration notes for upgrading users
 │   ├── long_pipeline_rthym_migration.md  # R-THYM rollout for profiles & interior DVCM
+│   ├── long_pipeline_surge_roadmap.md  # Phase scope and validation cases LP-01–LP-08
+│   ├── long_pipeline_phase0_baseline.md  # Pre-change baseline and LP-PERF-01 budget
 │   ├── dvcm_web_integration.md     # R-THYM telemetry and batch profile API reference
 │   ├── dvcm_defect_tracker.md      # DVCM defect and issue tracker log
 │   ├── appendix_b_verification.md  # Long-form cross-engine verification appendix
