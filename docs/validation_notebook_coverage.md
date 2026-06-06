@@ -31,6 +31,7 @@ Pytest is the **CI source of truth**. Jupyter notebooks are **interactive mirror
 | [examples/dvcm_physical_verification.ipynb](../examples/dvcm_physical_verification.ipynb) | Independent | `test_dvcm_physical_verification.py` | **Full** — formula checks |
 | [examples/bergant_adelaide_verification.ipynb](../examples/bergant_adelaide_verification.ipynb) | Independent | `test_dvcm_bergant_adelaide_experiment.py`, `test_dvcm_bergant_adelaide_trace.py` | **Full** — peaks + digitized trace overlay |
 | [examples/surge_device_verification.ipynb](../examples/surge_device_verification.ipynb) | Independent | `test_surge_device_verification.py`, … | **Full** — Joukowsky / B.8 / device laws |
+| [examples/long_pipeline_surge_verification.ipynb](../examples/long_pipeline_surge_verification.ipynb) | Independent (directional) | `test_long_pipeline_surge.py`, `test_long_pipeline_surge_verification.py` | **Full** — LP-02–04 on LP-SURGE-01 |
 | [examples/dvcm_canonical_verification.ipynb](../examples/dvcm_canonical_verification.ipynb) | **Snapshot** | `test_dvcm_canonical_scenarios.py` | **Full** — golden `tests/dvcm_*_reference.json` |
 | [examples/surge_design_rules_verification.ipynb](../examples/surge_design_rules_verification.ipynb) | Design-rule | `test_tank_size_benchmark.py`, … | **Partial** — size + placement sweeps |
 | [examples/dvcm_showcase.ipynb](../examples/dvcm_showcase.ipynb) | — | — | **Partial** — pedagogy only |
@@ -69,6 +70,19 @@ Pytest is the **CI source of truth**. Jupyter notebooks are **interactive mirror
 | `test_air_valve_dominant_*.py` | Design-rule | — | **None** |
 | `test_surge_device_verification.py` | Independent | `surge_device_verification.ipynb` | **Full** |
 
+## Long pipeline surge (Phase 7)
+
+| Test module | Trust model | Notebook mirror | Status |
+|-------------|-------------|-----------------|--------|
+| `test_long_pipeline_surge.py` | Independent (directional) | `long_pipeline_surge_verification.ipynb` | **Full** — LP-02–04 |
+| `test_long_pipeline_surge_verification.py` | Independent (directional) | `long_pipeline_surge_verification.ipynb` | **Full** — notebook parity |
+| `test_pipe_elevation_profile.py` | — | — | **None** — covered indirectly via LP-02 |
+| `test_interior_dvcm_sloping_pipe.py` | Independent (directional) | — | **None** — short-pipe DVCM exit tests |
+| `test_grid_scaling_long_pipe.py` | — | — | **None** |
+| `test_chainage_air_valve.py` | — | — | **None** |
+| `test_transient_friction_model.py` | Independent (directional) | — | **None** — see [transient_friction_verification.md](transient_friction_verification.md) |
+| `test_long_pipeline_perf.py` | — | — | **PR CI** — LP-PERF-01 (`@pytest.mark.slow`, `long-pipeline-perf` job) |
+
 ## Controls, devices, materials, SI (pytest-only today)
 
 | Area | Representative tests | Notebook |
@@ -93,6 +107,8 @@ Pytest is the **CI source of truth**. Jupyter notebooks are **interactive mirror
 | `tests/dvcm_canonical_verification_utils.py` | Canonical DVCM notebook + pytest |
 | `tests/surge_design_rules_verification_utils.py` | Surge design-rules notebook |
 | `tests/surge_device_verification_utils.py` | Surge device notebook + `test_surge_device_verification.py` |
+| `tests/long_pipeline_surge_utils.py` | LP-SURGE-01 case builder (`test_long_pipeline_surge.py`) |
+| `tests/long_pipeline_surge_verification_utils.py` | Long-pipeline surge notebook + `test_long_pipeline_surge_verification.py` |
 | `tests/cross_engine_verification_utils.py` | Cross-engine surge notebook + TSNet/EPANET pytest |
 
 ## Policy
@@ -100,7 +116,7 @@ Pytest is the **CI source of truth**. Jupyter notebooks are **interactive mirror
 1. **New studies** should declare a trust model (independent / snapshot / design-rule) in this table and in [validation.md](validation.md).
 2. **Independent verification** should add pytest and a notebook when reviewer-facing.
 2. **Parameterized sweeps** may start as a partial notebook (one chart per sweep family) rather than duplicating every `@pytest.mark.parametrize` id.
-3. **Binder runtime**: `long_pipe_valve_verification.ipynb` runs a ~230 s simulation; other notebooks are typically under 30 s.
+3. **Binder runtime**: `long_pipe_valve_verification.ipynb` runs a ~230 s simulation; `long_pipeline_surge_verification.ipynb` runs two ~8 s capped-grid transients (~15–20 s); other notebooks are typically under 30 s.
 4. **Optional deps**: EPANET import notebook requires `wntr` (`pip install 'rthym-moc[inp]'` or `pip install wntr`).
 5. **Drift control**: shared logic lives in `tests/*_verification_utils.py`; notebooks are regenerated with `scripts/build_verification_notebooks.py`. PR CI runs `tests/test_verification_notebooks_smoke.py` (headless executor). Maintainers can run `scripts/verify_verification_notebooks.py --include-slow` weekly or on demand — see [validation_notebooks.md](validation_notebooks.md#operational-quality).
 

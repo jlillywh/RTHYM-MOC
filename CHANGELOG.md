@@ -22,6 +22,8 @@ versioning for package releases.
 - Expanded `examples/surge_device_verification.ipynb` and `tests/surge_device_verification_utils.py`: valve-side standpipe/HPT closure, air-valve restart, TSNet §B.8.5 overlay (optional), sizing preview; `tests/test_surge_device_verification.py`; local gate `scripts/verify_surge_bundle.py` (~90 s smoke + pytest).
 - Operational quality: PR CI `verification-notebooks` job (regenerate notebooks + `tests/test_verification_notebooks_smoke.py`), weekly slow-notebook workflow, `examples/_verification_notebook_setup.py` bootstrap, and operational guidance in `docs/validation_notebooks.md` (Binder `[inp]`, pass/fail semantics, script-only wave/surge-tank demos).
 - Cross-engine surge notebook `examples/cross_engine_surge_verification.ipynb` with checked-in `tests/TSNet_Standpipe_B8_*` (TSNet B.8 standpipe) and EPANET pre-trip vs MOC; `tests/cross_engine_verification_utils.py`, `scripts/export_tsnet_standpipe_reference.py`.
+- **Long-pipeline Phase 7 — R-THYM migration**: [docs/long_pipeline_rthym_migration.md](docs/long_pipeline_rthym_migration.md) — incremental rollout for `record_pipe_profiles`, `enable_interior_dvcm`, grid scaling, and chainage air valves.
+- **Long-pipeline Phase 7 — validation hardening**: `tests/test_long_pipeline_surge.py`, `tests/test_long_pipeline_surge_utils.py`, `tests/test_long_pipeline_surge_verification.py`, `examples/long_pipeline_surge_verification.ipynb`; LP-PERF-01 PR CI job (`pytest -m slow tests/test_long_pipeline_perf.py`).
 
 ## [0.4.1] - 2026-06-03
 

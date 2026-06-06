@@ -66,3 +66,16 @@ If you opt-in to the `DVCM` model, please review the following requirements:
   - `"node_cavity_collapse_flag"` (unitless)
   - `"node_cavity_collapse_count"` (unitless)
 * **Action**: Ensure that any downstream analysis or plotting scripts that iterate over result keys handle these new optional dictionary keys gracefully.
+
+---
+
+## 4. Long-pipeline profiles & interior DVCM (R-THYM)
+
+Phases 1–5 add **opt-in** per-pipe profile export, terrain surveys, interior-point
+DVCM, grid scaling, and chainage air valves. Defaults are unchanged; junction-only
+workflows need no updates.
+
+R-THYM integrators should follow the step-by-step rollout in
+[long_pipeline_rthym_migration.md](long_pipeline_rthym_migration.md). API field
+reference and JSON naming remain in
+[dvcm_web_integration.md](dvcm_web_integration.md).

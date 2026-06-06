@@ -330,6 +330,7 @@ vs DVCM at a valve. See [Validation](#validation) for regression-style DVCM note
 | **Another engine + EPANET** | [`cross_engine_surge_verification.ipynb`](examples/cross_engine_surge_verification.ipynb) | TSNet B.8 export + **wntr** steady state before trip |
 | **Surge devices vs formulas** | [`surge_device_verification.ipynb`](examples/surge_device_verification.ipynb) | Standpipe, HPT, air valve vs analytical / Appendix B.8 refs |
 | **DVCM vs continuity math** | [`dvcm_physical_verification.ipynb`](examples/dvcm_physical_verification.ipynb) | Mass-step and collapse ΔH **PASS/FAIL** metrics |
+| **Long-pipeline surge (multi-mile sloping reach)** | [`long_pipeline_surge_verification.ipynb`](examples/long_pipeline_surge_verification.ipynb) | LP-02–LP-04 directional checks: summit static min, interior cavity, collapse spike |
 | **Published lab benchmark** (loose; see doc) | [`bergant_adelaide_verification.ipynb`](examples/bergant_adelaide_verification.ipynb) | Digitized He Fig. 4 vs DVCM — [limitations](docs/bergant_adelaide_verification.md) |
 | **Same checks, no Jupyter** | `pytest tests/test_gradual_closure_benchmark.py tests/test_tsnet_standpipe_cross_engine.py tests/test_dvcm_physical_verification.py -v` | CI gates on the rows above |
 
@@ -384,6 +385,32 @@ Maintainer parity (R-THYM web app):
 pytest tests/test_joukowsky_rthym.py tests/test_long_pipe_valve.py -q
 ```
 
+Long-pipeline validation (Phase 7 — directional LP-02–LP-04 on multi-mile sloping reach):
+
+```bash
+pytest tests/test_long_pipeline_surge.py tests/test_long_pipeline_surge_utils.py \
+  tests/test_long_pipeline_surge_verification.py -q
+```
+
+### Slow / long-pipeline tests
+
+Default `pytest` **excludes** `@pytest.mark.slow` probes (see `pyproject.toml` `addopts`).
+These run in a dedicated PR CI job or on demand:
+
+| Test module | Marker | Purpose | Local command |
+|---|---|---|---|
+| `tests/test_long_pipeline_perf.py` | `slow` (benchmark only) | LP-PERF-01: 20-mile capped grid wall-clock budget + baseline regression | `pytest -m slow tests/test_long_pipeline_perf.py -v` |
+| `tests/test_long_pipeline_surge.py` | `slow` (one test) | Full 8 s canonical transient window | `pytest tests/test_long_pipeline_surge.py -m slow -v` |
+| `tests/test_transient_friction_model.py` | `slow` (subset) | Long-pipe Vitkovsky damping comparison | `pytest -m slow tests/test_transient_friction_model.py -v` |
+
+Non-slow tests in `test_long_pipeline_perf.py` (`load_lp_perf_baseline`, `format_lp_perf_report`)
+run in the default suite. See [long_pipeline_phase0_baseline.md](docs/long_pipeline_phase0_baseline.md) §4.
+
+**Long-pipeline features are opt-in** — `record_pipe_profiles`, `enable_interior_dvcm`,
+`elevation_profile`, and grid scaling default off or empty; legacy `run()` output is unchanged.
+See [long_pipeline_rthym_migration.md](docs/long_pipeline_rthym_migration.md) and
+[long_pipeline_surge_roadmap.md](docs/long_pipeline_surge_roadmap.md) Phase 7.
+
 ### Independent verification (source of truth outside rthym-moc)
 
 | Category | Reference | Key tests / notebooks |
@@ -393,6 +420,7 @@ pytest tests/test_joukowsky_rthym.py tests/test_long_pipe_valve.py -q
 | TSNet standpipe | Checked-in TSNet B.8 export | `test_tsnet_standpipe_cross_engine.py`; `cross_engine_surge_verification.ipynb` |
 | DVCM physics | Wylie mass step + collapse ΔH | `test_dvcm_physical_verification.py`; `dvcm_physical_verification.ipynb` |
 | DVCM Bergant Adelaide rig | Published lab peaks + digitized Fig. 4 (He et al. 2025) | `test_dvcm_bergant_adelaide_experiment.py`, `test_dvcm_bergant_adelaide_trace.py`; [bergant_adelaide_verification.md](docs/bergant_adelaide_verification.md), `bergant_adelaide_verification.ipynb` |
+| Long-pipeline surge (LP-02–LP-04) | Directional multi-mile sloping reach with interior DVCM | `test_long_pipeline_surge.py`, `test_long_pipeline_surge_verification.py`; `long_pipeline_surge_verification.ipynb` |
 
 ### Maintainer parity (R-THYM web app — author cross-check)
 
@@ -1673,6 +1701,8 @@ independent rthym_moc runs in separate Python processes. See
 | Timestep selection for DVCM mode | [docs/dvcm_timestep_guidance.md](docs/dvcm_timestep_guidance.md) |
 | Cavitation model comparison | [docs/dvcm_comparison.md](docs/dvcm_comparison.md) |
 | Migration notes for upgrading users | [docs/dvcm_migration.md](docs/dvcm_migration.md) |
+| R-THYM long-pipeline rollout (profiles, interior DVCM) | [docs/long_pipeline_rthym_migration.md](docs/long_pipeline_rthym_migration.md) |
+| R-THYM API reference (telemetry, JSON keys) | [docs/dvcm_web_integration.md](docs/dvcm_web_integration.md) |
 | DVCM defect and issue tracker | [docs/dvcm_defect_tracker.md](docs/dvcm_defect_tracker.md) |
 | All three tools (time to complete the full run) | `examples/benchmark_ptsnet_vs_tsnet.py` |
 | Tabulated physics + timing results | [docs/appendix_b_verification.md](docs/appendix_b_verification.md) §B.6 |
@@ -1737,6 +1767,8 @@ RTHYM-MOC/
 │   ├── dvcm_timestep_guidance.md   # Recommended timestep selection guidelines for DVCM mode
 │   ├── dvcm_comparison.md          # Cavitation model comparison guide (Legacy vs DVCM)
 │   ├── dvcm_migration.md           # Migration notes for upgrading users
+│   ├── long_pipeline_rthym_migration.md  # R-THYM rollout for profiles & interior DVCM
+│   ├── dvcm_web_integration.md     # R-THYM telemetry and batch profile API reference
 │   ├── dvcm_defect_tracker.md      # DVCM defect and issue tracker log
 │   ├── appendix_b_verification.md  # Long-form cross-engine verification appendix
 │   ├── validation.md               # Pytest map, tolerances, reference assets

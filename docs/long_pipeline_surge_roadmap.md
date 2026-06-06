@@ -440,19 +440,29 @@ results = solver.run(..., friction_model=TransientFrictionModel.Vitkovsky)
 
 ### Checklist
 
-- [ ] Add `tests/test_long_pipeline_surge.py` (multi-mile, sloping, interior DVCM).
-- [ ] Add `examples/long_pipeline_surge_verification.ipynb` (Binder optional).
-- [ ] Update [validation.md](validation.md) and
+- [x] Add `tests/test_long_pipeline_surge.py` (multi-mile, sloping, interior DVCM).
+- [x] Add `examples/long_pipeline_surge_verification.ipynb` (Binder optional).
+- [x] Update [validation.md](validation.md) and
       [validation_notebook_coverage.md](validation_notebook_coverage.md).
-- [ ] Update [test_coverage_matrix.md](test_coverage_matrix.md).
-- [ ] Performance regression guard for grid-scaled 20-mile case in CI (mark
+- [x] Update [test_coverage_matrix.md](test_coverage_matrix.md).
+- [x] Performance regression guard for grid-scaled 20-mile case in CI (mark
       `@pytest.mark.slow` if needed).
-- [ ] Publish migration notes: enabling interior DVCM + profile export from R-THYM.
+- [x] Publish migration notes: enabling interior DVCM + profile export from R-THYM.
 
 ### Exit criteria
 
-- CI green with new tests; slow tests documented.
-- Long-pipeline features documented as opt-in through Phase 7.
+- [x] CI green with new tests; slow tests documented.
+- [x] Long-pipeline features documented as opt-in through Phase 7.
+
+**Evidence (2026-06-05):**
+
+| Criterion | Status | Where |
+|---|---|---|
+| Phase 7 pytest modules in default CI | ✓ | `tests/test_long_pipeline_surge.py`, `tests/test_long_pipeline_surge_utils.py`, `tests/test_long_pipeline_surge_verification.py`, `tests/test_verification_notebooks_smoke.py` |
+| Slow perf gate in PR CI | ✓ | `.github/workflows/tests.yml` → `long-pipeline-perf` job; `pytest -m slow tests/test_long_pipeline_perf.py` |
+| Slow tests documented | ✓ | `pyproject.toml` `slow` marker; [long_pipeline_phase0_baseline.md §4 CI / regression policy](long_pipeline_phase0_baseline.md#ci--regression-policy); README [Slow / long-pipeline tests](#slow--long-pipeline-tests) |
+| Opt-in defaults documented | ✓ | README `run()` kwargs; [long_pipeline_rthym_migration.md §1](long_pipeline_rthym_migration.md#1-zero-change-default); [test_coverage_matrix.md](test_coverage_matrix.md) |
+| Phase 7 helper coverage | ✓ | 100 % on `long_pipeline_surge_utils.py`, `long_pipeline_surge_verification_utils.py`, `long_pipeline_perf_utils.py` (`pytest tests/test_long_pipeline_* -o addopts= --cov-fail-under=100`) |
 
 ---
 
@@ -523,9 +533,9 @@ separation regimes; He et al. / Adelaide rig for severe collapse (loose anchor).
 - [x] Phase 4 complete — grid scaling
 - [x] Phase 5 complete — chainage air valves
 - [x] Phase 6 complete — Vitkovsky friction selector ([#86](https://github.com/jlillywh/RTHYM-MOC/issues/86))
-- [ ] Phase 7 complete — validation hardening
-- [ ] README and CHANGELOG updated
-- [ ] R-THYM integration doc updated (`dvcm_web_integration.md` or successor)
+- [x] Phase 7 complete — validation hardening
+- [x] README and CHANGELOG updated
+- [x] R-THYM integration doc updated (`dvcm_web_integration.md` or successor) — see [long_pipeline_rthym_migration.md](long_pipeline_rthym_migration.md)
 
 ---
 
@@ -536,6 +546,7 @@ separation regimes; He et al. / Adelaide rig for severe collapse (loose anchor).
 - [dvcm_timestep_guidance.md](dvcm_timestep_guidance.md) — Courant and DVCM `dt`
 - [dvcm_comparison.md](dvcm_comparison.md) — LegacyClamp vs DVCM
 - [dvcm_web_integration.md](dvcm_web_integration.md) — R-THYM telemetry fields
+- [long_pipeline_rthym_migration.md](long_pipeline_rthym_migration.md) — R-THYM rollout for profiles & interior DVCM
 - [turbine_transient_scope.md](turbine_transient_scope.md) — penstock / turbine scope (adjacent)
 
 ---
@@ -547,3 +558,4 @@ separation regimes; He et al. / Adelaide rig for severe collapse (loose anchor).
 | 2026-06-05 | Initial roadmap from long-line surge engine-gap analysis |
 | 2026-06-05 | Phase 0 baseline + tracking epic [#79](https://github.com/jlillywh/RTHYM-MOC/issues/79) |
 | 2026-06-05 | Phase 1 complete ([#81](https://github.com/jlillywh/RTHYM-MOC/issues/81), [#88](https://github.com/jlillywh/RTHYM-MOC/pull/88)); exit-criteria tests in follow-up PR |
+| 2026-06-05 | Phase 7 complete — validation hardening, 100 % helper coverage, exit-criteria evidence table |

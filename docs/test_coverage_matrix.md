@@ -25,6 +25,15 @@ Status meanings:
 | `MOCSolver.set_demand_schedule()` | Direct | `tests/test_boundary_variations_and_losses.py` | Covered by a within-run junction demand step. |
 | `MOCSolver.set_head_schedule()` | Direct | `tests/test_boundary_variations_and_losses.py` | Covered by a within-run pressure-boundary head step. |
 | `load_inp()` | Direct | `tests/test_complex_topology_from_inp.py`, `tests/test_pump_valve_transients_from_inp.py`, `tests/test_pipe_minor_losses.py` | Includes both `use_wntr=True` and `use_wntr=False` flows. |
+| `PipeInput.elevation_profile` | Direct | `tests/test_pipe_elevation_profile.py` | Piecewise-linear survey table; linear fallback between node elevations when empty. |
+| `run(..., record_pipe_profiles=..., profile_stride=...)` | Direct | `tests/test_pipe_profile_export.py`, `tests/test_report.py` | Opt-in interior H/P/V export; legacy `run()` output unchanged when flag is false. |
+| `pipe_profile_*` / interior cavity profile keys | Direct | `tests/test_pipe_profile_export.py`, `tests/test_interior_dvcm_state.py` | Cavity volume/active keys appear only when `enable_interior_dvcm=True`. |
+| `MOCSolver.set_enable_interior_dvcm()` / `run(..., enable_interior_dvcm=...)` | Direct | `tests/test_interior_dvcm_state.py`, `tests/test_interior_dvcm_sloping_pipe.py` | Default off; junction-only DVCM unchanged when interior mode is off. |
+| `PipeInput.interior_dvcm_chainages_ft` (sparse watchpoints) | Direct | `tests/test_sparse_interior_dvcm.py` | Full MOC grid with cavity state at flagged chainages only. |
+| `MOCSolver.set_max_segments_per_pipe()` / wave-speed distortion controls | Direct | `tests/test_grid_scaling_long_pipe.py` | Caps segment count; reports `pipe_num_segments` and `pipe_distortion_pct`. |
+| `MOCSolver.set_friction_model()` / `TransientFrictionModel` / `run(..., friction_model=...)` | Direct | `tests/test_transient_friction_model.py`, `tests/test_units_si.py` | Default BrunoneIIR unchanged for existing tests. |
+| `summarize_study()` chainage envelope / grid-scaling meta | Direct | `tests/test_report.py`, `tests/test_grid_scaling_long_pipe.py`, `tests/test_long_pipeline_surge.py` | Per-pipe min/max vs chainage when profile keys are present. |
+| `rthym_moc.chainage_air_valve` | Direct | `tests/test_chainage_air_valve.py`, `tests/test_dvcm_air_valve.py` | Split pipe at chainage; attach air valve at survey high point. |
 
 ## Node-Type Matrix
 
@@ -59,7 +68,18 @@ Status meanings:
 | Air-valve protection | Direct | `tests/test_air_valve.py`, air-dominant benchmarks | Single-device and mixed-device regimes. |
 | Mixed protection layouts | Direct | `tests/test_mixed_device_interaction_benchmark.py`, related sweeps | Combined-device interaction coverage. |
 | Long-run stability / column separation | Direct | `tests/test_column_separation_and_stability.py` | Stability and cavitation-oriented regression. |
+| Long-pipe profile export (LP-01) | Direct | `tests/test_pipe_profile_export.py`, `tests/test_phase1_e2e_contract.py` | Mid-pipe Joukowsky after downstream closure; opt-in export contract. |
+| Sloping pipe / summit static minimum (LP-02) | Direct | `tests/test_pipe_elevation_profile.py`, `tests/test_long_pipeline_surge.py` | Terrain-driven local vapor head; min static gauge P at survey high point. |
+| Interior DVCM on uninterrupted reach (LP-03 / LP-04) | Direct | `tests/test_interior_dvcm_sloping_pipe.py`, `tests/test_long_pipeline_surge.py` | Cavity at summit under downsurge; collapse secondary spike at mid-pipe. |
+| Grid scaling / distortion report (LP-05) | Direct | `tests/test_grid_scaling_long_pipe.py`, `tests/test_long_pipeline_surge.py` | Capped grid on multi-mile reach; distortion metadata in results and `summarize_study()`. |
+| Summit air valve on chainage split (LP-06) | Direct | `tests/test_dvcm_air_valve.py`, `tests/test_chainage_air_valve.py` | Chainage split topology; air valve suppresses interior cavity at summit. |
+| Long-pipeline canonical validation (Phase 7 / LP-SURGE-01) | Direct | `tests/test_long_pipeline_surge.py`, `tests/test_long_pipeline_surge_utils.py`, `tests/test_long_pipeline_surge_verification.py` | Multi-mile sloping reach combining Phases 1–4; notebook parity gate; 100 % helper-module coverage. See [long_pipeline_surge_roadmap.md](long_pipeline_surge_roadmap.md). |
+| Long-pipe performance budget (LP-PERF-01) | Direct (slow) | `tests/test_long_pipeline_perf.py` | `@pytest.mark.slow`; 20-mile capped grid wall-clock guard vs checked-in baseline. |
 
 ## Current Gaps To Close
 
-No known feature/surface coverage gaps remain in the current public API matrix.
+No known feature/surface coverage gaps remain in the current public API or scenario
+matrices. Long-pipeline slow tests (`LP-PERF-01`, full transient window in
+`test_long_pipeline_surge.py`) are excluded from default CI via `@pytest.mark.slow`;
+`LP-PERF-01` runs in the PR `long-pipeline-perf` workflow job. See
+[long_pipeline_surge_roadmap.md](long_pipeline_surge_roadmap.md) Phase 7.

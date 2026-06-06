@@ -109,6 +109,153 @@ write(
 )
 
 write(
+    "long_pipeline_surge_verification.ipynb",
+    [
+        md(
+            "# Long Pipeline Surge — Phase 7 Verification\n\n"
+            "Canonical **LP-SURGE-01** case: **5-mile** sloping transmission main with elevation survey, "
+            "**grid cap 2000**, **interior DVCM**, and profile export. Mirrors "
+            "**`tests/test_long_pipeline_surge.py`** (validation LP-02–LP-04).\n\n"
+            "| Check | Description |\n"
+            "|-------|-------------|\n"
+            "| LP-02 | Static minimum gauge pressure at survey summit |\n"
+            "| LP-03 | Interior cavity at summit under downsurge (not terminals) |\n"
+            "| LP-04 | Cavity collapse secondary spike after downstream refill |\n\n"
+            "> **Runtime:** two 8 s transients (~15–20 s total). Grid cap yields ~230% wave-speed "
+            "distortion on this reach (documented tradeoff; see Phase 4 roadmap).\n\n"
+            "[![Launch Binder](https://mybinder.org/badge_logo.svg)]"
+            "(https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Flong_pipeline_surge_verification.ipynb)"
+        ),
+        md("## 1. Setup"),
+        code(
+            SETUP
+            + "\nfrom long_pipeline_surge_verification_utils import (\n"
+            "    CASE_ID,\n"
+            "    DEFAULT_DT_S,\n"
+            "    DEFAULT_LENGTH_MI,\n"
+            "    SUMMIT_CHAINAGE_FT,\n"
+            "    SUMMIT_ELEVATION_FT,\n"
+            "    default_survey,\n"
+            "    evaluate_collapse_spike,\n"
+            "    evaluate_grid_cap,\n"
+            "    evaluate_summit_cavity,\n"
+            "    evaluate_summit_static,\n"
+            "    run_downsurge_case,\n"
+            "    run_refill_collapse_case,\n"
+            "    run_static_preview,\n"
+            "    summit_index,\n"
+            ")\n"
+            "from rthym_moc.report import summarize_study"
+        ),
+        md("## 2. Elevation survey and grid metadata"),
+        code(
+            "survey = default_survey()\n"
+            "static_results = run_static_preview()\n"
+            "grid = evaluate_grid_cap(static_results)\n"
+            "static = evaluate_summit_static(static_results)\n"
+            "print(f\"Case {CASE_ID}: {DEFAULT_LENGTH_MI:.0f} mi, N={grid.num_segments}, "
+            "distortion={grid.distortion_pct:.1f}%\")\n"
+            "print(f\"Grid cap PASS={grid.passed}  LP-02 static PASS={static.passed}\")\n\n"
+            "chainage = np.asarray(static_results[\"pipe_profile_chainage_ft\"][\"Pmain\"])\n"
+            "z = [pt[1] for pt in survey]\n"
+            "x = [pt[0] for pt in survey]\n"
+            "fig, ax = plt.subplots(figsize=(10, 3))\n"
+            "ax.plot(x, z, \"o-\", color=\"saddlebrown\", label=\"Survey\")\n"
+            "ax.axvline(SUMMIT_CHAINAGE_FT, color=\"gray\", linestyle=\":\", label=\"Summit chainage\")\n"
+            "ax.set_xlabel(\"Chainage (ft)\")\n"
+            "ax.set_ylabel(\"Ground elevation (ft)\")\n"
+            "ax.set_title(\"LP-SURGE-01 elevation profile\")\n"
+            "ax.legend()\n"
+            "ax.grid(True, alpha=0.3)\n"
+            "plt.show()"
+        ),
+        md("## 3. Downsurge — interior cavity at summit (LP-03)"),
+        code(
+            "downsurge = run_downsurge_case()\n"
+            "cavity = evaluate_summit_cavity(downsurge)\n"
+            "print(\n"
+            "    f\"LP-03: summit max cavity={cavity.summit_max_volume_ft3:.4f} ft³, \"\n"
+            "    f\"active steps={cavity.summit_active_steps}, PASS={cavity.passed}\"\n"
+            ")\n\n"
+            "t = np.asarray(downsurge[\"time\"])\n"
+            "chainage = np.asarray(downsurge[\"pipe_profile_chainage_ft\"][\"Pmain\"])\n"
+            "idx = summit_index(chainage)\n"
+            "head = np.asarray(downsurge[\"pipe_profile_head\"][\"Pmain\"])[:, idx]\n"
+            "vol = np.asarray(downsurge[\"pipe_profile_cavity_volume\"][\"Pmain\"])[:, idx]\n"
+            "fig, axes = plt.subplots(2, 1, figsize=(10, 5), sharex=True)\n"
+            "axes[0].plot(t, head, color=\"steelblue\")\n"
+            "axes[0].set_ylabel(\"Summit head (ft)\")\n"
+            "axes[0].grid(True, alpha=0.3)\n"
+            "axes[1].plot(t, vol, color=\"darkcyan\")\n"
+            "axes[1].set_xlabel(\"Time (s)\")\n"
+            "axes[1].set_ylabel(\"Cavity volume (ft³)\")\n"
+            "axes[1].grid(True, alpha=0.3)\n"
+            "fig.suptitle(f\"Summit (chainage {chainage[idx]:.0f} ft, z={SUMMIT_ELEVATION_FT:.0f} ft)\")\n"
+            "fig.tight_layout()\n"
+            "plt.show()"
+        ),
+        md("## 4. Chainage envelope (pressure min/max along line)"),
+        code(
+            "summary = summarize_study(downsurge, dt_s=DEFAULT_DT_S)\n"
+            "env = summary[\"pipes\"][\"Pmain\"][\"chainage_envelope\"]\n"
+            "xc = np.asarray(env[\"chainage_ft\"]) / 5280.0\n"
+            "pmin = np.asarray(env[\"pressure_min_psi\"])\n"
+            "pmax = np.asarray(env[\"pressure_max_psi\"])\n"
+            "fig, ax = plt.subplots(figsize=(10, 4))\n"
+            "ax.fill_between(xc, pmin, pmax, alpha=0.25, color=\"steelblue\", label=\"Min–max envelope\")\n"
+            "ax.plot(xc, pmin, color=\"navy\", label=\"Min gauge P\")\n"
+            "ax.axvline(SUMMIT_CHAINAGE_FT / 5280.0, color=\"gray\", linestyle=\":\", label=\"Summit\")\n"
+            "ax.set_xlabel(\"Chainage (mi)\")\n"
+            "ax.set_ylabel(\"Gauge pressure (psi)\")\n"
+            "ax.set_title(\"Downsurge pressure envelope along Pmain\")\n"
+            "ax.legend()\n"
+            "ax.grid(True, alpha=0.3)\n"
+            "plt.show()"
+        ),
+        md("## 5. Refill-driven collapse spike (LP-04)"),
+        code(
+            "refill = run_refill_collapse_case()\n"
+            "spike = evaluate_collapse_spike(refill)\n"
+            "print(\n"
+            "    f\"LP-04: collapse step={spike.collapse_step}, rise={spike.rise_ft:.2f} ft, \"\n"
+            "    f\"peak above vapor={spike.peak_above_vapor_ft:.2f} ft, PASS={spike.passed}\"\n"
+            ")\n\n"
+            "t = np.asarray(refill[\"time\"])\n"
+            "chainage = np.asarray(refill[\"pipe_profile_chainage_ft\"][\"Pmain\"])\n"
+            "idx = summit_index(chainage)\n"
+            "head = np.asarray(refill[\"pipe_profile_head\"][\"Pmain\"])[:, idx]\n"
+            "vol = np.asarray(refill[\"pipe_profile_cavity_volume\"][\"Pmain\"])[:, idx]\n"
+            "fig, axes = plt.subplots(2, 1, figsize=(10, 5), sharex=True)\n"
+            "axes[0].plot(t, head, color=\"firebrick\")\n"
+            "if spike.collapse_step >= 0:\n"
+            "    axes[0].axvline(spike.collapse_step * DEFAULT_DT_S, color=\"orange\", linestyle=\":\", label=\"First collapse\")\n"
+            "axes[0].set_ylabel(\"Summit head (ft)\")\n"
+            "axes[0].legend()\n"
+            "axes[0].grid(True, alpha=0.3)\n"
+            "axes[1].plot(t, vol, color=\"darkcyan\")\n"
+            "axes[1].set_xlabel(\"Time (s)\")\n"
+            "axes[1].set_ylabel(\"Cavity volume (ft³)\")\n"
+            "axes[1].grid(True, alpha=0.3)\n"
+            "fig.suptitle(\"Downsurge + downstream refill — collapse at summit\")\n"
+            "fig.tight_layout()\n"
+            "plt.show()"
+        ),
+        md("## 6. Summary"),
+        code(
+            "overall = grid.passed and static.passed and cavity.passed and spike.passed\n"
+            "print(\"Overall:\", \"PASS\" if overall else \"FAIL\")\n"
+            "for label, ok in [\n"
+            "    (\"Grid cap / metadata\", grid.passed),\n"
+            "    (\"LP-02 static summit minimum\", static.passed),\n"
+            "    (\"LP-03 interior cavity at summit\", cavity.passed),\n"
+            "    (\"LP-04 collapse secondary spike\", spike.passed),\n"
+            "]:\n"
+            "    print(f\"  {label}: {'PASS' if ok else 'FAIL'}\")"
+        ),
+    ],
+)
+
+write(
     "epanet_import_verification.ipynb",
     [
         md(
@@ -792,6 +939,7 @@ write(
             "    ('bergant_adelaide_verification.ipynb', 'Bergant Adelaide lab + digitized trace'),\n"
             "    ('cross_engine_surge_verification.ipynb', 'TSNet + EPANET cross-engine'),\n"
             "    ('surge_device_verification.ipynb', 'Standpipe / HPT / air valve'),\n"
+            "    ('long_pipeline_surge_verification.ipynb', 'Multi-mile sloping interior DVCM (LP-02–04)'),\n"
             "    ('epanet_import_verification.ipynb', 'complex_topology.inp + pump trip'),\n"
             "]\n"
             "print(f'Repository: {REPO_ROOT}')\n"
