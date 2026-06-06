@@ -8,6 +8,8 @@ This document provides developer reference details for integrating version `0.4.
 
 **Migration checklist (R-THYM):** [long_pipeline_rthym_migration.md](long_pipeline_rthym_migration.md) — incremental rollout for profile export and interior DVCM.
 
+**UI / UX brief (web team):** [rthym_interior_dvcm_ui_brief.md](rthym_interior_dvcm_ui_brief.md) — schematic pipe highlighting, heatmaps, mitigation views, phased rollout.
+
 ---
 
 ## 1. WebAssembly (WASM) step telemetry
