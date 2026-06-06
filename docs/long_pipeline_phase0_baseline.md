@@ -21,7 +21,7 @@ Python `run()` therefore has no per-segment head, pressure, or velocity along a 
 
 ### Runtime storage (`PipeState`)
 
-```200:213:src/moc_solver.hpp
+```200:213:src/solver/moc_solver.hpp
 struct PipeState {
     ...
     int    num_nodes = 2;
@@ -40,7 +40,7 @@ Indices `0` and `N-1` are pipe-end boundaries (coupled to network nodes); indice
 
 Interior heads and velocities are solved every step via characteristic pairing:
 
-```836:848:src/moc_solver.cpp
+```836:848:src/solver/moc_solver.cpp
         // ── Interior nodes  j = 1 … N-2  (C+ from left, C- from right) ───
         for (int j = 1; j < N - 1; ++j) {
             ...
@@ -57,7 +57,7 @@ After the node boundary-condition pass, `newH` / `newV` are copied back into
 `SimResults` has no pipe-profile fields — only graph-node series and one scalar
 flow per pipe:
 
-```128:147:src/moc_solver.hpp
+```128:147:src/solver/moc_solver.hpp
 struct SimResults {
     ...
     std::unordered_map<std::string, std::vector<double>> node_head;    // ft
@@ -72,7 +72,7 @@ struct SimResults {
 For each pipe, `recordStep()` averages **all** segment velocities into a single
 flow sample. Interior `H[j]` is never read for export:
 
-```2261:2272:src/moc_solver.cpp
+```2261:2272:src/solver/moc_solver.cpp
     for (int i = 0; i < static_cast<int>(pipes_.size()); ++i) {
         const auto& ps = pipes_[i];
         double avg_V = 0.0;
@@ -161,24 +161,24 @@ where `z_node` is `NodeInput::elevation` and `h_vapor` is the solver's stored
 Computed once per graph node at the start of the node boundary-condition loop in
 `stepMOC()`:
 
-```875:875:src/moc_solver.cpp
+```875:875:src/solver/moc_solver.cpp
         const double H_vap = n.elevation + p_vapor_; // cavitation head (ft)
 ```
 
 `p_vapor_` is initialized from the Python `p_vapor_psi` parameter (default
 `-14.0` psi gauge) and stored internally as head:
 
-```2291:2291:src/moc_solver.cpp
+```2291:2291:src/solver/moc_solver.cpp
     p_vapor_ = p_vapor_psi * PSI_TO_FT; // convert psi → ft
 ```
 
-```339:339:src/moc_solver.hpp
+```339:339:src/solver/moc_solver.hpp
     double p_vapor_ = -14.0 * PSI_TO_FT; // ft (converted from psi at init)
 ```
 
 Equivalent gauge-pressure form used in telemetry:
 
-```2170:2171:src/moc_solver.cpp
+```2170:2171:src/solver/moc_solver.cpp
         const double P_psi = (H - n.elevation) / PSI_TO_FT;
         const bool is_cavity_active = (P_psi <= P_vapor);
 ```
@@ -200,7 +200,7 @@ the solver does not clamp or open a cavity there.
 
 ### `PipeInput` has no elevation data
 
-```109:124:src/moc_solver.hpp
+```109:124:src/solver/moc_solver.hpp
 struct PipeInput {
     ...
     double  length           = 100.0;  // ft
@@ -212,7 +212,7 @@ struct PipeInput {
 Initial head along a pipe is a **linear HGL** between endpoint boundary heads,
 not a function of terrain elevation:
 
-```615:623:src/moc_solver.cpp
+```615:623:src/solver/moc_solver.cpp
         // ── Linear HGL + uniform velocity initial condition ───────────────
         ...
             ps.H[j] = H_start + (H_end - H_start) * t_frac;
@@ -226,7 +226,7 @@ initialization or the MOC update.
 At a demand junction, cavity entry compares the solved head against the node's
 single `H_vap`:
 
-```2045:2046:src/moc_solver.cpp
+```2045:2046:src/solver/moc_solver.cpp
                 const bool enter_cavity = H_candidate <= (H_vap - H_CAVITY_ENTER_TOL);
                 const bool leave_cavity = H_candidate >= (H_vap + H_CAVITY_LEAVE_TOL);
 ```
@@ -239,7 +239,7 @@ high point of an adjacent pipe segment.
 `recordStep()` sets `node_cavitation` from gauge pressure at the node's
 telemetry head, again using **node** elevation only:
 
-```2223:2244:src/moc_solver.cpp
+```2223:2244:src/solver/moc_solver.cpp
         const double P_psi   = (H - n.elevation) / PSI_TO_FT;
         const double P_vapor = p_vapor_ / PSI_TO_FT;
         ...
@@ -319,7 +319,7 @@ and no automatic `dt` selection — segment count grows linearly with `L / dt`.
 
 ### When the grid is built
 
-```2290:2298:src/moc_solver.cpp
+```2290:2298:src/solver/moc_solver.cpp
     dt_      = dt;
     ...
     initGrid();
@@ -331,7 +331,7 @@ changes `N` and `a_adj` even if the network topology is unchanged.
 
 ### Design wave speed (`a_design`)
 
-```501:514:src/moc_solver.cpp
+```501:514:src/solver/moc_solver.cpp
         double wave_speed = 4000.0; // ft/s  default (rigid pipe approximation)
         if (p.youngs_modulus > 0.0) {
             ...
@@ -347,7 +347,7 @@ changes `N` and `a_adj` even if the network topology is unchanged.
 
 ### Segment count and Courant adjustment
 
-```516:523:src/moc_solver.cpp
+```516:523:src/solver/moc_solver.cpp
         const double dx_target = wave_speed * dt_;
         const int    num_segs  = std::max(1, static_cast<int>(std::round(p.length / dx_target)));
         ps.a_wave    = (p.length / num_segs) / dt_; // adjusted wave speed
@@ -387,7 +387,7 @@ $|a - a_0| / a_0 \lesssim 15\%$ (ideally ≤ 10%) when choosing `dt`.
 
 Each step uses the **adjusted** speed, not the design value:
 
-```802:803:src/moc_solver.cpp
+```802:803:src/solver/moc_solver.cpp
         const double dx = ps.a_wave * dt_;
         const double B  = ps.a_wave / g;
 ```

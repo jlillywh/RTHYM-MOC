@@ -18,10 +18,10 @@ discrete cavity-volume model.
 
 ## Code locations
 
-- Clamp logic and model note: `src/moc_solver.cpp` (junction branch in `stepMOC()`)
-- Telemetry recording (`node_cavitation` as 0/1 flag): `src/moc_solver.cpp` (`recordStep()`)
-- Result schema field: `src/moc_solver.hpp` (`SimResults.node_cavitation`)
-- Python export of cavitation flag: `src/bindings.cpp` (`results_to_dict`)
+- Clamp logic and model note: `src/solver/moc_solver.cpp` (junction branch in `stepMOC()`)
+- Telemetry recording (`node_cavitation` as 0/1 flag): `src/solver/moc_solver.cpp` (`recordStep()`)
+- Result schema field: `src/solver/moc_solver.hpp` (`SimResults.node_cavitation`)
+- Python export of cavitation flag: `bindings/python/bindings.cpp` (`results_to_dict`)
 
 ## Operational behavior (baseline)
 
