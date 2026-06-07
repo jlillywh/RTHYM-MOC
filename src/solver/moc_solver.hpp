@@ -12,9 +12,7 @@
 #include <stdexcept>
 #include <optional>
 
-#if defined(EMSCRIPTEN) || defined(__EMSCRIPTEN__)
-#include <emscripten/val.h>
-#endif
+#include "types.hpp"
 
 namespace rthym {
 
@@ -353,7 +351,7 @@ public:
                    bool enable_interior_dvcm = false,
                    std::optional<TransientFrictionModel> friction_model = std::nullopt);
 
-    // Step-by-step API for WASM integration
+    // Step-by-step integration API (batch run() calls initGrid/stepMOC internally).
     void   initGrid();
     void   stepMOC();
     void   set_dt(double dt) { dt_ = dt; }
@@ -379,9 +377,7 @@ public:
     }
     const std::string& get_grid_distortion_warning() const { return grid_distortion_warning_; }
 
-#if defined(EMSCRIPTEN) || defined(__EMSCRIPTEN__)
-    emscripten::val get_step_results() const;
-#endif
+    StepSnapshot capture_step_snapshot() const;
 
 private:
     // User inputs (persistent across run() calls)

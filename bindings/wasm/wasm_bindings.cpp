@@ -10,146 +10,69 @@
 #include "moc_solver.hpp"
 #include <cmath>
 #include <string>
-#include <vector>
+#include <utility>
 
 using namespace emscripten;
 using namespace rthym;
 
-emscripten::val MOCSolver::get_step_results() const {
+namespace {
+
+void set_optional_bool(emscripten::val& obj, const char* key, const std::optional<bool>& value) {
+    if (value.has_value()) {
+        obj.set(key, *value);
+    } else {
+        obj.set(key, emscripten::val::undefined());
+    }
+}
+
+void set_optional_double(emscripten::val& obj, const char* key, const std::optional<double>& value) {
+    if (value.has_value()) {
+        obj.set(key, *value);
+    } else {
+        obj.set(key, emscripten::val::undefined());
+    }
+}
+
+} // namespace
+
+emscripten::val convert_snapshot_to_val(const StepSnapshot& snapshot) {
     emscripten::val nodes_obj = emscripten::val::object();
     emscripten::val links_obj = emscripten::val::object();
 
-    for (const auto& ns : nodes_) {
-        const auto& n = ns.input;
+    for (const auto& node : snapshot.nodes) {
         emscripten::val node_res = emscripten::val::object();
-
-        auto in_it = node_inflow_pipes_.find(n.id);
-        auto out_it = node_outflow_pipes_.find(n.id);
-        const auto& in_pipes = (in_it != node_inflow_pipes_.end()) ? in_it->second : std::vector<int>{};
-        const auto& out_pipes = (out_it != node_outflow_pipes_.end()) ? out_it->second : std::vector<int>{};
-
-        double upH = getInitialHead(ns);
-        double downH = getInitialHead(ns);
-        double h = upH;
-        if (!in_pipes.empty()) {
-            int pi = in_pipes[0];
-            upH = pipes_[pi].H.back();
-            h = upH;
-        }
-        if (!out_pipes.empty()) {
-            int pi = out_pipes[0];
-            downH = pipes_[pi].H.front();
-            if (in_pipes.empty()) {
-                h = downH;
-            }
-        }
-
-        double upPressurePsi = (upH - n.elevation) / 2.31;
-        double downPressurePsi = (downH - n.elevation) / 2.31;
-        double pressure = (h - n.elevation) / 2.31;
-
-        double nodeFlowGPM = 0.0;
-        if (!out_pipes.empty()) {
-            int pi = out_pipes[0];
-            nodeFlowGPM = pipes_[pi].V.front() * pipes_[pi].area / GPM_TO_CFS;
-        } else if (!in_pipes.empty()) {
-            int pi = in_pipes[0];
-            nodeFlowGPM = pipes_[pi].V.back() * pipes_[pi].area / GPM_TO_CFS;
-        }
-
-        if (n.type == NodeType::CheckValve && n.flipped) {
-            nodeFlowGPM = -nodeFlowGPM;
-        }
-
-        double actualDemand = 0.0;
-        if (n.type == NodeType::InflowNode || n.type == NodeType::OutflowNode) {
-            actualDemand = ns.actual_demand;
-        }
-
-        const bool reverseFlowBlocked =
-            n.type == NodeType::CheckValve &&
-            (n.flipped ? (upH > downH + 1e-9) : (downH > upH + 1e-9)) &&
-            std::abs(nodeFlowGPM) <= 1e-6;
-
-        node_res.set("type", nodeTypeToStr(n.type));
-        node_res.set("pressure", pressure);
-        node_res.set("upstreamPressure", upPressurePsi);
-        node_res.set("downstreamPressure", downPressurePsi);
-        node_res.set("upstreamHead", upH);
-        node_res.set("downstreamHead", downH);
-        node_res.set("flowGPM", nodeFlowGPM);
-        node_res.set("actualDemandGPM", actualDemand);
-        node_res.set("reverseFlowBlocked", reverseFlowBlocked);
-        node_res.set("cavitation", upH <= n.elevation + p_vapor_ || downH <= n.elevation + p_vapor_);
-        node_res.set("cavityActive", ns.cavity_active);
-        node_res.set("cavityVolume", ns.cavity_volume_ft3);
-        node_res.set("cavityCollapseFlag", ns.cavity_collapsed_this_step);
-        node_res.set("cavityCollapseCount", ns.cavity_collapse_count);
-        node_res.set("currentSpeed", ns.input.current_speed);
-        node_res.set("currentSetting", ns.input.current_setting);
-        if (n.type == NodeType::Pump || n.type == NodeType::Turbine) {
-            node_res.set("hasPower", ns.input.has_power);
-        } else {
-            node_res.set("hasPower", emscripten::val::undefined());
-        }
-
-        if (n.type == NodeType::Standpipe) {
-            node_res.set("surgeLevel", ns.surge_level_ft);
-        } else {
-            node_res.set("surgeLevel", emscripten::val::undefined());
-        }
-
-        if (n.type == NodeType::HydropneumaticTank || n.type == NodeType::AirValve) {
-            node_res.set("liveGasVol", ns.gas_volume_ft3);
-            node_res.set("gasPressure", ns.gas_pressure_psi);
-        } else {
-            node_res.set("liveGasVol", emscripten::val::undefined());
-            node_res.set("gasPressure", emscripten::val::undefined());
-        }
-
-        if (n.type == NodeType::AirValve) {
-            node_res.set("lossRate", ns.air_loss_rate_gpm);
-            node_res.set("cumulativeLoss", ns.air_cumulative_loss_gal);
-        } else {
-            node_res.set("lossRate", emscripten::val::undefined());
-            node_res.set("cumulativeLoss", emscripten::val::undefined());
-        }
-
-        if (n.type == NodeType::HydropneumaticTank) {
-            node_res.set("tankFlowGPM", ns.tank_flow_gpm);
-        } else {
-            node_res.set("tankFlowGPM", emscripten::val::undefined());
-        }
-
-        if (n.type == NodeType::CheckValve) {
-            node_res.set("valvePosition", ns.valve_position);
-        } else {
-            node_res.set("valvePosition", emscripten::val::undefined());
-        }
-
-        nodes_obj.set(n.id, node_res);
+        node_res.set("type", node.type);
+        node_res.set("pressure", node.pressure_psi);
+        node_res.set("upstreamPressure", node.upstream_pressure_psi);
+        node_res.set("downstreamPressure", node.downstream_pressure_psi);
+        node_res.set("upstreamHead", node.upstream_head_ft);
+        node_res.set("downstreamHead", node.downstream_head_ft);
+        node_res.set("flowGPM", node.flow_gpm);
+        node_res.set("actualDemandGPM", node.actual_demand_gpm);
+        node_res.set("reverseFlowBlocked", node.reverse_flow_blocked);
+        node_res.set("cavitation", node.cavitation);
+        node_res.set("cavityActive", node.cavity_active);
+        node_res.set("cavityVolume", node.cavity_volume_ft3);
+        node_res.set("cavityCollapseFlag", node.cavity_collapse_flag);
+        node_res.set("cavityCollapseCount", node.cavity_collapse_count);
+        node_res.set("currentSpeed", node.current_speed);
+        node_res.set("currentSetting", node.current_setting);
+        set_optional_bool(node_res, "hasPower", node.has_power);
+        set_optional_double(node_res, "surgeLevel", node.surge_level_ft);
+        set_optional_double(node_res, "liveGasVol", node.gas_volume_ft3);
+        set_optional_double(node_res, "gasPressure", node.gas_pressure_psi);
+        set_optional_double(node_res, "lossRate", node.air_loss_rate_gpm);
+        set_optional_double(node_res, "cumulativeLoss", node.air_cumulative_loss_gal);
+        set_optional_double(node_res, "tankFlowGPM", node.tank_flow_gpm);
+        set_optional_double(node_res, "valvePosition", node.valve_position);
+        nodes_obj.set(node.id, node_res);
     }
 
-    for (size_t i = 0; i < pipe_inputs_.size(); ++i) {
-        const auto& p = pipe_inputs_[i];
-        const auto& ps = pipes_[i];
-
-        double avgV = 0.0;
-        for (double val : ps.V) {
-            avgV += val;
-        }
-        if (!ps.V.empty()) {
-            avgV /= ps.V.size();
-        }
-
-        double flowGPM = avgV * ps.area / GPM_TO_CFS;
-        double headloss = std::abs(ps.H.front() - ps.H.back());
-
+    for (const auto& link : snapshot.links) {
         emscripten::val pipe_res = emscripten::val::object();
-        pipe_res.set("flowGPM", flowGPM);
-        pipe_res.set("headloss", headloss);
-
-        links_obj.set(p.id, pipe_res);
+        pipe_res.set("flowGPM", link.flow_gpm);
+        pipe_res.set("headloss", link.headloss_ft);
+        links_obj.set(link.id, pipe_res);
     }
 
     emscripten::val res = emscripten::val::object();
@@ -270,5 +193,7 @@ EMSCRIPTEN_BINDINGS(rthym_moc) {
         .function("get_friction_model", &MOCSolver::get_friction_model)
         .function("set_cavitation_model", &MOCSolver::set_cavitation_model)
         .function("get_cavitation_model", &MOCSolver::get_cavitation_model)
-        .function("get_step_results", &MOCSolver::get_step_results);
+        .function("get_step_results", +[](const MOCSolver& solver) {
+            return convert_snapshot_to_val(solver.capture_step_snapshot());
+        });
 }

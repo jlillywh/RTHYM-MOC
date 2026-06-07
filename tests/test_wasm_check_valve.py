@@ -11,6 +11,7 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+CORE_CPP = REPO_ROOT / "src" / "solver" / "moc_solver.cpp"
 WASM_BINDINGS_CPP = REPO_ROOT / "bindings" / "wasm" / "wasm_bindings.cpp"
 WASM_OUT_DIR = REPO_ROOT / "build" / "wasm"
 WASM_JS = WASM_OUT_DIR / "rthym_moc.js"
@@ -19,11 +20,14 @@ WASM_BIN = WASM_OUT_DIR / "rthym_moc.wasm"
 
 def test_wasm_bindings_expose_check_valve_runtime_contract():
     """The WASM bindings should explicitly expose CheckValve runtime state."""
-    source = WASM_BINDINGS_CPP.read_text(encoding="utf-8")
+    core_source = CORE_CPP.read_text(encoding="utf-8")
+    wasm_source = WASM_BINDINGS_CPP.read_text(encoding="utf-8")
 
-    assert 'n.type == NodeType::CheckValve' in source
-    assert 'node_res.set("type", nodeTypeToStr(n.type));' in source
-    assert 'node_res.set("reverseFlowBlocked", reverseFlowBlocked);' in source
+    assert "NodeType::CheckValve" in core_source
+    assert "reverse_flow_blocked" in core_source
+    assert "convert_snapshot_to_val" in wasm_source
+    assert 'node_res.set("type", node.type);' in wasm_source
+    assert 'node_res.set("reverseFlowBlocked", node.reverse_flow_blocked);' in wasm_source
 
 
 @pytest.mark.wasm_runtime
