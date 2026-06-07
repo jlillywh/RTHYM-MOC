@@ -373,6 +373,25 @@ def test_summarize_study_grid_scaling_without_pipe_flow() -> None:
     assert "flow_gpm" not in pipe
 
 
+def test_summarize_study_grid_scaling_includes_dx_and_courant() -> None:
+    summary = summarize_study(
+        {
+            "time": np.array([0.0, 0.01]),
+            "node_head": {"R1": np.array([100.0, 100.0])},
+            "pipe_wave_speed_design_fps": {"P1": 4000.0},
+            "pipe_wave_speed_adjusted_fps": {"P1": 4000.0},
+            "pipe_distortion_pct": {"P1": 0.0},
+            "pipe_num_segments": {"P1": 100},
+            "pipe_dx_ft": {"P1": 40.0},
+            "pipe_courant_number": {"P1": 1.0},
+        },
+        dt_s=0.01,
+    )
+    pipe = summary["pipes"]["P1"]
+    assert pipe["dx_ft"] == pytest.approx(40.0)
+    assert pipe["courant_number"] == pytest.approx(1.0)
+
+
 def test_summarize_study_with_acceptance_limits():
     time_s = np.array([0.0, 0.01, 0.02])
     results = {

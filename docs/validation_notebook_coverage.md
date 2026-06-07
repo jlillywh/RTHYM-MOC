@@ -30,6 +30,8 @@ Pytest is the **CI source of truth**. Jupyter notebooks are **interactive mirror
 | [examples/gradual_closure_verification.ipynb](../examples/gradual_closure_verification.ipynb) | Independent | `test_gradual_closure_benchmark.py` | **Full** — closure-time sweep |
 | [examples/dvcm_physical_verification.ipynb](../examples/dvcm_physical_verification.ipynb) | Independent | `test_dvcm_physical_verification.py` | **Full** — formula checks |
 | [examples/bergant_adelaide_verification.ipynb](../examples/bergant_adelaide_verification.ipynb) | Independent | `test_dvcm_bergant_adelaide_experiment.py`, `test_dvcm_bergant_adelaide_trace.py` | **Full** — peaks + digitized trace overlay |
+| [validation/notebooks/bergant_adelaide_verification.ipynb](../validation/notebooks/bergant_adelaide_verification.ipynb) | Independent | same | **Full** — preferred Binder path |
+| [validation/notebooks/grid_scaling_verification.ipynb](../validation/notebooks/grid_scaling_verification.ipynb) | Analytical | `test_grid_scaling_long_pipe.py` | **Full** |
 | [examples/surge_device_verification.ipynb](../examples/surge_device_verification.ipynb) | Independent | `test_surge_device_verification.py`, … | **Full** — Joukowsky / B.8 / device laws |
 | [examples/long_pipeline_surge_verification.ipynb](../examples/long_pipeline_surge_verification.ipynb) | Independent (directional) | `test_long_pipeline_surge.py`, `test_long_pipeline_surge_verification.py` | **Full** — LP-02–04 on LP-SURGE-01 |
 | [examples/dvcm_canonical_verification.ipynb](../examples/dvcm_canonical_verification.ipynb) | **Snapshot** | `test_dvcm_canonical_scenarios.py` | **Full** — golden `tests/dvcm_*_reference.json` |
@@ -78,7 +80,7 @@ Pytest is the **CI source of truth**. Jupyter notebooks are **interactive mirror
 | `test_long_pipeline_surge_verification.py` | Independent (directional) | `long_pipeline_surge_verification.ipynb` | **Full** — notebook parity |
 | `test_pipe_elevation_profile.py` | — | — | **None** — covered indirectly via LP-02 |
 | `test_interior_dvcm_sloping_pipe.py` | Independent (directional) | — | **None** — short-pipe DVCM exit tests |
-| `test_grid_scaling_long_pipe.py` | — | — | **None** |
+| `test_grid_scaling_long_pipe.py` | — | `validation/notebooks/grid_scaling_verification.ipynb` | **Full** |
 | `test_chainage_air_valve.py` | — | — | **None** |
 | `test_transient_friction_model.py` | Independent (directional) | — | **None** — see [transient_friction_verification.md](transient_friction_verification.md) |
 | `test_long_pipeline_perf.py` | — | — | **PR CI** — LP-PERF-01 (`@pytest.mark.slow`, `long-pipeline-perf` job) |

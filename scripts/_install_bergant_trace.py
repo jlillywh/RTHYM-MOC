@@ -8,7 +8,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_SRC = Path("/mnt/c/Users/jason/Downloads/Default Dataset.csv")
-DST = REPO / "tests" / "bergant_adelaide_severe_valve_trace_reference.csv"
+DST = REPO / "validation" / "datasets" / "bergant_adelaide" / "severe_valve_trace_reference.csv"
 
 HEADER = [
     "# source: He et al. (2025) Processes 13:3510 Fig. 4 — experimental valve pressure (severe, V0=1.4 m/s)",

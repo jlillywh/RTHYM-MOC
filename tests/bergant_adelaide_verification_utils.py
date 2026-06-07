@@ -28,6 +28,14 @@ import numpy as np
 import rthym_moc as m
 
 _HERE = Path(__file__).resolve().parent
+_REPO_ROOT = _HERE.parent
+_DATASET_DIR = _REPO_ROOT / "validation" / "datasets" / "bergant_adelaide"
+
+
+def _dataset_dir() -> Path:
+    if _DATASET_DIR.is_dir():
+        return _DATASET_DIR
+    return _HERE
 
 # ── Published geometry (SI) ───────────────────────────────────────────────────
 PIPE_LENGTH_M = 37.23
@@ -46,8 +54,8 @@ P_VAPOR_KPA = 1.7
 P_ATM_KPA = 101.325
 
 CASES: dict[str, str] = {
-    "moderate_cavitation": "bergant_adelaide_moderate_reference.json",
-    "severe_cavitation": "bergant_adelaide_severe_reference.json",
+    "moderate_cavitation": "moderate_reference.json",
+    "severe_cavitation": "severe_reference.json",
 }
 
 CASE_LABELS: dict[str, str] = {
@@ -56,8 +64,8 @@ CASE_LABELS: dict[str, str] = {
 }
 
 # Digitized experimental valve trace (optional). Copy from .csv.example after WebPlotDigitizer.
-SEVERE_VALVE_TRACE_CSV = _HERE / "bergant_adelaide_severe_valve_trace_reference.csv"
-SEVERE_VALVE_TRACE_CSV_EXAMPLE = _HERE / "bergant_adelaide_severe_valve_trace_reference.csv.example"
+SEVERE_VALVE_TRACE_CSV = _dataset_dir() / "severe_valve_trace_reference.csv"
+SEVERE_VALVE_TRACE_CSV_EXAMPLE = _dataset_dir() / "severe_valve_trace_reference.csv.example"
 TRACE_REQUIRED_COLUMNS = ("t_s", "p_abs_kPa")
 TRACE_ALT_COLUMNS = ("t_s", "p_gauge_kPa")  # He Fig. 4: cavity drawn at 0 kPa gauge
 
@@ -65,7 +73,7 @@ TRACE_ALT_COLUMNS = ("t_s", "p_gauge_kPa")  # He Fig. 4: cavity drawn at 0 kPa g
 def reference_path(case_id: str) -> Path:
     if case_id not in CASES:
         raise KeyError(f"Unknown case_id {case_id!r}; expected one of {sorted(CASES)}")
-    return _HERE / CASES[case_id]
+    return _dataset_dir() / CASES[case_id]
 
 
 def load_reference(case_id: str) -> dict[str, Any]:

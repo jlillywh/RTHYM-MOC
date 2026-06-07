@@ -1,6 +1,6 @@
 """Optional valve pressure trace check vs digitized experimental curve.
 
-Until ``tests/bergant_adelaide_severe_valve_trace_reference.csv`` exists, this
+Until ``validation/datasets/bergant_adelaide/severe_valve_trace_reference.csv`` exists, this
 module is skipped (scalar peak tests still run in ``test_dvcm_bergant_adelaide_experiment.py``).
 
 To enable: copy the ``.csv.example`` file, digitize He et al. (2025) Fig. 4, validate
@@ -23,9 +23,9 @@ pytestmark = pytest.mark.dvcm
 
 _CASE = "severe_cavitation"
 _SKIP_REASON = (
-    "Digitized trace not found. Copy tests/bergant_adelaide_severe_valve_trace_reference.csv.example "
-    "to tests/bergant_adelaide_severe_valve_trace_reference.csv and add points from "
-    "He et al. (2025) Fig. 4 — see docs/bergant_adelaide_verification.md"
+    "Digitized trace not found. Copy validation/datasets/bergant_adelaide/"
+    "severe_valve_trace_reference.csv.example to severe_valve_trace_reference.csv "
+    "and add points from He et al. (2025) Fig. 4 — see docs/bergant_adelaide_verification.md"
 )
 
 

@@ -57,6 +57,7 @@ from .report import (
     export_study_csv,
     export_study_csv_si,
     export_study_json,
+    format_grid_report,
     format_study_table,
     format_study_table_si,
     head_to_pressure_kpa,
@@ -65,6 +66,7 @@ from .report import (
     study_summary_to_si,
     summarize_study,
     summarize_study_si,
+    summarize_grid_report,
 )
 from .acceptance import (
     run_acceptance_checks,
@@ -151,6 +153,13 @@ class MOCSolver(_RawMOCSolver):
             self.set_max_wave_speed_distortion(max_wave_speed_distortion)
             self.set_wave_speed_distortion_action(distortion_action)
 
+    def get_grid_report(self, dt: float, *, warn: bool = True):
+        """Preview Courant grid scaling for ``dt`` without running the transient."""
+        report = super().get_grid_report(dt)
+        if warn and report.get("distortion_warning"):
+            warnings.warn(report["distortion_warning"], UserWarning, stacklevel=2)
+        return report
+
     def run(self, *args, **kwargs):
         # Determine the cavitation model being used
         cav_model = kwargs.get("cavitation_model")
@@ -194,6 +203,8 @@ __all__ = [
     "load_inp_si",
     "summarize_study",
     "summarize_study_si",
+    "summarize_grid_report",
+    "format_grid_report",
     "run_acceptance_checks",
     "format_acceptance_report",
     "PipeNetwork",

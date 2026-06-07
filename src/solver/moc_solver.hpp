@@ -185,6 +185,21 @@ struct SimResults {
     std::unordered_map<std::string, std::vector<int>> pipe_interior_dvcm_grid_indices;
 };
 
+// Grid discretization report (initGrid() preview — no time integration).
+struct GridReport {
+    double dt_s = 0.0;
+    std::unordered_map<std::string, double> pipe_length_ft;
+    std::unordered_map<std::string, double> pipe_wave_speed_design_fps;
+    std::unordered_map<std::string, double> pipe_wave_speed_adjusted_fps;
+    std::unordered_map<std::string, double> pipe_distortion_pct;
+    std::unordered_map<std::string, int>    pipe_num_segments;
+    std::unordered_map<std::string, double> pipe_dx_ft;
+    std::unordered_map<std::string, double> pipe_courant_number;
+    std::unordered_map<std::string, std::vector<int>> pipe_interior_dvcm_grid_indices;
+    std::string distortion_warning;
+    bool distortion_limit_exceeded = false;
+};
+
 enum class ControlType {
     Threshold,
     Deadband,
@@ -377,6 +392,10 @@ public:
     }
     const std::string& get_grid_distortion_warning() const { return grid_distortion_warning_; }
 
+    // Build the MOC grid for ``dt`` and return Courant-adjusted wave speeds without
+    // integrating the transient. Applies the configured distortion warn/error policy.
+    GridReport get_grid_report(double dt);
+
     StepSnapshot capture_step_snapshot() const;
 
 private:
@@ -473,6 +492,8 @@ private:
     bool interiorDvcmActiveAt(const PipeState& ps, int grid_index) const;
     static void initializePipeSegmentStates(PipeState& ps);
     void enforceWaveSpeedDistortionPolicy();
+    GridReport buildGridReport() const;
+    void populateGridScaling(SimResults& results) const;
     double unsteadyFrictionScale(const PipeState& ps, double B) const;
     static double velocityGradientAt(const PipeState& ps, int grid_index, double dx);
     static double darcyFFromHazenWilliamsAtVelocity(
