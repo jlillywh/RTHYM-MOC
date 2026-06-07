@@ -242,6 +242,61 @@ void MOCSolver::enforceWaveSpeedDistortionPolicy() {
     grid_distortion_warning_ = text;
 }
 
+GridReport MOCSolver::buildGridReport() const {
+    GridReport report;
+    report.dt_s = dt_;
+    for (const auto& pi : pipe_inputs_) {
+        auto pit = pipe_idx_map_.find(pi.id);
+        if (pit == pipe_idx_map_.end()) {
+            continue;
+        }
+        const PipeState& ps = pipes_[pit->second];
+        const double a_design = ps.a_wave_design;
+        const double a_adj = ps.a_wave;
+        const double distortion = (a_design > 1e-9)
+            ? std::abs(a_adj - a_design) / a_design * 100.0
+            : 0.0;
+        const int num_segments = ps.num_nodes - 1;
+        const double dx = (num_segments > 0) ? ps.L / static_cast<double>(num_segments) : ps.L;
+        const double courant = (dx > 1e-12) ? (a_adj * dt_) / dx : 0.0;
+
+        report.pipe_length_ft[pi.id] = pi.length;
+        report.pipe_wave_speed_design_fps[pi.id] = a_design;
+        report.pipe_wave_speed_adjusted_fps[pi.id] = a_adj;
+        report.pipe_distortion_pct[pi.id] = distortion;
+        report.pipe_num_segments[pi.id] = num_segments;
+        report.pipe_dx_ft[pi.id] = dx;
+        report.pipe_courant_number[pi.id] = courant;
+        if (!ps.interior_dvcm_indices.empty()) {
+            report.pipe_interior_dvcm_grid_indices[pi.id] = ps.interior_dvcm_indices;
+        }
+    }
+    return report;
+}
+
+void MOCSolver::populateGridScaling(SimResults& results) const {
+    const GridReport report = buildGridReport();
+    results.pipe_wave_speed_design_fps = report.pipe_wave_speed_design_fps;
+    results.pipe_wave_speed_adjusted_fps = report.pipe_wave_speed_adjusted_fps;
+    results.pipe_distortion_pct = report.pipe_distortion_pct;
+    results.pipe_num_segments = report.pipe_num_segments;
+    results.pipe_interior_dvcm_grid_indices = report.pipe_interior_dvcm_grid_indices;
+}
+
+GridReport MOCSolver::get_grid_report(double dt) {
+    if (dt <= 0.0) {
+        throw std::invalid_argument("dt must be positive");
+    }
+    dt_ = dt;
+    grid_distortion_warning_.clear();
+    initGrid();
+    GridReport report = buildGridReport();
+    enforceWaveSpeedDistortionPolicy();
+    report.distortion_warning = grid_distortion_warning_;
+    report.distortion_limit_exceeded = !grid_distortion_warning_.empty();
+    return report;
+}
+
 double MOCSolver::get_node_head(const std::string& id) const {
     auto it = node_idx_map_.find(id);
     if (it == node_idx_map_.end()) {
@@ -2905,24 +2960,7 @@ SimResults MOCSolver::run(double total_time_s, double dt,
         results.pipe_flow_gpm[pi.id].reserve(num_steps);
     }
 
-    for (const auto& pi : pipe_inputs_) {
-        auto pit = pipe_idx_map_.find(pi.id);
-        if (pit == pipe_idx_map_.end()) continue;
-        const PipeState& ps = pipes_[pit->second];
-        const double a_design = ps.a_wave_design;
-        const double a_adj = ps.a_wave;
-        const double distortion = (a_design > 1e-9)
-            ? std::abs(a_adj - a_design) / a_design * 100.0
-            : 0.0;
-        results.pipe_wave_speed_design_fps[pi.id] = a_design;
-        results.pipe_wave_speed_adjusted_fps[pi.id] = a_adj;
-        results.pipe_distortion_pct[pi.id] = distortion;
-        results.pipe_num_segments[pi.id] = ps.num_nodes - 1;
-        if (!ps.interior_dvcm_indices.empty()) {
-            results.pipe_interior_dvcm_grid_indices[pi.id] = ps.interior_dvcm_indices;
-        }
-    }
-
+    populateGridScaling(results);
     enforceWaveSpeedDistortionPolicy();
 
     if (record_pipe_profiles_) {

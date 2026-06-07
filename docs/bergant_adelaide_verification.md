@@ -8,8 +8,8 @@ traces from an earlier solver run.
 
 | Layer | Test module | Needs |
 |-------|-------------|--------|
-| Scalar peaks (CI today) | `test_dvcm_bergant_adelaide_experiment.py` | Literature peaks in `bergant_adelaide_*_reference.json` |
-| Full valve trace (optional) | `test_dvcm_bergant_adelaide_trace.py` | You add `bergant_adelaide_severe_valve_trace_reference.csv` |
+| Scalar peaks (CI today) | `test_dvcm_bergant_adelaide_experiment.py` | Literature peaks in `validation/datasets/bergant_adelaide/*_reference.json` |
+| Full valve trace (optional) | `test_dvcm_bergant_adelaide_trace.py` | Digitized trace in `validation/datasets/bergant_adelaide/severe_valve_trace_reference.csv` |
 
 Helpers: `tests/bergant_adelaide_verification_utils.py`.
 
@@ -24,7 +24,7 @@ You are **one CSV away** from enabling `test_dvcm_bergant_adelaide_trace.py`.
 | 1 | WebPlotDigitizer → load your **Fig. 4 (N=16)** PNG (orange **Experiment** only) |
 | 2 | Calibrate X: **0.0–0.8 s**, Y: **−400–2400 kPa** (values as on the axis) |
 | 3 | Export CSV → columns **`t_s`**, **`p_gauge_kPa`** (cavity flat ≈ 0 is gauge — see below) |
-| 4 | `cp tests/bergant_adelaide_severe_valve_trace_reference.csv.example tests/bergant_adelaide_severe_valve_trace_reference.csv` and paste data |
+| 4 | `cp validation/datasets/bergant_adelaide/severe_valve_trace_reference.csv.example validation/datasets/bergant_adelaide/severe_valve_trace_reference.csv` and paste data |
 | 5 | `python scripts/validate_bergant_trace_csv.py` |
 | 6 | `python scripts/plot_bergant_trace_overlay.py` — visual check + RMS preview |
 | 7 | `pytest tests/test_dvcm_bergant_adelaide_trace.py -v` |
@@ -73,8 +73,8 @@ RMS error on a time window.
 ### 3. Install into the repo
 
 ```bash
-cp tests/bergant_adelaide_severe_valve_trace_reference.csv.example \
-   tests/bergant_adelaide_severe_valve_trace_reference.csv
+cp validation/datasets/bergant_adelaide/severe_valve_trace_reference.csv.example \
+   validation/datasets/bergant_adelaide/severe_valve_trace_reference.csv
 ```
 
 Paste exported points under the header. Keep the `# source:` comment lines (edit

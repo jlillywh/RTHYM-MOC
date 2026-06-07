@@ -761,6 +761,10 @@ When a cap is active, `initGrid()` coarsens the spatial grid and adjusts wave sp
 to preserve Courant = 1. Per-pipe `pipe_num_segments`, `pipe_wave_speed_design_fps`,
 `pipe_wave_speed_adjusted_fps`, and `pipe_distortion_pct` appear in `run()` results.
 
+Preview the grid **before** a long transient with `get_grid_report(dt)` — same metadata
+plus `pipe_dx_ft`, `pipe_courant_number` (expected ≈ 1.0), and optional distortion
+warnings. See [`validation/notebooks/grid_scaling_verification.ipynb`](validation/notebooks/grid_scaling_verification.ipynb).
+
 #### `run()` parameters
 
 ```python

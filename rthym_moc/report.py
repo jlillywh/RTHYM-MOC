@@ -247,11 +247,13 @@ def _attach_pipe_grid_scaling(
     pipes_out: dict[str, PipeStudySummary],
     results: Mapping[str, Any],
 ) -> None:
-    """Copy per-pipe Courant grid-scaling metadata from run() results into pipe summaries."""
+    """Copy per-pipe Courant grid-scaling metadata into pipe summaries."""
     design = results.get("pipe_wave_speed_design_fps", {})
     adjusted = results.get("pipe_wave_speed_adjusted_fps", {})
     distortion = results.get("pipe_distortion_pct", {})
     num_segments = results.get("pipe_num_segments", {})
+    dx_ft = results.get("pipe_dx_ft", {})
+    courant = results.get("pipe_courant_number", {})
     for pipe_id in design:
         pid = str(pipe_id)
         if pid not in pipes_out:
@@ -261,6 +263,47 @@ def _attach_pipe_grid_scaling(
         pipes_out[pid]["distortion_pct"] = float(distortion[pipe_id])
         if pipe_id in num_segments:
             pipes_out[pid]["num_segments"] = int(num_segments[pipe_id])
+        if pipe_id in dx_ft:
+            pipes_out[pid]["dx_ft"] = float(dx_ft[pipe_id])
+        if pipe_id in courant:
+            pipes_out[pid]["courant_number"] = float(courant[pipe_id])
+
+
+def summarize_grid_report(report: Mapping[str, Any]) -> dict[str, dict[str, float | int]]:
+    """Return a per-pipe table from ``get_grid_report()`` or compatible ``run()`` metadata."""
+    design = report.get("pipe_wave_speed_design_fps", {})
+    pipes: dict[str, dict[str, float | int]] = {}
+    for pipe_id in design:
+        pid = str(pipe_id)
+        pipes[pid] = {
+            "length_ft": float(report.get("pipe_length_ft", {}).get(pipe_id, 0.0)),
+            "num_segments": int(report.get("pipe_num_segments", {}).get(pipe_id, 0)),
+            "dx_ft": float(report.get("pipe_dx_ft", {}).get(pipe_id, 0.0)),
+            "wave_speed_design_fps": float(design[pipe_id]),
+            "wave_speed_adjusted_fps": float(
+                report.get("pipe_wave_speed_adjusted_fps", {}).get(pipe_id, 0.0)
+            ),
+            "distortion_pct": float(report.get("pipe_distortion_pct", {}).get(pipe_id, 0.0)),
+            "courant_number": float(report.get("pipe_courant_number", {}).get(pipe_id, 0.0)),
+        }
+    return pipes
+
+
+def format_grid_report(report: Mapping[str, Any]) -> str:
+    """Human-readable multi-line summary of ``get_grid_report()`` output."""
+    dt = float(report.get("dt", 0.0))
+    lines = [f"MOC grid report (dt = {dt:g} s)"]
+    for pipe_id, row in summarize_grid_report(report).items():
+        lines.append(
+            f"  {pipe_id}: N={row['num_segments']}  dx={row['dx_ft']:.4f} ft  "
+            f"a0={row['wave_speed_design_fps']:.2f} ft/s  "
+            f"a_adj={row['wave_speed_adjusted_fps']:.2f} ft/s  "
+            f"distortion={row['distortion_pct']:.4f}%  Cr={row['courant_number']:.6f}"
+        )
+    warning = str(report.get("distortion_warning", ""))
+    if warning:
+        lines.append(f"  WARNING: {warning}")
+    return "\n".join(lines)
 
 
 def summarize_study(

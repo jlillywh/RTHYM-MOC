@@ -17,13 +17,15 @@ from pathlib import Path
 
 
 def find_repo_root(start: Path | None = None) -> Path:
-    """Return directory containing ``tests/`` and ``examples/``."""
+    """Return directory containing ``tests/`` and ``examples/`` or ``validation/``."""
     cwd = (start or Path.cwd()).resolve()
-    for candidate in (cwd, cwd.parent):
-        if (candidate / "tests").is_dir() and (candidate / "examples").is_dir():
+    for candidate in (cwd, *cwd.parents):
+        if (candidate / "tests").is_dir() and (
+            (candidate / "examples").is_dir() or (candidate / "validation").is_dir()
+        ):
             return candidate
     raise RuntimeError(
-        "Could not find repository root (expected tests/ and examples/). "
+        "Could not find repository root (expected tests/ and examples/ or validation/). "
         "Open the notebook from the cloned repo or run Jupyter with cwd=examples/."
     )
 

@@ -257,6 +257,41 @@ static py::dict results_to_dict(SimResults&& r) {
     return out;
 }
 
+static py::dict grid_report_to_dict(GridReport&& report) {
+    py::dict out;
+    out["dt"] = report.dt_s;
+
+    auto dict_from_map = [](const auto& m) {
+        py::dict d;
+        for (const auto& [k, v] : m) {
+            d[k.c_str()] = v;
+        }
+        return d;
+    };
+
+    if (!report.pipe_wave_speed_design_fps.empty()) {
+        out["pipe_length_ft"] = dict_from_map(report.pipe_length_ft);
+        out["pipe_wave_speed_design_fps"] = dict_from_map(report.pipe_wave_speed_design_fps);
+        out["pipe_wave_speed_adjusted_fps"] = dict_from_map(report.pipe_wave_speed_adjusted_fps);
+        out["pipe_distortion_pct"] = dict_from_map(report.pipe_distortion_pct);
+        out["pipe_num_segments"] = dict_from_map(report.pipe_num_segments);
+        out["pipe_dx_ft"] = dict_from_map(report.pipe_dx_ft);
+        out["pipe_courant_number"] = dict_from_map(report.pipe_courant_number);
+    }
+
+    if (!report.pipe_interior_dvcm_grid_indices.empty()) {
+        py::dict dvcm_indices;
+        for (const auto& [k, v] : report.pipe_interior_dvcm_grid_indices) {
+            dvcm_indices[k.c_str()] = v;
+        }
+        out["pipe_interior_dvcm_grid_indices"] = dvcm_indices;
+    }
+
+    out["distortion_warning"] = report.distortion_warning;
+    out["distortion_limit_exceeded"] = report.distortion_limit_exceeded;
+    return out;
+}
+
 PYBIND11_MODULE(_rthym_moc, m) {
     m.doc() = R"pbdoc(
         rthym_moc – High-performance 1-D Method of Characteristics transient
@@ -560,7 +595,23 @@ PYBIND11_MODULE(_rthym_moc, m) {
             py::arg("action"),
             "Select warn vs error when distortion exceeds set_max_wave_speed_distortion().")
         .def("get_grid_distortion_warning", &MOCSolver::get_grid_distortion_warning,
-            "Return the warning message from the last run(), or empty if none.")
+            "Return the warning message from the last run() or get_grid_report(), or empty if none.")
+        .def("get_grid_report",
+            [](MOCSolver& self, double dt) {
+                return grid_report_to_dict(self.get_grid_report(dt));
+            },
+            py::arg("dt"),
+            R"pbdoc(
+            Build the MOC grid for ``dt`` and return Courant-adjusted wave speeds without
+            time integration.
+
+            Returns a dict with per-pipe ``pipe_wave_speed_design_fps``,
+            ``pipe_wave_speed_adjusted_fps``, ``pipe_distortion_pct``,
+            ``pipe_num_segments``, ``pipe_dx_ft``, and ``pipe_courant_number``
+            (expected ≈ 1.0). When ``set_max_wave_speed_distortion()`` is active,
+            ``distortion_warning`` / ``distortion_limit_exceeded`` reflect the policy;
+            ``error`` action raises ``RuntimeError`` here as in ``run()``.
+            )pbdoc")
         .def("set_generator_connected", &MOCSolver::set_pump_power,
             py::arg("id"), py::arg("connected"),
             "Set whether a turbine's generator is connected to the grid (equivalent to has_power).")

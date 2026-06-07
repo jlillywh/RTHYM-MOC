@@ -33,7 +33,7 @@
     "notes": "Second collapse peak vs Fig. 4 (He et al. 2025). Match Courant/dx to comparison paper; DVCM may show node-local spikes not present in DGCM traces."
   },
   "data_status": "scalar_peaks_from_literature",
-  "trace_artifact": "bergant_adelaide_severe_valve_trace_reference.csv",
+  "trace_artifact": "severe_valve_trace_reference.csv",
   "trace_comparison": {
     "pressure_compare": "gauge",
     "trace_windows": [

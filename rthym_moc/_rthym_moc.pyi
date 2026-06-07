@@ -36,6 +36,20 @@ class SimResultsDict(_SimResultsRequired, total=False):
     pipe_interior_dvcm_grid_indices: dict[str, list[int]]
 
 
+class GridReportDict(TypedDict, total=False):
+    dt: float
+    pipe_length_ft: dict[str, float]
+    pipe_wave_speed_design_fps: dict[str, float]
+    pipe_wave_speed_adjusted_fps: dict[str, float]
+    pipe_distortion_pct: dict[str, float]
+    pipe_num_segments: dict[str, int]
+    pipe_dx_ft: dict[str, float]
+    pipe_courant_number: dict[str, float]
+    pipe_interior_dvcm_grid_indices: dict[str, list[int]]
+    distortion_warning: str
+    distortion_limit_exceeded: bool
+
+
 class NodeInput:
     id: str
     type: str
@@ -149,6 +163,7 @@ class MOCSolver:
     def get_max_wave_speed_distortion(self) -> float: ...
     def set_wave_speed_distortion_action(self, action: str) -> None: ...
     def get_grid_distortion_warning(self) -> str: ...
+    def get_grid_report(self, dt: float) -> GridReportDict: ...
     def set_pump_power(self, id: str, has_power: bool) -> None: ...
     def set_node_demand(self, id: str, demand_gpm: float) -> None: ...
     def set_node_head(self, id: str, head_ft: float) -> None: ...

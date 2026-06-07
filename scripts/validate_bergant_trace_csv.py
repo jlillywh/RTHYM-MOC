@@ -25,14 +25,14 @@ def main() -> int:
         nargs="?",
         type=Path,
         default=SEVERE_VALVE_TRACE_CSV,
-        help="Path to trace CSV (default: tests/bergant_adelaide_severe_valve_trace_reference.csv)",
+        help="Path to trace CSV (default: validation/datasets/bergant_adelaide/severe_valve_trace_reference.csv)",
     )
     parser.add_argument("--min-points", type=int, default=40)
     args = parser.parse_args()
 
     if not args.csv.is_file():
         print(f"File not found: {args.csv}")
-        print("Copy tests/bergant_adelaide_severe_valve_trace_reference.csv.example and digitize Fig. 4.")
+        print("Copy validation/datasets/bergant_adelaide/severe_valve_trace_reference.csv.example and digitize Fig. 4.")
         print("See docs/bergant_adelaide_verification.md")
         return 1
 

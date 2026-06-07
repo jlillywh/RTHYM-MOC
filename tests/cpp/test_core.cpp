@@ -104,3 +104,16 @@ TEST_CASE("capture_step_snapshot reports check valve reverse-flow block") {
     CHECK(cv_snap->reverse_flow_blocked);
     CHECK(cv_snap->downstream_head_ft > cv_snap->upstream_head_ft);
 }
+
+TEST_CASE("get_grid_report previews Courant adjustment without time integration") {
+    MOCSolver solver = make_two_tank_line();
+    const GridReport report = solver.get_grid_report(0.01);
+
+    REQUIRE(report.pipe_num_segments.count("P1") == 1);
+    CHECK(report.dt_s == doctest::Approx(0.01).epsilon(1e-9));
+    CHECK(report.pipe_num_segments.at("P1") >= 1);
+    CHECK(report.pipe_courant_number.at("P1") == doctest::Approx(1.0).epsilon(1e-6));
+    CHECK(report.pipe_wave_speed_design_fps.at("P1") > 0.0);
+    CHECK(report.pipe_wave_speed_adjusted_fps.at("P1") > 0.0);
+    CHECK(report.distortion_limit_exceeded == false);
+}
