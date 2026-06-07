@@ -135,12 +135,12 @@ This compiles the C++ extension `_rthym_moc` and installs the `rthym_moc` packag
 pip install -e .
 ```
 
-To build the standalone C++ unit-test binary:
+To build and run native C++ core tests (no Python or Emscripten required):
 
 ```bash
-cmake -B build -DBUILD_TESTS=ON
-cmake --build build
-./build/moc_test
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON -DRTHYM_BUILD_PYTHON=OFF
+cmake --build build --target rthym_core_tests -j
+cd build && ctest --output-on-failure
 ```
 
 ---
@@ -182,13 +182,14 @@ Optional environment variables:
 | Variable | Purpose |
 |----------|---------|
 | `EMSDK_DIR` | Path to an emsdk checkout; the script sources `emsdk_env.sh` if `em++` is not already on `PATH` |
-| `RTHYM_WASM_OUT_DIR` | Override the output directory (default: `build/wasm`) |
+| `RTHYM_WASM_OUT_DIR` | Override artifact output directory (default: `build/wasm`) |
+| `RTHYM_WASM_BUILD_DIR` | Override CMake build directory (default: `build_wasm`) |
 
 ### Maintainer smoke test
 
 ```bash
 bash build_wasm.sh
-RTHYM_ENABLE_WASM_RUNTIME_TESTS=1 pytest -q tests/test_wasm_check_valve.py
+pytest -q bindings/wasm/tests --override-ini='addopts='
 ```
 
 This checks that CheckValve runtime fields are exposed through the WASM bindings.
@@ -1880,8 +1881,9 @@ RTHYM-MOC/
 │   │   └── bindings.cpp   # PyBind11 bindings → _rthym_moc extension module
 │   └── wasm/
 │       ├── CMakeLists.txt
-│       ├── build_wasm.sh  # Maintainer/internal Emscripten build script
-│       └── wasm_bindings.cpp
+│       ├── build_wasm.sh  # emcmake driver (maintainer/internal)
+│       ├── wasm_bindings.cpp
+│       └── tests/         # WASM runtime pytest (not in default Python CI)
 ├── build/
 │   └── wasm/              # Generated rthym_moc.js / rthym_moc.wasm (not committed)
 ├── rthym_moc/
@@ -1913,7 +1915,9 @@ RTHYM-MOC/
 │   ├── test_air_valve_dominant_size_sweep_benchmark.py # Air-dominant size sweep
 │   ├── test_column_separation_and_stability.py # Cavitation and long-run stability
 │   ├── networks/                               # Benchmark INP fixtures
-│   └── test_waterhammer.cpp                    # Standalone C++ unit test (BUILD_TESTS=ON)
+│   ├── cpp/
+│   │   ├── CMakeLists.txt
+│   │   └── test_core.cpp                       # Native C++ core tests (BUILD_TESTS=ON)
 ├── docs/
 │   ├── dvcm_timestep_guidance.md   # Recommended timestep selection guidelines for DVCM mode
 │   ├── dvcm_comparison.md          # Cavitation model comparison guide (Legacy vs DVCM)

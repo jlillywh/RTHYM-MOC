@@ -45,19 +45,19 @@ tests:
 pip install -e .
 ```
 
-The standalone C++ test binary can be built with:
+The native C++ core tests can be built without Python or Emscripten:
 
 ```bash
-cmake -B build -DBUILD_TESTS=ON
-cmake --build build
-./build/moc_test
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON -DRTHYM_BUILD_PYTHON=OFF
+cmake --build build --target rthym_core_tests -j
+cd build && ctest --output-on-failure
 ```
 
-The maintainer/internal WASM integration build uses Emscripten:
+The maintainer/internal WASM integration build uses Emscripten via `emcmake`:
 
 ```bash
 bash build_wasm.sh
-RTHYM_ENABLE_WASM_RUNTIME_TESTS=1 pytest -q tests/test_wasm_check_valve.py --override-ini='addopts='
+pytest -q bindings/wasm/tests --override-ini='addopts='
 ```
 
 Use `bash build_wasm.sh` (not `./build_wasm.sh`) on WSL/Windows checkouts if
@@ -70,14 +70,18 @@ See the README **Maintainer WASM integration (internal)** section for scope.
 With the venv activated from the repo root:
 
 ```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON -DRTHYM_BUILD_PYTHON=OFF
+cmake --build build --target rthym_core_tests -j
+cd build && ctest --output-on-failure
 pytest -q --cov=rthym_moc --cov-fail-under=100
 bash build_wasm.sh
+pytest -q bindings/wasm/tests --override-ini='addopts='
 pytest -q --override-ini='addopts=' --cov=rthym_moc --cov-fail-under=100
 ```
 
-The first line is default CI parity (478 tests, 100% `rthym_moc` coverage).
-The second builds WASM artifacts. The third adds slow + WASM runtime tests
-(~486 tests; one optional TSNet case may skip without a reference CSV).
+The first block is native core CI (`test-core-cpp`). The next line is default Python CI parity
+(477 tests, 100% `rthym_moc` coverage). WASM build + `bindings/wasm/tests` is the WASM CI job.
+The final line adds slow Python tests (~485 total; one optional TSNet case may skip).
 
 ## Test and Quality Checks
 
