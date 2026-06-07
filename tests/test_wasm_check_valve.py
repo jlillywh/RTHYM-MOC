@@ -37,7 +37,7 @@ def test_wasm_runtime_reports_check_valve_type_and_reverse_flow_blocked():
         pytest.fail("node is required for WASM runtime tests")
     if not WASM_JS.exists() or not WASM_BIN.exists():
         pytest.fail(
-            "WASM artifacts not found. Run ./build_wasm.sh, then "
+            "WASM artifacts not found. Run bash build_wasm.sh, then "
             "pytest -m wasm_runtime --override-ini=\"addopts=\" tests/test_wasm_check_valve.py"
         )
 
@@ -118,7 +118,7 @@ def test_wasm_runtime_step_results_include_link_telemetry() -> None:
     if shutil.which("node") is None:
         pytest.fail("node is required for WASM runtime tests")
     if not WASM_JS.exists() or not WASM_BIN.exists():
-        pytest.fail("WASM artifacts not found. Run ./build_wasm.sh first.")
+        pytest.fail("WASM artifacts not found. Run bash build_wasm.sh first.")
 
     node_program = f"""
 const createRthymMOC = require({json.dumps(str(WASM_JS))});

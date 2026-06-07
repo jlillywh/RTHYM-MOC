@@ -167,7 +167,7 @@ Maintainers with [Emscripten](https://emscripten.org/docs/getting_started/downlo
 installed can run:
 
 ```bash
-./build_wasm.sh
+bash build_wasm.sh
 ```
 
 By default this writes:
@@ -187,7 +187,7 @@ Optional environment variables:
 ### Maintainer smoke test
 
 ```bash
-./build_wasm.sh
+bash build_wasm.sh
 RTHYM_ENABLE_WASM_RUNTIME_TESTS=1 pytest -q tests/test_wasm_check_valve.py
 ```
 

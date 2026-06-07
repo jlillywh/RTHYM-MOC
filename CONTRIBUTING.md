@@ -19,12 +19,19 @@ open public issues for vulnerabilities.
 
 ## Development Setup
 
-Use Python 3.9+ and install the package in editable mode with development
-dependencies:
+Use Python 3.9+ inside a virtual environment (recommended on Ubuntu/WSL to
+avoid PEP 668 “externally-managed-environment” errors from system Python):
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip wheel 'setuptools>=65,<81'
 pip install -e '.[dev,inp]'
 ```
+
+Run commands from a **WSL/Linux shell** at the repo root (`~/RTHYM-MOC`).
+If you use PowerShell on Windows, prefix with `wsl bash -lc '...'` or open a
+WSL terminal instead of mixing path styles.
 
 The optional `inp` extra installs `wntr`, which is used by INP-based tests and
 steady-state initialization paths.
@@ -49,11 +56,28 @@ cmake --build build
 The maintainer/internal WASM integration build uses Emscripten:
 
 ```bash
-./build_wasm.sh
-RTHYM_ENABLE_WASM_RUNTIME_TESTS=1 pytest -q tests/test_wasm_check_valve.py
+bash build_wasm.sh
+RTHYM_ENABLE_WASM_RUNTIME_TESTS=1 pytest -q tests/test_wasm_check_valve.py --override-ini='addopts='
 ```
 
+Use `bash build_wasm.sh` (not `./build_wasm.sh`) on WSL/Windows checkouts if
+you see `Permission denied`; CI Linux runners preserve the executable bit.
+
 See the README **Maintainer WASM integration (internal)** section for scope.
+
+## Local verification (matches CI)
+
+With the venv activated from the repo root:
+
+```bash
+pytest -q --cov=rthym_moc --cov-fail-under=100
+bash build_wasm.sh
+pytest -q --override-ini='addopts=' --cov=rthym_moc --cov-fail-under=100
+```
+
+The first line is default CI parity (478 tests, 100% `rthym_moc` coverage).
+The second builds WASM artifacts. The third adds slow + WASM runtime tests
+(~486 tests; one optional TSNet case may skip without a reference CSV).
 
 ## Test and Quality Checks
 

@@ -34,7 +34,7 @@ jobs:
           version: latest
 
       - name: Build WASM artifacts
-        run: ./build_wasm.sh
+        run: bash build_wasm.sh
 
       - name: Run WASM-facing regression tests
         run: pytest -q tests/test_wasm_check_valve.py --override-ini="addopts="
