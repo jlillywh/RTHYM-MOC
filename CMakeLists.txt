@@ -26,10 +26,13 @@ if("$ENV{RTHYM_MOC_NATIVE_OPT}" STREQUAL "1")
     )
 endif()
 
+option(RTHYM_BUILD_PYTHON "Build the pybind11 Python extension module" ON)
+option(BUILD_TESTS "Build native C++ core tests (Doctest + CTest)" OFF)
+
 # ── Binding layers (mutually exclusive toolchains) ────────────────────────────
 if(EMSCRIPTEN)
     add_subdirectory(bindings/wasm)
-else()
+elseif(RTHYM_BUILD_PYTHON)
     find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
 
     find_package(pybind11 CONFIG QUIET)
@@ -51,12 +54,8 @@ else()
     add_subdirectory(bindings/python)
 endif()
 
-# ── Optional: standalone CLI test executable ──────────────────────────────────
-option(BUILD_TESTS "Build the standalone C++ unit-test binary" OFF)
-if(BUILD_TESTS)
-    add_executable(moc_test tests/test_waterhammer.cpp "${RTHYM_SOLVER_SOURCE}")
-    target_link_libraries(moc_test PRIVATE rthym_core)
-    target_compile_options(moc_test PRIVATE
-        $<$<CXX_COMPILER_ID:GNU,Clang>:-O2 -Wall -Wextra>
-    )
+# ── Native C++ core tests (no Python, no Emscripten) ──────────────────────────
+if(BUILD_TESTS AND NOT EMSCRIPTEN)
+    enable_testing()
+    add_subdirectory(tests/cpp)
 endif()

@@ -7,6 +7,21 @@ on:
   pull_request:
 
 jobs:
+  test-core-cpp:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Configure CMake (core only)
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON -DRTHYM_BUILD_PYTHON=OFF
+
+      - name: Build native core tests
+        run: cmake --build build --target rthym_core_tests -j
+
+      - name: Run native core tests
+        run: cd build && ctest --output-on-failure
+
   pytest:
     runs-on: ${{ matrix.os }}
     env:

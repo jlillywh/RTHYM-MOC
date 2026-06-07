@@ -10,7 +10,7 @@ import subprocess
 import pytest
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[3]
 CORE_CPP = REPO_ROOT / "src" / "solver" / "moc_solver.cpp"
 WASM_BINDINGS_CPP = REPO_ROOT / "bindings" / "wasm" / "wasm_bindings.cpp"
 WASM_OUT_DIR = REPO_ROOT / "build" / "wasm"
@@ -38,7 +38,7 @@ def test_wasm_runtime_reports_check_valve_type_and_reverse_flow_blocked():
     if not WASM_JS.exists() or not WASM_BIN.exists():
         pytest.fail(
             "WASM artifacts not found. Run bash build_wasm.sh, then "
-            "pytest -m wasm_runtime --override-ini=\"addopts=\" tests/test_wasm_check_valve.py"
+            "pytest -m wasm_runtime --override-ini=\"addopts=\" bindings/wasm/tests"
         )
 
     node_program = f"""
