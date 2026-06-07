@@ -113,6 +113,71 @@ function makePipe(Module, id, fromNode, toNode, flowGPM) {{
 
 
 @pytest.mark.wasm_runtime
+def test_wasm_runtime_step_results_include_link_telemetry() -> None:
+    """Link snapshots from capture_step_snapshot() should serialize under results.links."""
+    if shutil.which("node") is None:
+        pytest.fail("node is required for WASM runtime tests")
+    if not WASM_JS.exists() or not WASM_BIN.exists():
+        pytest.fail("WASM artifacts not found. Run ./build_wasm.sh first.")
+
+    node_program = f"""
+const createRthymMOC = require({json.dumps(str(WASM_JS))});
+
+(async () => {{
+  const Module = await createRthymMOC();
+  const solver = new Module.MOCSolver();
+
+  const r1 = new Module.NodeInput();
+  r1.id = "R1";
+  r1.type = "PressureBoundary";
+  r1.head = 200.0;
+
+  const r2 = new Module.NodeInput();
+  r2.id = "R2";
+  r2.type = "PressureBoundary";
+  r2.head = 150.0;
+
+  const pipe = new Module.PipeInput();
+  pipe.id = "P1";
+  pipe.from_node = "R1";
+  pipe.to_node = "R2";
+  pipe.length = 1000.0;
+  pipe.diameter = 12.0;
+  pipe.roughness = 130.0;
+  pipe.flow_gpm = 500.0;
+
+  solver.add_node(r1);
+  solver.add_node(r2);
+  solver.add_pipe(pipe);
+  solver.set_dt(0.01);
+  solver.initGrid();
+  solver.stepMOC();
+
+  const results = solver.get_step_results();
+  const link = results.links.P1;
+  process.stdout.write(JSON.stringify({{
+    flowGPM: link.flowGPM,
+    headloss: link.headloss
+  }}));
+}})().catch((error) => {{
+  console.error(error);
+  process.exit(1);
+}});
+"""
+
+    completed = subprocess.run(
+        ["node", "-e", node_program],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    payload = json.loads(completed.stdout)
+    assert payload["flowGPM"] > 0.0
+    assert payload["headloss"] >= 0.0
+
+
+@pytest.mark.wasm_runtime
 def test_wasm_runtime_handles_isolated_nodes():
     """The WASM runtime should handle isolated nodes without crashes during initGrid/stepMOC/get_step_results."""
     if shutil.which("node") is None:
