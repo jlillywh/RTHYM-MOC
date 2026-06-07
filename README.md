@@ -18,6 +18,7 @@ library for research, design studies, and automated validation.
 - [Maintainer WASM integration (internal)](#maintainer-wasm-integration-internal)
 - [Quickstart](#quickstart)
 - [Long-pipeline surge & interior DVCM](#long-pipeline-surge--interior-dvcm)
+- [Developing the C++ core](#developing-the-c-core)
 - [Testing](#testing)
 - [Examples](#examples)
 - [Validation](#validation)
@@ -129,19 +130,9 @@ pip install -e .
 pip install -e '.[dev,inp]'
 ```
 
-This compiles the C++ extension `_rthym_moc` and installs the `rthym_moc` package from your working tree. Rebuild after changing `src/`:
+This compiles the C++ extension `_rthym_moc` and installs the `rthym_moc` package from your working tree.
 
-```bash
-pip install -e .
-```
-
-To build and run native C++ core tests (no Python or Emscripten required):
-
-```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON -DRTHYM_BUILD_PYTHON=OFF
-cmake --build build --target rthym_core_tests -j
-cd build && ctest --output-on-failure
-```
+**Changed `src/solver/`?** Use the [two-step verification loop](#developing-the-c-core) (native `ctest`, then editable install + `pytest`) before opening a PR.
 
 ---
 
@@ -336,22 +327,50 @@ R-THYM integrators: incremental rollout checklist in [docs/long_pipeline_rthym_m
 
 ---
 
+## Developing the C++ core
+
+Most numerical work lives under **`src/solver/`** — the pure C++17 kernel with no
+pybind11 or Emscripten headers. CI runs native tests in isolation (`test-core-cpp`)
+before Python or WASM jobs. You do **not** need Emscripten, WASM tooling, or wheel
+packaging details for typical solver contributions.
+
+After editing the core, run this **two-step loop** from the repo root:
+
+```bash
+# 1. Native core only (seconds — no Python)
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON -DRTHYM_BUILD_PYTHON=OFF \
+  && cmake --build build --target rthym_core_tests -j \
+  && ctest --test-dir build --output-on-failure
+
+# 2. Rebuild bindings + Python regression
+pip install -e ".[dev]" && pytest -q
+```
+
+| Step | What it checks | Where tests live |
+|------|----------------|------------------|
+| `ctest` | Solver logic, grid scaling, unit behavior | `tests/cpp/` (Doctest binary) |
+| `pytest` | pybind11 surface, networks, validation harness | `tests/` |
+
+Add or extend native cases in `tests/cpp/test_core.cpp` when changing behavior in
+`src/solver/`; run `pytest` afterward for binding and integration coverage. Optional
+`pip install -e '.[dev,inp]'` if you need INP/wntr tests locally.
+
+Full CI parity (100% coverage gate, WASM smoke, pre-commit) is in
+[`CONTRIBUTING.md`](CONTRIBUTING.md#local-verification-matches-ci).
+
+---
+
 ## Testing
 
 How to run checks locally. For **independent verification** vs **snapshot
 regression** vs **design-rule** tests, see [Validation](#validation) and
 [docs/validation.md](docs/validation.md#verification-vs-regression-read-this-first).
 
-Run the automated test suite from the repository root:
+**Changed `src/solver/`?** Start with [Developing the C++ core](#developing-the-c-core) (`ctest`, then `pip install -e` + `pytest`).
+
+Run the full Python suite from the repository root:
 
 ```bash
-pytest -q
-```
-
-If you have changed the C++ core under `src/`, rebuild the extension before rerunning tests:
-
-```bash
-pip install -e .
 pytest -q
 ```
 
@@ -586,8 +605,9 @@ compiled extension.
 Contributions are welcome for solver behavior, validation coverage,
 performance benchmarks, documentation, examples, and packaging improvements.
 
-If you want to contribute, start with `CONTRIBUTING.md` for local setup,
-validation commands, and pull request expectations. `MAINTENANCE.md` documents
+If you want to contribute, start with [Developing the C++ core](#developing-the-c-core)
+when touching `src/solver/`, then `CONTRIBUTING.md` for local setup, full CI
+parity, and pull request expectations. `MAINTENANCE.md` documents
 the current review/refactor cadence. Report security issues privately via
 [`SECURITY.md`](SECURITY.md) (GitHub private vulnerability reporting or email).
 Bug reports are most useful when they include a minimal reproducible network or input file plus the exact commands
@@ -1893,6 +1913,8 @@ Release-level changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 ---
 
 ## Repository layout
+
+CI runs three isolated jobs: **native C++ core** (`test-core-cpp`), **Python wheel + pytest**, and **WASM regression** (`wasm-regression.yml`). Local solver work: [Developing the C++ core](#developing-the-c-core). Maintainer WASM build: [§ Maintainer WASM integration](#maintainer-wasm-integration-internal).
 
 ```
 RTHYM-MOC/
