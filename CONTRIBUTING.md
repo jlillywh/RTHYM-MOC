@@ -36,22 +36,27 @@ WSL terminal instead of mixing path styles.
 The optional `inp` extra installs `wntr`, which is used by INP-based tests and
 steady-state initialization paths.
 
+## Changed `src/solver/`? (two-step loop)
+
+Most contributors and research groups working on the numerical kernel only need
+this loop — native C++ first (fast, no Python), then bindings + pytest. WASM and
+packaging are optional unless you touch `bindings/wasm/`.
+
+```bash
+# 1. Native core (matches CI job test-core-cpp)
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON -DRTHYM_BUILD_PYTHON=OFF \
+  && cmake --build build --target rthym_core_tests -j \
+  && ctest --test-dir build --output-on-failure
+
+# 2. Python regression (matches default pytest CI)
+pip install -e ".[dev]" && pytest -q
+```
+
+Native cases live in `tests/cpp/test_core.cpp`; extend them when changing solver
+behavior before relying on Python-only coverage. See the README
+[Developing the C++ core](README.md#developing-the-c-core) section for context.
+
 ## Build Notes
-
-If you change the C++ core under `src/solver/`, rebuild the extension before running
-tests:
-
-```bash
-pip install -e .
-```
-
-The native C++ core tests can be built without Python or Emscripten:
-
-```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON -DRTHYM_BUILD_PYTHON=OFF
-cmake --build build --target rthym_core_tests -j
-cd build && ctest --output-on-failure
-```
 
 The maintainer/internal WASM integration build uses Emscripten via `emcmake`:
 
@@ -67,12 +72,13 @@ See the README **Maintainer WASM integration (internal)** section for scope.
 
 ## Local verification (matches CI)
 
-With the venv activated from the repo root:
+With the venv activated from the repo root, run the [two-step loop](#changed-srcsolver-two-step-loop)
+first. For full maintainer parity (coverage gate, WASM, slow tests):
 
 ```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON -DRTHYM_BUILD_PYTHON=OFF
-cmake --build build --target rthym_core_tests -j
-cd build && ctest --output-on-failure
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON -DRTHYM_BUILD_PYTHON=OFF \
+  && cmake --build build --target rthym_core_tests -j \
+  && ctest --test-dir build --output-on-failure
 pytest -q --cov=rthym_moc --cov-fail-under=100
 bash build_wasm.sh
 pytest -q bindings/wasm/tests --override-ini='addopts='
