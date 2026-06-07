@@ -3,7 +3,7 @@
 [![Tests](https://github.com/jlillywh/RTHYM-MOC/actions/workflows/tests.yml/badge.svg)](https://github.com/jlillywh/RTHYM-MOC/actions/workflows/tests.yml)
 [![Coverage](https://codecov.io/gh/jlillywh/RTHYM-MOC/branch/main/graph/badge.svg)](https://codecov.io/gh/jlillywh/RTHYM-MOC)
 [![PyPI](https://img.shields.io/pypi/v/rthym-moc)](https://pypi.org/project/rthym-moc/)
-[![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fvalidation_notebooks_index.ipynb)
+[![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=validation%2Fnotebooks%2Fvalidation_notebooks_index.ipynb)
 
 A high-performance tool for simulating water hammer and other pressure surges
 in pipe networks. It uses a C++17 core with a Python API, and it was originally
@@ -274,7 +274,7 @@ All long-pipeline features are **opt-in** and default off, so existing `run()` c
 | Terrain | `PipeInput.elevation_profile` | Piecewise-linear ground survey along the pipe; local gauge pressure and cavitation screening use `z(x)` |
 | Profiles | `run(..., record_pipe_profiles=True)` | Export head, pressure, velocity, and cavitation flags along the MOC grid |
 | Interior DVCM | `CavitationModel.DVCM` + `enable_interior_dvcm=True` | Track vapor-cavity volume at interior grid points (not just junctions) |
-| Grid scaling | `solver.set_grid_policy(max_segments_per_pipe=2000, …)` | Cap segment count on 10–20 mile lines so runs stay within interactive budgets |
+| Grid scaling | `solver.set_grid_policy(...)`, `solver.get_grid_report(dt)` | Cap segments on 10–20 mile lines; preview Courant wave-speed adjustment before a long run |
 | Summit protection | `attach_air_valve_at_survey_high_point()` | Split the pipe and insert an `AirValve` at the survey high point |
 
 **Minimal example** — 5-mile sloping main, downstream head drop, interior DVCM at the summit:
@@ -330,7 +330,7 @@ print(f"MOC segments = {results['pipe_num_segments']['Pmain']}")
 - **`record_pipe_profiles=True`** alone — HGL/pressure envelopes along the line; `pipe_profile_cavitation` is a screening flag (not physical cavity volume).
 - **`enable_interior_dvcm=True`** — requires `CavitationModel.DVCM` and typically `record_pipe_profiles=True`; populates `pipe_profile_cavity_volume` and `pipe_profile_cavity_active`.
 - **`interior_dvcm_chainages_ft`** on `PipeInput` — optional sparse watchpoints when full interior DVCM is too heavy; empty list with `enable_interior_dvcm=True` tracks all interior grid points.
-- **`set_grid_policy(...)`** — recommended for multi-mile pipes; inspect `pipe_num_segments`, `pipe_distortion_pct`, and `pipe_wave_speed_*` in results.
+- **`set_grid_policy(...)`** — recommended for multi-mile pipes; call **`get_grid_report(dt)`** to preview `pipe_num_segments`, `pipe_distortion_pct`, and `pipe_wave_speed_*` before integrating, or read the same keys from `run()` results afterward.
 
 R-THYM integrators: incremental rollout checklist in [docs/long_pipeline_rthym_migration.md](docs/long_pipeline_rthym_migration.md). Validation: [long_pipeline_surge_verification.ipynb](examples/long_pipeline_surge_verification.ipynb) and `pytest tests/test_long_pipeline_surge.py -q`.
 
@@ -379,8 +379,8 @@ for learning and ad hoc runs; they are **not** the CI regression suite.
 
 > **Looking for correctness gates?** Pytest lives in `tests/`. Interactive
 > walkthroughs that mirror those tests are listed under
-> [Validation](#validation) (notebook files still sit in `examples/` so Binder URLs
-> stay stable).
+> [Validation](#validation). New notebooks and lab datasets live under
+> [`validation/`](validation/); legacy copies remain in `examples/` for older Binder URLs.
 
 | Script | Purpose |
 |---|---|
@@ -439,7 +439,8 @@ states **what kind of check** each test is.
 | Layer | Role | Where |
 |---|---|---|
 | **Automated tests** | CI pass/fail (`pytest -q`) | `tests/` + [docs/validation.md](docs/validation.md) |
-| **Interactive notebooks** | Same cases in Binder (labeled by trust model) | `examples/*_verification*.ipynb` — [docs/validation_notebooks.md](docs/validation_notebooks.md) |
+| **Interactive notebooks** | Same cases in Binder (labeled by trust model) | [`validation/notebooks/`](validation/notebooks/) (preferred) and `examples/*_verification*.ipynb` (legacy URLs) — [docs/validation_notebooks.md](docs/validation_notebooks.md) |
+| **Reference datasets** | Published lab traces and literature anchors | [`validation/datasets/`](validation/datasets/) (e.g. Bergant–Simpson Adelaide) |
 
 ### Run tests
 
@@ -540,12 +541,15 @@ Long-form cross-engine narratives:
 
 ### Interactive verification notebooks (Binder)
 
-**Start here:** [`docs/validation_notebooks.md`](docs/validation_notebooks.md) or
-[`examples/validation_notebooks_index.ipynb`](examples/validation_notebooks_index.ipynb)
-(recommended order, runtimes, pytest mirrors).
+**Start here:** [`validation/notebooks/validation_notebooks_index.ipynb`](validation/notebooks/validation_notebooks_index.ipynb)
+(preferred Binder entry) or [`docs/validation_notebooks.md`](docs/validation_notebooks.md)
+(recommended order, runtimes, pytest mirrors). Legacy index:
+[`examples/validation_notebooks_index.ipynb`](examples/validation_notebooks_index.ipynb).
 
 | Notebook | Trust model | Purpose |
 |---|---|---|
+| `validation/notebooks/grid_scaling_verification.ipynb` | Analytical | Courant grid preview via `get_grid_report(dt)` |
+| `validation/notebooks/bergant_adelaide_verification.ipynb` | Independent | Bergant lab peaks + digitized He Fig. 4 trace |
 | `validation_notebooks_index.ipynb` | — | Navigation only — pick a walkthrough |
 | `gradual_closure_verification.ipynb` | Independent | Closure-time sweep vs Joukowsky / Allievi |
 | `cross_engine_surge_verification.ipynb` | Independent | TSNet B.8 + EPANET pre-trip vs MOC |
@@ -553,21 +557,23 @@ Long-form cross-engine narratives:
 | `epanet_import_verification.ipynb` | Independent | `complex_topology.inp` + steady-state overlay (`wntr`) |
 | `dvcm_physical_verification.ipynb` | Independent | Mass-balance steps + collapse ΔH formulas |
 | `long_pipeline_surge_verification.ipynb` | Independent | Multi-mile sloping reach, interior DVCM (LP-02–04) |
-| `bergant_adelaide_verification.ipynb` | Independent | Bergant lab peaks + digitized He Fig. 4 trace |
+| `bergant_adelaide_verification.ipynb` | Independent | Same as `validation/notebooks/` copy (legacy Binder path under `examples/`) |
 | `quickstart_notebook.ipynb` | Maintainer parity | Tutorial + optional R-THYM Joukowsky overlay (§3) |
 | `long_pipe_valve_verification.ipynb` | Maintainer parity | Five-pipe equal-% closure vs R-THYM JSON/CSV (~3 min) |
 | `dvcm_canonical_verification.ipynb` | **Snapshot** | Replay golden `tests/dvcm_*_reference.json` traces |
 | `surge_design_rules_verification.ipynb` | Design-rule | Standpipe size + HPT placement sweeps |
 
-[![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fvalidation_notebooks_index.ipynb)
+[![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=validation%2Fnotebooks%2Fvalidation_notebooks_index.ipynb)
 Index ·
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=validation%2Fnotebooks%2Fgrid_scaling_verification.ipynb)
+Grid scaling ·
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fquickstart_notebook.ipynb)
 Quickstart ·
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fcross_engine_surge_verification.ipynb)
 Cross-engine surge ·
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fdvcm_canonical_verification.ipynb)
 DVCM traces ·
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fbergant_adelaide_verification.ipynb)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=validation%2Fnotebooks%2Fbergant_adelaide_verification.ipynb)
 Bergant Adelaide ·
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fsurge_device_verification.ipynb)
 Surge devices
@@ -743,9 +749,15 @@ solver = rthym_moc.MOCSolver()
 | `solver.set_enable_interior_dvcm(enable)` | Persistently enable/disable interior-point DVCM (default `False`). |
 | `solver.get_enable_interior_dvcm()` | Return whether interior DVCM is enabled. |
 | `solver.set_grid_policy(...)` | Configure long-pipe grid cap and wave-speed distortion limits (see below). |
+| `solver.get_grid_report(dt)` | Build the MOC grid for `dt` and return Courant metadata without time integration (see below). |
+| `solver.get_grid_distortion_warning()` | Return the distortion-policy message from the last `run()` or `get_grid_report()`. |
 | `solver.set_max_segments_per_pipe(n)` | Cap MOC segments per pipe (`0` = uncapped). |
 | `solver.get_max_segments_per_pipe()` | Return the segment cap. |
 | `solver.run(...)` | Execute the transient and return results (see below). |
+
+Report helpers in `rthym_moc.report`: **`summarize_grid_report(report)`** (per-pipe table)
+and **`format_grid_report(report)`** (human-readable text). Both accept `get_grid_report()`
+output or compatible `run()` metadata.
 
 **`set_grid_policy()`** (long-pipe grid scaling):
 
@@ -763,7 +775,17 @@ to preserve Courant = 1. Per-pipe `pipe_num_segments`, `pipe_wave_speed_design_f
 
 Preview the grid **before** a long transient with `get_grid_report(dt)` — same metadata
 plus `pipe_dx_ft`, `pipe_courant_number` (expected ≈ 1.0), and optional distortion
-warnings. See [`validation/notebooks/grid_scaling_verification.ipynb`](validation/notebooks/grid_scaling_verification.ipynb).
+warnings. Example:
+
+```python
+from rthym_moc import format_grid_report
+
+report = solver.get_grid_report(dt=0.01)
+print(format_grid_report(report))
+results = solver.run(total_time=600.0, dt=0.01)  # same grid metadata in results
+```
+
+Walkthrough: [`validation/notebooks/grid_scaling_verification.ipynb`](validation/notebooks/grid_scaling_verification.ipynb).
 
 #### `run()` parameters
 
@@ -894,6 +916,8 @@ When grid scaling is active, these optional top-level keys also appear:
 | `pipe_wave_speed_adjusted_fps` | `dict[str, float]` | Adjusted wave speed enforcing Courant = 1, ft/s |
 | `pipe_distortion_pct` | `dict[str, float]` | Percent difference between design and adjusted wave speed |
 | `pipe_interior_dvcm_grid_indices` | `dict[str, list[int]]` | Interior grid indices where DVCM is active (sparse or full) |
+
+`get_grid_report(dt)` returns the keys above plus **`pipe_length_ft`**, **`pipe_dx_ft`**, **`pipe_courant_number`**, **`dt`**, and when a distortion limit is configured **`distortion_warning`** / **`distortion_limit_exceeded`**. It does not integrate the transient.
 
 ```python
 results = solver.run(total_time=10.0, dt=0.01, record_pipe_profiles=True, profile_stride=2)
@@ -1896,9 +1920,17 @@ RTHYM-MOC/
 │   ├── epanet.py          # load_inp() EPANET importer
 │   ├── report.py          # Study summaries and CSV/JSON export
 │   └── _rthym_moc*.so     # Compiled extension (generated by build)
+├── validation/
+│   ├── README.md
+│   ├── datasets/
+│   │   └── bergant_adelaide/   # Adelaide column-separation lab references (JSON/CSV)
+│   └── notebooks/
+│       ├── validation_notebooks_index.ipynb  # Preferred Binder entry
+│       ├── grid_scaling_verification.ipynb
+│       └── bergant_adelaide_verification.ipynb
 ├── examples/
 │   ├── …                           # Demo scripts (see README § Examples)
-│   ├── *_verification*.ipynb       # Binder mirrors of tests/ (see README § Validation)
+│   ├── *_verification*.ipynb       # Legacy Binder mirrors (see validation/notebooks/)
 │   ├── quickstart_notebook.ipynb   # R-THYM cross-engine walkthrough (Validation)
 │   └── validation_notebooks_index.ipynb
 ├── tests/
