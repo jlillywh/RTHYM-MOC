@@ -69,6 +69,8 @@ class PipeStudySummary(TypedDict, total=False):
     wave_speed_adjusted_fps: float
     distortion_pct: float
     num_segments: int
+    dx_ft: float
+    courant_number: float
 
 
 class StudySummary(TypedDict, total=False):
