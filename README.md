@@ -167,7 +167,7 @@ Maintainers with [Emscripten](https://emscripten.org/docs/getting_started/downlo
 installed can run:
 
 ```bash
-./build_wasm.sh
+bash build_wasm.sh
 ```
 
 By default this writes:
@@ -187,7 +187,7 @@ Optional environment variables:
 ### Maintainer smoke test
 
 ```bash
-./build_wasm.sh
+bash build_wasm.sh
 RTHYM_ENABLE_WASM_RUNTIME_TESTS=1 pytest -q tests/test_wasm_check_valve.py
 ```
 
@@ -1871,6 +1871,7 @@ RTHYM-MOC/
 ├── build_wasm.sh          # Delegates to bindings/wasm/build_wasm.sh
 ├── src/
 │   └── solver/
+│       ├── types.hpp      # Plain C++ step telemetry snapshots (StepSnapshot)
 │       ├── moc_solver.hpp # Type definitions, NodeInput, PipeInput, MOCSolver declaration
 │       └── moc_solver.cpp # Full MOC physics implementation (pure C++17)
 ├── bindings/

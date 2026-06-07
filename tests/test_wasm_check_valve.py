@@ -11,6 +11,7 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+CORE_CPP = REPO_ROOT / "src" / "solver" / "moc_solver.cpp"
 WASM_BINDINGS_CPP = REPO_ROOT / "bindings" / "wasm" / "wasm_bindings.cpp"
 WASM_OUT_DIR = REPO_ROOT / "build" / "wasm"
 WASM_JS = WASM_OUT_DIR / "rthym_moc.js"
@@ -19,11 +20,14 @@ WASM_BIN = WASM_OUT_DIR / "rthym_moc.wasm"
 
 def test_wasm_bindings_expose_check_valve_runtime_contract():
     """The WASM bindings should explicitly expose CheckValve runtime state."""
-    source = WASM_BINDINGS_CPP.read_text(encoding="utf-8")
+    core_source = CORE_CPP.read_text(encoding="utf-8")
+    wasm_source = WASM_BINDINGS_CPP.read_text(encoding="utf-8")
 
-    assert 'n.type == NodeType::CheckValve' in source
-    assert 'node_res.set("type", nodeTypeToStr(n.type));' in source
-    assert 'node_res.set("reverseFlowBlocked", reverseFlowBlocked);' in source
+    assert "NodeType::CheckValve" in core_source
+    assert "reverse_flow_blocked" in core_source
+    assert "convert_snapshot_to_val" in wasm_source
+    assert 'node_res.set("type", node.type);' in wasm_source
+    assert 'node_res.set("reverseFlowBlocked", node.reverse_flow_blocked);' in wasm_source
 
 
 @pytest.mark.wasm_runtime
@@ -33,7 +37,7 @@ def test_wasm_runtime_reports_check_valve_type_and_reverse_flow_blocked():
         pytest.fail("node is required for WASM runtime tests")
     if not WASM_JS.exists() or not WASM_BIN.exists():
         pytest.fail(
-            "WASM artifacts not found. Run ./build_wasm.sh, then "
+            "WASM artifacts not found. Run bash build_wasm.sh, then "
             "pytest -m wasm_runtime --override-ini=\"addopts=\" tests/test_wasm_check_valve.py"
         )
 
@@ -106,6 +110,71 @@ function makePipe(Module, id, fromNode, toNode, flowGPM) {{
     assert payload["reverseFlowBlocked"] is True
     assert abs(payload["flowGPM"]) <= 1.0
     assert payload["downstreamHead"] > payload["upstreamHead"]
+
+
+@pytest.mark.wasm_runtime
+def test_wasm_runtime_step_results_include_link_telemetry() -> None:
+    """Link snapshots from capture_step_snapshot() should serialize under results.links."""
+    if shutil.which("node") is None:
+        pytest.fail("node is required for WASM runtime tests")
+    if not WASM_JS.exists() or not WASM_BIN.exists():
+        pytest.fail("WASM artifacts not found. Run bash build_wasm.sh first.")
+
+    node_program = f"""
+const createRthymMOC = require({json.dumps(str(WASM_JS))});
+
+(async () => {{
+  const Module = await createRthymMOC();
+  const solver = new Module.MOCSolver();
+
+  const r1 = new Module.NodeInput();
+  r1.id = "R1";
+  r1.type = "PressureBoundary";
+  r1.head = 200.0;
+
+  const r2 = new Module.NodeInput();
+  r2.id = "R2";
+  r2.type = "PressureBoundary";
+  r2.head = 150.0;
+
+  const pipe = new Module.PipeInput();
+  pipe.id = "P1";
+  pipe.from_node = "R1";
+  pipe.to_node = "R2";
+  pipe.length = 1000.0;
+  pipe.diameter = 12.0;
+  pipe.roughness = 130.0;
+  pipe.flow_gpm = 500.0;
+
+  solver.add_node(r1);
+  solver.add_node(r2);
+  solver.add_pipe(pipe);
+  solver.set_dt(0.01);
+  solver.initGrid();
+  solver.stepMOC();
+
+  const results = solver.get_step_results();
+  const link = results.links.P1;
+  process.stdout.write(JSON.stringify({{
+    flowGPM: link.flowGPM,
+    headloss: link.headloss
+  }}));
+}})().catch((error) => {{
+  console.error(error);
+  process.exit(1);
+}});
+"""
+
+    completed = subprocess.run(
+        ["node", "-e", node_program],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    payload = json.loads(completed.stdout)
+    assert payload["flowGPM"] > 0.0
+    assert payload["headloss"] >= 0.0
 
 
 @pytest.mark.wasm_runtime

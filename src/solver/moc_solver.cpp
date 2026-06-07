@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: MIT
 // Author: Jason Lillywhite <jason@lillywhitewater.com>
 // Pure C++ implementation of a 1-D Method of Characteristics (MOC) transient
-// hydraulic solver, ported from the R-THYM transientWorker.js engine.
+// hydraulic solver.
 //
 // Unit system  (internal, all quantities in US customary):
 //   Length  : ft
@@ -458,7 +458,6 @@ double MOCSolver::getInitialHead(const NodeState& ns) const {
 }
 
 // ── Grid initialization ───────────────────────────────────────────────────────
-// Mirrors transientWorker.js :: initGrid()
 
 void MOCSolver::initGrid() {
     pipes_.clear();
@@ -925,7 +924,6 @@ void throwIfInvalidInteriorSegmentState(
 } // namespace
 
 // ── Single MOC time step ──────────────────────────────────────────────────────
-// Mirrors transientWorker.js :: stepMOC()
 
 void MOCSolver::stepMOC() {
     evaluateControlRules(t_now_);
@@ -3175,6 +3173,121 @@ void MOCSolver::evaluateControlRules(double t_now) {
             }
         }
     }
+}
+
+StepSnapshot MOCSolver::capture_step_snapshot() const {
+    StepSnapshot snapshot;
+    snapshot.time_s = t_now_;
+    snapshot.nodes.reserve(nodes_.size());
+    snapshot.links.reserve(pipe_inputs_.size());
+
+    for (const auto& ns : nodes_) {
+        const auto& n = ns.input;
+        NodeStepSnapshot node;
+        node.id = n.id;
+        node.type = nodeTypeToStr(n.type);
+
+        auto in_it = node_inflow_pipes_.find(n.id);
+        auto out_it = node_outflow_pipes_.find(n.id);
+        const auto& in_pipes = (in_it != node_inflow_pipes_.end()) ? in_it->second : std::vector<int>{};
+        const auto& out_pipes = (out_it != node_outflow_pipes_.end()) ? out_it->second : std::vector<int>{};
+
+        double upH = getInitialHead(ns);
+        double downH = getInitialHead(ns);
+        double h = upH;
+        if (!in_pipes.empty()) {
+            int pi = in_pipes[0];
+            upH = pipes_[pi].H.back();
+            h = upH;
+        }
+        if (!out_pipes.empty()) {
+            int pi = out_pipes[0];
+            downH = pipes_[pi].H.front();
+            if (in_pipes.empty()) {
+                h = downH;
+            }
+        }
+
+        node.upstream_head_ft = upH;
+        node.downstream_head_ft = downH;
+        node.upstream_pressure_psi = (upH - n.elevation) / PSI_TO_FT;
+        node.downstream_pressure_psi = (downH - n.elevation) / PSI_TO_FT;
+        node.pressure_psi = (h - n.elevation) / PSI_TO_FT;
+
+        double node_flow_gpm = 0.0;
+        if (!out_pipes.empty()) {
+            int pi = out_pipes[0];
+            node_flow_gpm = pipes_[pi].V.front() * pipes_[pi].area / GPM_TO_CFS;
+        } else if (!in_pipes.empty()) {
+            int pi = in_pipes[0];
+            node_flow_gpm = pipes_[pi].V.back() * pipes_[pi].area / GPM_TO_CFS;
+        }
+        if (n.type == NodeType::CheckValve && n.flipped) {
+            node_flow_gpm = -node_flow_gpm;
+        }
+        node.flow_gpm = node_flow_gpm;
+
+        if (n.type == NodeType::InflowNode || n.type == NodeType::OutflowNode) {
+            node.actual_demand_gpm = ns.actual_demand;
+        }
+
+        node.reverse_flow_blocked =
+            n.type == NodeType::CheckValve &&
+            (n.flipped ? (upH > downH + 1e-9) : (downH > upH + 1e-9)) &&
+            std::abs(node_flow_gpm) <= 1e-6;
+
+        node.cavitation = upH <= n.elevation + p_vapor_ || downH <= n.elevation + p_vapor_;
+        node.cavity_active = ns.cavity_active;
+        node.cavity_volume_ft3 = ns.cavity_volume_ft3;
+        node.cavity_collapse_flag = ns.cavity_collapsed_this_step;
+        node.cavity_collapse_count = ns.cavity_collapse_count;
+        node.current_speed = ns.input.current_speed;
+        node.current_setting = ns.input.current_setting;
+
+        if (n.type == NodeType::Pump || n.type == NodeType::Turbine) {
+            node.has_power = ns.input.has_power;
+        }
+        if (n.type == NodeType::Standpipe) {
+            node.surge_level_ft = ns.surge_level_ft;
+        }
+        if (n.type == NodeType::HydropneumaticTank || n.type == NodeType::AirValve) {
+            node.gas_volume_ft3 = ns.gas_volume_ft3;
+            node.gas_pressure_psi = ns.gas_pressure_psi;
+        }
+        if (n.type == NodeType::AirValve) {
+            node.air_loss_rate_gpm = ns.air_loss_rate_gpm;
+            node.air_cumulative_loss_gal = ns.air_cumulative_loss_gal;
+        }
+        if (n.type == NodeType::HydropneumaticTank) {
+            node.tank_flow_gpm = ns.tank_flow_gpm;
+        }
+        if (n.type == NodeType::CheckValve) {
+            node.valve_position = ns.valve_position;
+        }
+
+        snapshot.nodes.push_back(std::move(node));
+    }
+
+    for (size_t i = 0; i < pipe_inputs_.size(); ++i) {
+        const auto& p = pipe_inputs_[i];
+        const auto& ps = pipes_[i];
+
+        double avg_v = 0.0;
+        for (double val : ps.V) {
+            avg_v += val;
+        }
+        if (!ps.V.empty()) {
+            avg_v /= static_cast<double>(ps.V.size());
+        }
+
+        LinkStepSnapshot link;
+        link.id = p.id;
+        link.flow_gpm = avg_v * ps.area / GPM_TO_CFS;
+        link.headloss_ft = std::abs(ps.H.front() - ps.H.back());
+        snapshot.links.push_back(std::move(link));
+    }
+
+    return snapshot;
 }
 
 } // namespace rthym
