@@ -202,7 +202,7 @@ Use `summarize_study_si()` for `chainage_m`, `head_min_m`, `pressure_min_kpa`, e
 | Mark worst pressure location on schematic | `summarize_study()` → `profile_peak.pressure_min` |
 | Before/after cavity prevention | Two batch runs (baseline vs protected) → compare max `profileCavityVolumeFt3` at summit chainage (§2.2) |
 
-**WASM gap (tracked):** `src/wasm_bindings.cpp` does not yet mirror §4.2 under `links`. When added, expect nested arrays on each link object using the camelCase names in §4.2; until then, do not assume profile keys exist in browser step results.
+**WASM gap (tracked):** `bindings/wasm/wasm_bindings.cpp` does not yet mirror §4.2 under `links`. When added, expect nested arrays on each link object using the camelCase names in §4.2; until then, do not assume profile keys exist in browser step results.
 
 ### 4.5 Payload sizing guardrails
 

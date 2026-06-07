@@ -43,7 +43,7 @@ This checklist will help you systematically improve the quality, reliability, an
 
 ## Documentation
 - [x] All public functions/classes have docstrings
-	Verified by audit: the public Python module surface is documented in `rthym_moc/__init__.py` and `rthym_moc/epanet.py`, and the compiled `MOCSolver` / `NodeInput` / `PipeInput` API exposes class and method docstrings via `src/bindings.cpp`.
+	Verified by audit: the public Python module surface is documented in `rthym_moc/__init__.py` and `rthym_moc/epanet.py`, and the compiled `MOCSolver` / `NodeInput` / `PipeInput` API exposes class and method docstrings via `bindings/python/bindings.cpp`.
 - [x] Each test has a docstring explaining its purpose
 	Verified by AST audit across `tests/test_*.py`; the last missing case in `tests/test_pipe_materials.py` now has an explicit per-test purpose docstring.
 - [x] Example scripts and notebooks are provided

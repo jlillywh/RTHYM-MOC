@@ -63,6 +63,7 @@ sdist.include = [
     "README.md",
     "CHANGELOG.md",
     "src",
+    "bindings/python",
     "rthym_moc",
 ]
 

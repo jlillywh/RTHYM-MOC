@@ -98,13 +98,13 @@ flowchart LR
 ### Checklist
 
 - [x] Record baseline: interior `H[j]`/`V[j]` exist in `stepMOC()` but are not in
-      `SimResults` (`src/moc_solver.hpp`, `src/bindings.cpp`). See
+      `SimResults` (`src/solver/moc_solver.hpp`, `bindings/python/bindings.cpp`). See
       [long_pipeline_phase0_baseline.md](long_pipeline_phase0_baseline.md) §1.
-- [x] Record baseline: vapor head uses node `elevation` only (`src/moc_solver.cpp`,
+- [x] Record baseline: vapor head uses node `elevation` only (`src/solver/moc_solver.cpp`,
       junction/DVCM branches). See
       [long_pipeline_phase0_baseline.md](long_pipeline_phase0_baseline.md) §2.
 - [x] Record baseline: segment count formula and wave-speed adjustment
-      (`initGrid()` in `src/moc_solver.cpp`). See
+      (`initGrid()` in `src/solver/moc_solver.cpp`). See
       [long_pipeline_phase0_baseline.md](long_pipeline_phase0_baseline.md) §3.
 - [x] Define performance budget (reference case `LP-PERF-01`): 20-mile single
       pipe, `dt = 0.001 s`, 60 s simulated time, **&lt; 30 s** wall clock on a
@@ -122,12 +122,12 @@ flowchart LR
 
 | Area | Files |
 |------|-------|
-| Interior MOC loop | `src/moc_solver.cpp` (~interior nodes `j = 1 … N-2`) |
-| DVCM regime logic | `src/moc_solver.cpp` (junction/valve/pump branches) |
-| Results schema | `src/moc_solver.hpp` (`SimResults`), `src/bindings.cpp` |
-| Grid setup | `src/moc_solver.cpp` (`initGrid`, Courant adjustment) |
+| Interior MOC loop | `src/solver/moc_solver.cpp` (~interior nodes `j = 1 … N-2`) |
+| DVCM regime logic | `src/solver/moc_solver.cpp` (junction/valve/pump branches) |
+| Results schema | `src/solver/moc_solver.hpp` (`SimResults`), `bindings/python/bindings.cpp` |
+| Grid setup | `src/solver/moc_solver.cpp` (`initGrid`, Courant adjustment) |
 | Study reports | `rthym_moc/report.py` |
-| WASM bindings | `src/wasm_bindings.cpp` (update when schema grows) |
+| WASM bindings | `bindings/wasm/wasm_bindings.cpp` (update when schema grows) |
 
 ---
 

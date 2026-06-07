@@ -148,11 +148,13 @@ cmake --build build
 ## Maintainer WASM integration (internal)
 
 The repository includes a **maintainer-only** Emscripten build path for validating
-`src/wasm_bindings.cpp`. This is separate from the supported Python package API
+`bindings/wasm/wasm_bindings.cpp`. This is separate from the supported Python package API
 and is not part of the public release workflow:
 
-- bindings live in `src/wasm_bindings.cpp`
-- the build script is `build_wasm.sh`
+- pure C++ solver core lives in `src/solver/` (no pybind11, no Emscripten headers)
+- Python bindings live in `bindings/python/`
+- WASM bindings live in `bindings/wasm/wasm_bindings.cpp`
+- the build script is `bindings/wasm/build_wasm.sh` (root `build_wasm.sh` delegates to it)
 - CI runs a binding smoke test in `.github/workflows/wasm-regression.yml`
 
 The WASM surface exposes a stepwise integration API (`initGrid`, `stepMOC`,
@@ -1865,12 +1867,20 @@ Release-level changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
 ```
 RTHYM-MOC/
-├── build_wasm.sh          # Maintainer/internal Emscripten build script
+├── CMakeLists.txt         # Builds rthym_core; enters bindings/python or bindings/wasm
+├── build_wasm.sh          # Delegates to bindings/wasm/build_wasm.sh
 ├── src/
-│   ├── moc_solver.hpp     # Type definitions, NodeInput, PipeInput, MOCSolver declaration
-│   ├── moc_solver.cpp     # Full MOC physics implementation (C++17)
-│   ├── bindings.cpp       # PyBind11 bindings → _rthym_moc extension module
-│   └── wasm_bindings.cpp  # Emscripten bindings for maintainer WASM integration tests
+│   └── solver/
+│       ├── moc_solver.hpp # Type definitions, NodeInput, PipeInput, MOCSolver declaration
+│       └── moc_solver.cpp # Full MOC physics implementation (pure C++17)
+├── bindings/
+│   ├── python/
+│   │   ├── CMakeLists.txt
+│   │   └── bindings.cpp   # PyBind11 bindings → _rthym_moc extension module
+│   └── wasm/
+│       ├── CMakeLists.txt
+│       ├── build_wasm.sh  # Maintainer/internal Emscripten build script
+│       └── wasm_bindings.cpp
 ├── build/
 │   └── wasm/              # Generated rthym_moc.js / rthym_moc.wasm (not committed)
 ├── rthym_moc/

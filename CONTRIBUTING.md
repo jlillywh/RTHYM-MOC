@@ -31,7 +31,7 @@ steady-state initialization paths.
 
 ## Build Notes
 
-If you change the C++ core under `src/`, rebuild the extension before running
+If you change the C++ core under `src/solver/`, rebuild the extension before running
 tests:
 
 ```bash
