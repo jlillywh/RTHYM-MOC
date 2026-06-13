@@ -723,7 +723,7 @@ void MOCSolver::initGrid() {
                 auto tit2 = node_idx_map_.find(p.to_node);
                 auto is_device = [](NodeType t) {
                     return t == NodeType::Valve || t == NodeType::CheckValve ||
-                           t == NodeType::Pump || t == NodeType::PRV ||
+                           t == NodeType::Pump || t == NodeType::Turbine || t == NodeType::PRV ||
                            t == NodeType::PSV || t == NodeType::PBV;
                 };
                 bool from_is_device = (fit2 != node_idx_map_.end()) &&
