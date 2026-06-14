@@ -214,3 +214,39 @@ def test_turbine_si_interface():
     assert "Turbine_A" in results["turbine_speed"]
     speeds = results["turbine_speed"]["Turbine_A"]
     assert speeds[0] > 100.0
+
+
+def test_turbine_closed_gate_zero_speed():
+    """Verify that a zero-inertia turbine with a closed gate (setting=0) stays at 0% speed."""
+    solver = m.MOCSolver()
+    solver.add_node(_make_node("R1", "PressureBoundary", head=220.0))
+    solver.add_node(_make_node(
+        "Turbine_A",
+        "Turbine",
+        current_speed=0.0,
+        current_setting=0.0,
+        has_power=False,
+        design_head=120.0,
+        design_flow=500.0,
+        inertia_wr2=0.0,
+        speed_rpm=1800.0,
+        efficiency=0.80,
+        diameter=8.0,
+        head=100.0
+    ))
+    solver.add_node(_make_node("R2", "PressureBoundary", head=100.0))
+    solver.add_pipe(_make_pipe(
+        "P1", "R1", "Turbine_A",
+        length=500.0, diameter=8.0, roughness=130.0, flow_gpm=500.0
+    ))
+    solver.add_pipe(_make_pipe(
+        "P2", "Turbine_A", "R2",
+        length=500.0, diameter=8.0, roughness=130.0, flow_gpm=500.0
+    ))
+
+    results = solver.run(total_time=0.5, dt=0.01)
+    speeds = np.asarray(results["turbine_speed"]["Turbine_A"])
+
+    # Speed should remain exactly 0.0 because the gate is closed (G = 0)
+    assert np.allclose(speeds, 0.0)
+

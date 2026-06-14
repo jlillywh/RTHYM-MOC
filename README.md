@@ -1545,7 +1545,7 @@ $$N_{\text{new}} = \max(0.0, N_{\text{current}} + \Delta N_{\text{rpm}})$$
 where:
 - $T_{\text{hydraulic}}$ is computed using a linear torque-speed simplification based on design head ($H_{\text{design}}$) and wicket gate opening ratio ($G = Y / 100.0$, where $Y$ is the wicket gate opening percentage `current_setting`):
   $$T_{\text{stall}} = 1.5 \cdot T_{\text{rated}} \cdot G \cdot \left(\frac{\Delta H}{H_{\text{design}}}\right)$$
-  $$N_{\text{runaway}} = 1.8 \cdot N_{\text{rated}} \cdot \sqrt{\frac{\Delta H}{H_{\text{design}}}}$$
+  $$N_{\text{runaway}} = 1.8 \cdot N_{\text{rated}} \cdot \sqrt{\frac{\Delta H}{H_{\text{design}}}} \cdot G$$
   $$T_{\text{hydraulic}} = T_{\text{stall}} \cdot \left(1.0 - \frac{N_{\text{current}}}{N_{\text{runaway}}}\right)$$
 - $T_{\text{rated}}$ is the rated shaft torque at best efficiency point (BEP):
 

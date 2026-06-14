@@ -2030,7 +2030,7 @@ void MOCSolver::stepMOC() {
                 const double dH_ratio = dH / H_design;
 
                 const double T_stall = 1.5 * ns.rated_torque_ftlb * G * dH_ratio;
-                const double N_runaway = 1.8 * N_rated * std::sqrt(dH_ratio);
+                const double N_runaway = 1.8 * N_rated * std::sqrt(dH_ratio) * G;
                 const double N_current = (n.current_speed / 100.0) * N_rated;
 
                 double T_hydraulic = 0.0;
