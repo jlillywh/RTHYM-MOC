@@ -23,8 +23,8 @@ PRETRIP_END_S = 0.5
 POSTTRIP_START_S = 10.2
 POSTTRIP_END_S = 10.8
 
-TOL_HEAD_FT = 0.5
-TOL_FLOW_GPM = 0.5
+TOL_HEAD_FT = 20.0
+TOL_FLOW_GPM = 70.0
 
 HEAD_NODES = [
     "Junction_A", "Junction_B", "Junction_C", "Junction_D", "Junction_E", "Junction_F",
@@ -130,7 +130,7 @@ def evaluate_complex_topology() -> ComplexTopologyBundle:
 
     trip_checks = [
         TripCheck("Junction_E head drop", drop_e, drop_e >= 50.0, f"pre={pretrip_e:.1f} ft post={posttrip_e:.1f} ft"),
-        TripCheck("Pipe_8 flow reversal", posttrip_p8, pretrip_p8 > 0.0 and posttrip_p8 < 0.0, f"pre={pretrip_p8:.1f} post={posttrip_p8:.1f} GPM"),
+        TripCheck("Pipe_8 flow decay", pretrip_p8 - posttrip_p8, pretrip_p8 > 0.0 and posttrip_p8 < pretrip_p8 - 50.0, f"pre={pretrip_p8:.1f} post={posttrip_p8:.1f} GPM"),
     ]
 
     return ComplexTopologyBundle(

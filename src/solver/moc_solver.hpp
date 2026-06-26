@@ -95,6 +95,7 @@ struct NodeInput {
     double  speed_rpm           = 1750.0;// rated speed (RPM)
     double  efficiency          = 0.80;  // rated pump efficiency (0.0 to 1.0)
     double  ramp_time           = 0.0;   // s (VFD pump speed acceleration/deceleration limit, 0 = instant)
+    double  specific_speed      = 1800.0;// specific speed (RPM-GPM-ft, e.g., 1800=radial, 3600=mixed, 7500=axial)
 
     // Valve / Turbine fields
     double  current_setting     = 100.0; // % open (100 = fully open)
@@ -382,6 +383,8 @@ public:
     CavitationModel get_cavitation_model() const { return cavitation_model_; }
     void   set_enable_interior_dvcm(bool enable) { enable_interior_dvcm_ = enable; }
     bool   get_enable_interior_dvcm() const { return enable_interior_dvcm_; }
+    void   set_interpolation_mode(bool enable) { interpolation_mode_ = enable; }
+    bool   get_interpolation_mode() const { return interpolation_mode_; }
     void   set_max_segments_per_pipe(int max_segments);
     int    get_max_segments_per_pipe() const { return max_segments_per_pipe_; }
     void   set_max_wave_speed_distortion(double max_fraction);
@@ -444,6 +447,7 @@ private:
     //   > 0  :  user-supplied static value (typical calibrated range: 0.02–0.15)
     double k_Bru_   = -1.0;
     TransientFrictionModel friction_model_ = TransientFrictionModel::BrunoneIIR;
+    bool interpolation_mode_ = false;
 
     // Operational control rules
     std::vector<ControlRuleInput> control_rules_;
@@ -515,6 +519,9 @@ private:
     static double interpolateElevationAtChainageFt(
         const std::vector<std::pair<double, double>>& profile,
         double chainage_ft);
+    
+    // Four-quadrant pump dynamics Suter curve lookup
+    static void getSuterCoefficients(double specific_speed, double theta, double& wh, double& wb);
 };
 
 } // namespace rthym

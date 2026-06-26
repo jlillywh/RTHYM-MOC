@@ -131,6 +131,41 @@ constexpr double R_AIR = 1716.0; // ft-lb/(slug-R)
 constexpr double T_ATM_R = 529.67; // Rankine (~70 F)
 constexpr double RHO_WATER_G = 62.4; // lb/ft^3
 
+struct SuterTable {
+    double wh[24];
+    double wb[24];
+};
+
+// Radial Flow Pump (Ns ~ 1800) Suter curves
+const SuterTable SUTER_RADIAL = {
+    // WH
+    { 1.35, 1.15, 0.85, 0.50, 0.20, -0.05, -0.25, -0.50, -0.80, -1.20, -1.60, -2.00,
+      -2.35, -1.80, -1.25, -0.50, -0.20, -0.05, 0.15, 0.35, 0.60, 0.85, 1.10, 1.25 },
+    // WB
+    { 0.35, 0.40, 0.46, 0.50, 0.50, 0.40, 0.20, -0.05, -0.30, -0.60, -0.90, -1.15,
+      -1.35, -1.15, -0.90, -0.50, -0.25, -0.05, 0.10, 0.20, 0.25, 0.30, 0.32, 0.34 }
+};
+
+// Mixed Flow Pump (Ns ~ 3600) Suter curves
+const SuterTable SUTER_MIXED = {
+    // WH
+    { 1.65, 1.40, 1.00, 0.50, 0.20, -0.05, -0.20, -0.45, -0.75, -1.10, -1.45, -1.80,
+      -2.15, -1.65, -1.15, -0.50, -0.20, -0.05, 0.18, 0.40, 0.68, 0.98, 1.30, 1.50 },
+    // WB
+    { 0.55, 0.52, 0.50, 0.50, 0.48, 0.38, 0.22, -0.02, -0.25, -0.50, -0.80, -1.05,
+      -1.25, -1.05, -0.80, -0.50, -0.25, -0.05, 0.12, 0.25, 0.35, 0.42, 0.48, 0.52 }
+};
+
+// Axial Flow Pump (Ns ~ 7500) Suter curves
+const SuterTable SUTER_AXIAL = {
+    // WH
+    { 2.20, 1.80, 1.20, 0.50, 0.15, -0.05, -0.15, -0.35, -0.65, -0.95, -1.25, -1.55,
+      -1.85, -1.45, -1.00, -0.50, -0.20, -0.05, 0.20, 0.45, 0.75, 1.10, 1.50, 1.90 },
+    // WB
+    { 0.85, 0.75, 0.60, 0.50, 0.42, 0.35, 0.25, 0.05, -0.15, -0.40, -0.65, -0.85,
+      -1.05, -0.85, -0.65, -0.50, -0.25, -0.05, 0.15, 0.30, 0.45, 0.58, 0.70, 0.80 }
+};
+
 double computeCompressibleAirFlow(double Cd, double Area, double p1, double pr, double T1) {
     if (Cd <= 0.0 || Area <= 0.0 || p1 <= 0.0) return 0.0;
     
@@ -204,7 +239,7 @@ void MOCSolver::set_wave_speed_distortion_action(WaveSpeedDistortionAction actio
 
 void MOCSolver::enforceWaveSpeedDistortionPolicy() {
     grid_distortion_warning_.clear();
-    if (max_wave_speed_distortion_ < 0.0) {
+    if (interpolation_mode_ || max_wave_speed_distortion_ < 0.0) {
         return;
     }
 
@@ -631,18 +666,28 @@ void MOCSolver::initGrid() {
         }
 
         // ── Courant condition: Cr = a·dt/dx = 1 ───────────────────────────
-        // Round number of segments to nearest integer, then back-compute
-        // the exact wave speed that gives Cr = 1.0 for that integer count.
-        // Optional max_segments_per_pipe cap (Phase 4) coarsens the grid;
-        // at least two segments are always used.
         const double dx_target = wave_speed * dt_;
-        int num_segs = std::max(1, static_cast<int>(std::round(p.length / dx_target)));
-        if (max_segments_per_pipe_ > 0) {
-            num_segs = std::min(num_segs, max_segments_per_pipe_);
-            num_segs = std::max(num_segs, 2);
+        int num_segs;
+        if (interpolation_mode_) {
+            num_segs = static_cast<int>(std::floor(p.length / dx_target));
+            if (max_segments_per_pipe_ > 0) {
+                num_segs = std::min(num_segs, max_segments_per_pipe_);
+            }
+            if (num_segs < 1) {
+                num_segs = 1;
+                ps.a_wave = p.length / dt_; // slow down wave speed to match Cr = 1.0 with 1 segment
+            } else {
+                ps.a_wave = wave_speed; // keep design wave speed
+            }
+        } else {
+            num_segs = std::max(1, static_cast<int>(std::round(p.length / dx_target)));
+            if (max_segments_per_pipe_ > 0) {
+                num_segs = std::min(num_segs, max_segments_per_pipe_);
+                num_segs = std::max(num_segs, 2);
+            }
+            ps.a_wave = (p.length / num_segs) / dt_; // adjusted wave speed
         }
         ps.a_wave_design = wave_speed;
-        ps.a_wave    = (p.length / num_segs) / dt_; // adjusted wave speed
         ps.num_nodes = num_segs + 1;
         ps.k_minor   = std::max(0.0, p.minor_loss) / num_segs;
 
@@ -1039,7 +1084,9 @@ void MOCSolver::stepMOC() {
             }
         }
         const int  N    = ps.num_nodes;
-        const double dx = ps.a_wave * dt_;
+        const double dx_grid = ps.L / (N - 1);
+        const double dx_char = ps.a_wave * dt_;
+        const double Cr = ps.a_wave * dt_ / dx_grid;
         const double B  = ps.a_wave / g;               // ft·s/ft² = s/ft
         const auto& pipe_input = pipe_inputs_[i];
         const double k_u = unsteadyFrictionScale(ps, B);
@@ -1053,15 +1100,24 @@ void MOCSolver::stepMOC() {
 
         // ── Interior nodes  j = 1 … N-2  (C+ from left, C- from right) ───
         for (int j = 1; j < N - 1; ++j) {
-            const double H_A = ps.H[j-1], V_A = ps.V[j-1];
-            const double H_B = ps.H[j+1], V_B = ps.V[j+1];
-            const double R_A = steadyFrictionResistance(ps, pipe_input, dx, V_A);
-            const double R_B = steadyFrictionResistance(ps, pipe_input, dx, V_B);
-            const double usf_A = unsteadyFrictionHeadTerm(ps, k_u, j - 1, V_A, dx);
-            const double usf_B = unsteadyFrictionHeadTerm(ps, k_u, j + 1, V_B, dx);
+            double H_L, V_L, H_R, V_R;
+            if (interpolation_mode_) {
+                H_L = (1.0 - Cr) * ps.H[j] + Cr * ps.H[j-1];
+                V_L = (1.0 - Cr) * ps.V[j] + Cr * ps.V[j-1];
+                H_R = (1.0 - Cr) * ps.H[j] + Cr * ps.H[j+1];
+                V_R = (1.0 - Cr) * ps.V[j] + Cr * ps.V[j+1];
+            } else {
+                H_L = ps.H[j-1]; V_L = ps.V[j-1];
+                H_R = ps.H[j+1]; V_R = ps.V[j+1];
+            }
 
-            const double C_P = H_A + B*V_A  - (R_A*V_A*std::abs(V_A) + usf_A);
-            const double C_M = H_B - B*V_B  + (R_B*V_B*std::abs(V_B) + usf_B);
+            const double R_A = steadyFrictionResistance(ps, pipe_input, dx_char, V_L);
+            const double R_B = steadyFrictionResistance(ps, pipe_input, dx_char, V_R);
+            const double usf_A = unsteadyFrictionHeadTerm(ps, k_u, j - 1, V_L, dx_grid);
+            const double usf_B = unsteadyFrictionHeadTerm(ps, k_u, j + 1, V_R, dx_grid);
+
+            const double C_P = H_L + B*V_L  - (R_A*V_L*std::abs(V_L) + usf_A);
+            const double C_M = H_R - B*V_R  + (R_B*V_R*std::abs(V_R) + usf_B);
 
             double Hj = (C_P + C_M) / 2.0;
             double Vj = (C_P - C_M) / (2.0 * B);
@@ -1069,7 +1125,7 @@ void MOCSolver::stepMOC() {
             if (interiorDvcmActiveAt(ps, j)) {
                 auto& seg = ps.segments[static_cast<std::size_t>(j)];
                 const double H_vap_j = pipeGridVaporHeadFt(ps, j);
-                const double cavity_capacity_ft3 = dx * ps.area;
+                const double cavity_capacity_ft3 = dx_grid * ps.area;
                 const double segment_conductance = 2.0 * ps.area / B;
                 stepInteriorSegmentDvcm(
                     seg,
@@ -1107,17 +1163,26 @@ void MOCSolver::stepMOC() {
         // ── Pipe-end boundary characteristics ────────────────────────────
         // C_P arrives at the downstream end  (from node N-2)
         // C_M arrives at the upstream end    (from node 1)
-        const double V_up = ps.V[N-2]; // penultimate node → downstream BC
-        const double V_dn = ps.V[1];   // second node      → upstream BC
-        const double R_up = steadyFrictionResistance(ps, pipe_input, dx, V_up);
-        const double R_dn = steadyFrictionResistance(ps, pipe_input, dx, V_dn);
-        const double damp_up = unsteadyFrictionHeadTerm(ps, k_u, N - 2, V_up, dx);
-        const double damp_dn = unsteadyFrictionHeadTerm(ps, k_u, 1, V_dn, dx);
+        double H_L_down, V_L_down, H_R_up, V_R_up;
+        if (interpolation_mode_) {
+            H_L_down = (1.0 - Cr) * ps.H[N-1] + Cr * ps.H[N-2];
+            V_L_down = (1.0 - Cr) * ps.V[N-1] + Cr * ps.V[N-2];
+            H_R_up   = (1.0 - Cr) * ps.H[0]   + Cr * ps.H[1];
+            V_R_up   = (1.0 - Cr) * ps.V[0]   + Cr * ps.V[1];
+        } else {
+            H_L_down = ps.H[N-2]; V_L_down = ps.V[N-2];
+            H_R_up   = ps.H[1];   V_R_up   = ps.V[1];
+        }
+
+        const double R_up = steadyFrictionResistance(ps, pipe_input, dx_char, V_L_down);
+        const double R_dn = steadyFrictionResistance(ps, pipe_input, dx_char, V_R_up);
+        const double damp_up = unsteadyFrictionHeadTerm(ps, k_u, N - 2, V_L_down, dx_grid);
+        const double damp_dn = unsteadyFrictionHeadTerm(ps, k_u, 1, V_R_up, dx_grid);
 
         bndry[i].area = ps.area;
         bndry[i].B    = B;
-        bndry[i].C_P  = ps.H[N-2] + B*V_up - (R_up*V_up*std::abs(V_up) + damp_up);
-        bndry[i].C_M  = ps.H[1]   - B*V_dn + (R_dn*V_dn*std::abs(V_dn) + damp_dn);
+        bndry[i].C_P  = H_L_down + B*V_L_down - (R_up*V_L_down*std::abs(V_L_down) + damp_up);
+        bndry[i].C_M  = H_R_up   - B*V_R_up   + (R_dn*V_R_up*std::abs(V_R_up) + damp_dn);
     }
 
     // ── Node boundary conditions ──────────────────────────────────────────────
@@ -2054,52 +2119,151 @@ void MOCSolver::stepMOC() {
         }
 
         // ── Centrifugal pump ───────────────────────────────────────────────
-        // 3-coefficient affinity-law curve:
-        //   ΔH = α·s² − β_cfs·Q²
-        //   α = 4/3·H_D   (shutoff head at rated speed)
-        //   β = 1/3·H_D / Q_D²  (in GPM units)
-        //   β_cfs = β · 448.831²  (convert to CFS units)
+        // Dimensionless four-quadrant Suter curve model:
+        //   h = (alpha^2 + v^2) * WH(theta)
+        //   beta = (alpha^2 + v^2) * WB(theta)
+        //   theta = atan2(v, alpha)
         case NodeType::Pump: {
             const double spd = n.current_speed;
-            const double H_D   = n.design_head;
-            const double Q_D   = n.design_flow;
-            const double alpha  = (4.0 / 3.0) * H_D;            // ft
-            const double beta   = (1.0 / 3.0) * H_D / (Q_D * Q_D);
-            const double beta_cfs = beta * 201449.26;            // 448.831² ≈ 201449
-            const double s  = spd / 100.0;
-            const double s2 = s * s;
+            const double H_D   = std::max(1.0, n.design_head);
+            const double Q_D   = std::max(1.0, n.design_flow);
+            const double Q_D_cfs = Q_D * GPM_TO_CFS;
+            const double spec_speed = n.specific_speed;
+
             double Q = 0.0;
+            double H_up = 0.0;
+            double H_dn = 0.0;
 
             if (in_pipes.size() == 1 && out_pipes.size() == 1) {
                 const int bIn  = in_pipes[0];
                 const int bOut = out_pipes[0];
-                const double a_q = beta_cfs * s2;
+                const double B_in_eq = bndry[bIn].B / bndry[bIn].area;
+                const double B_out_eq = bndry[bOut].B / bndry[bOut].area;
+                const double B_eq = B_in_eq + B_out_eq;
+                const double C_eq = bndry[bIn].C_P - bndry[bOut].C_M;
 
-                double H_up = 0.0;
-                double H_dn = 0.0;
+                bool use_inertia = (!n.has_power && n.inertia_wr2 > 0.0);
 
-                if (spd <= 0.0) {
-                    H_up = bndry[bIn].C_P;
-                    H_dn = bndry[bOut].C_M;
-                    Q = 0.0;
-                } else {
-                    const double B_eq = (bndry[bIn].B  / bndry[bIn].area)
-                                      + (bndry[bOut].B / bndry[bOut].area);
-                    const double C_eq = bndry[bIn].C_P - bndry[bOut].C_M;
-                    const double c_q = -(C_eq + alpha * s2);
+                // 1D Newton-Raphson solver helper for flow Q
+                auto solve_Q_1D = [&](double alpha, double C_0, double B_0) -> double {
+                    double Q_sol = newV[bIn][pipes_[bIn].num_nodes - 1] * pipes_[bIn].area;
+                    for (int iter = 0; iter < 40; ++iter) {
+                        double v = Q_sol / Q_D_cfs;
+                        double theta = std::atan2(v, alpha);
+                        double wh, wb;
+                        getSuterCoefficients(spec_speed, theta, wh, wb);
 
-                    if (a_q < 1e-10) {
-                        Q = -c_q / B_eq;
-                    } else {
-                        const double disc = B_eq * B_eq - 4.0 * a_q * c_q;
-                        if (disc >= 0.0)
-                            Q = (-B_eq + std::sqrt(disc)) / (2.0 * a_q);
+                        double d_theta = 1e-5;
+                        double wh_plus, wb_plus;
+                        getSuterCoefficients(spec_speed, theta + d_theta, wh_plus, wb_plus);
+                        double dwh_dtheta = (wh_plus - wh) / d_theta;
+
+                        double alpha2_v2 = alpha * alpha + v * v;
+                        if (alpha2_v2 < 1e-8) alpha2_v2 = 1e-8;
+
+                        double h_pump = alpha2_v2 * wh;
+                        double f = -C_0 + B_0 * v - h_pump;
+
+                        if (std::abs(f) < 1e-5) {
+                            break;
+                        }
+
+                        double dtheta_dQ = alpha / (alpha2_v2 * Q_D_cfs);
+                        double dh_dQ = (2.0 * v / Q_D_cfs) * wh + alpha2_v2 * dwh_dtheta * dtheta_dQ;
+                        double df_dQ = B_0 / Q_D_cfs - dh_dQ;
+
+                        if (std::abs(df_dQ) < 1e-12) {
+                            break;
+                        }
+
+                        Q_sol -= f / df_dQ;
                     }
-                    Q = std::max(0.0, Q);
+                    return Q_sol;
+                };
 
-                    H_up = bndry[bIn].C_P  - (bndry[bIn].B  / bndry[bIn].area)  * Q;
-                    H_dn = bndry[bOut].C_M + (bndry[bOut].B / bndry[bOut].area) * Q;
+                if (use_inertia) {
+                    // 2D Newton-Raphson to solve for Q and speed alpha simultaneously
+                    double alpha_t = spd / 100.0;
+                    double Q_t = newV[bIn][pipes_[bIn].num_nodes - 1] * pipes_[bIn].area;
+
+                    double rpm = std::max(1.0, n.speed_rpm);
+                    double omega_D = 2.0 * M_PI_ * rpm / 60.0;
+                    double I_slug = n.inertia_wr2 / g;
+                    double C_I = (I_slug * omega_D > 1e-12) ? (ns.rated_torque_ftlb * dt_) / (I_slug * omega_D) : 0.0;
+
+                    double alpha = alpha_t;
+                    double Q_sol = Q_t;
+
+                    for (int iter = 0; iter < 40; ++iter) {
+                        double v = Q_sol / Q_D_cfs;
+                        double theta = std::atan2(v, alpha);
+                        double wh, wb;
+                        getSuterCoefficients(spec_speed, theta, wh, wb);
+
+                        double d_theta = 1e-5;
+                        double wh_plus, wb_plus;
+                        getSuterCoefficients(spec_speed, theta + d_theta, wh_plus, wb_plus);
+                        double dwh_dtheta = (wh_plus - wh) / d_theta;
+                        double dwb_dtheta = (wb_plus - wb) / d_theta;
+
+                        double alpha2_v2 = alpha * alpha + v * v;
+                        if (alpha2_v2 < 1e-8) alpha2_v2 = 1e-8;
+
+                        double h_pump = alpha2_v2 * wh;
+                        double beta_pump = alpha2_v2 * wb;
+
+                        double f1 = -C_eq + B_eq * Q_sol - H_D * h_pump;
+                        double f2 = alpha - alpha_t + C_I * beta_pump;
+
+                        if (std::abs(f1) < 1e-5 && std::abs(f2) < 1e-6) {
+                            break;
+                        }
+
+                        double dtheta_dQ = alpha / (alpha2_v2 * Q_D_cfs);
+                        double dtheta_dalpha = -v / alpha2_v2;
+
+                        double dh_dQ = (2.0 * v / Q_D_cfs) * wh + alpha2_v2 * dwh_dtheta * dtheta_dQ;
+                        double df1_dQ = B_eq - H_D * dh_dQ;
+
+                        double dh_dalpha = 2.0 * alpha * wh + alpha2_v2 * dwh_dtheta * dtheta_dalpha;
+                        double df1_dalpha = -H_D * dh_dalpha;
+
+                        double dbeta_dQ = (2.0 * v / Q_D_cfs) * wb + alpha2_v2 * dwb_dtheta * dtheta_dQ;
+                        double df2_dQ = C_I * dbeta_dQ;
+
+                        double dbeta_dalpha = 2.0 * alpha * wb + alpha2_v2 * dwb_dtheta * dtheta_dalpha;
+                        double df2_dalpha = 1.0 + C_I * dbeta_dalpha;
+
+                        double det = df1_dQ * df2_dalpha - df1_dalpha * df2_dQ;
+                        if (std::abs(det) < 1e-12) {
+                            break;
+                        }
+
+                        double dQ_update = (-f1 * df2_dalpha - (-f2) * df1_dalpha) / det;
+                        double dalpha_update = (df1_dQ * (-f2) - (-f1) * df2_dQ) / det;
+
+                        double damp = 1.0;
+                        if (std::abs(dalpha_update) > 0.2) damp = 0.2 / std::abs(dalpha_update);
+
+                        Q_sol += dQ_update * damp;
+                        alpha += dalpha_update * damp;
+                    }
+
+                    Q = Q_sol;
+                    alpha = std::clamp(alpha, -1.2, 1.2);
+                    ns.input.current_speed = alpha * 100.0;
+                } else {
+                    double alpha = spd / 100.0;
+                    if (!n.has_power) {
+                        alpha = 0.0;
+                        ns.input.current_speed = 0.0;
+                    }
+
+                    Q = solve_Q_1D(alpha, C_eq / H_D, B_eq * Q_D_cfs / H_D);
                 }
+
+                H_up = bndry[bIn].C_P  - B_in_eq  * Q;
+                H_dn = bndry[bOut].C_M + B_out_eq * Q;
 
                 double H_up_candidate = H_up;
                 double H_dn_candidate = H_dn;
@@ -2168,56 +2332,34 @@ void MOCSolver::stepMOC() {
 
                 if (cavitation_model_ == CavitationModel::LegacyClamp ||
                     (cavitation_model_ == CavitationModel::DVCM && ns.cavity_regime != CavityRegime::LiquidFull)) {
-                    if (spd <= 0.0) {
-                        if (H_up < H_vap) H_up = H_vap;
-                        if (H_dn < H_vap) H_dn = H_vap;
-                    } else {
-                        // Cavitation downstream
-                        if (H_dn < H_vap) {
-                            H_dn = H_vap;
-                            const double bc  = bndry[bIn].B / bndry[bIn].area;
-                            const double cc  = -(bndry[bIn].C_P + alpha * s2 - H_vap);
-                            if (a_q < 1e-10) { Q = -cc / bc; }
-                            else {
-                                const double dc = bc * bc - 4.0 * a_q * cc;
-                                if (dc >= 0.0) Q = (-bc + std::sqrt(dc)) / (2.0 * a_q);
-                            }
-                            Q    = std::max(0.0, Q);
-                            H_up = bndry[bIn].C_P - (bndry[bIn].B / bndry[bIn].area) * Q;
-                        }
-                        // Cavitation upstream
-                        if (H_up < H_vap) {
-                            H_up = H_vap;
-                            const double bc  = bndry[bOut].B / bndry[bOut].area;
-                            const double cc  = -(H_vap + alpha * s2 - bndry[bOut].C_M);
-                            if (a_q < 1e-10) { Q = -cc / bc; }
-                            else {
-                                const double dc = bc * bc - 4.0 * a_q * cc;
-                                if (dc >= 0.0) Q = (-bc + std::sqrt(dc)) / (2.0 * a_q);
-                            }
-                            Q    = std::max(0.0, Q);
-                            H_dn = bndry[bOut].C_M + (bndry[bOut].B / bndry[bOut].area) * Q;
-                        }
+                    double alpha = ns.input.current_speed / 100.0;
+                    // Cavitation downstream
+                    if (H_dn < H_vap) {
+                        H_dn = H_vap;
+                        Q = solve_Q_1D(alpha, (bndry[bIn].C_P - H_vap) / H_D, B_in_eq * Q_D_cfs / H_D);
+                        H_up = bndry[bIn].C_P - B_in_eq * Q;
+                    }
+                    // Cavitation upstream
+                    if (H_up < H_vap) {
+                        H_up = H_vap;
+                        Q = solve_Q_1D(alpha, (H_vap - bndry[bOut].C_M) / H_D, B_out_eq * Q_D_cfs / H_D);
+                        H_dn = bndry[bOut].C_M + B_out_eq * Q;
                     }
                 }
 
-                if (spd <= 0.0) {
-                    double V_up = 0.0;
-                    double V_dn = 0.0;
-                    if (H_up < H_vap + 1e-9) { H_up = H_vap; V_up = (bndry[bIn].C_P - H_vap) / bndry[bIn].B; }
-                    if (H_dn < H_vap + 1e-9) { H_dn = H_vap; V_dn = (H_vap - bndry[bOut].C_M) / bndry[bOut].B; }
-                    set_downstream(bIn, H_up);
-                    newV[bIn][pipes_[bIn].num_nodes - 1] = V_up;
-                    set_upstream(bOut, H_dn);
-                    newV[bOut][0] = V_dn;
-                } else {
-                    set_downstream(bIn,  H_up);
-                    set_upstream  (bOut, H_dn);
-                }
-
+                set_downstream(bIn,  H_up);
+                set_upstream  (bOut, H_dn);
             } else {
                 // Multi-pipe pump:
-                if (spd <= 0.0) {
+                double alpha = spd / 100.0;
+                if (!n.has_power) {
+                    alpha = 0.0;
+                    ns.input.current_speed = 0.0;
+                }
+                const double s = alpha;
+                const double s2 = s * s;
+
+                if (s <= 0.0) {
                     for (int pi : in_pipes) {
                         double H_P = bndry[pi].C_P;
                         double V_P = 0.0;
@@ -2235,8 +2377,9 @@ void MOCSolver::stepMOC() {
                 } else {
                     // Multi-pipe pump: approximate with static head rise
                     const double H_base = getInitialHead(ns);
-                    for (int pi : in_pipes)  set_downstream(pi, std::max(H_vap, H_base - alpha * s2));
-                    for (int pi : out_pipes) set_upstream  (pi, std::max(H_vap, H_base + alpha * s2));
+                    const double alpha_hp = (4.0 / 3.0) * H_D;
+                    for (int pi : in_pipes)  set_downstream(pi, std::max(H_vap, H_base - alpha_hp * s2));
+                    for (int pi : out_pipes) set_upstream  (pi, std::max(H_vap, H_base + alpha_hp * s2));
 
                     // Estimate Q for speed decay
                     double Q_sum = 0.0;
@@ -2245,26 +2388,23 @@ void MOCSolver::stepMOC() {
                         Q_sum += newV[pi][last] * pipes_[pi].area;
                     }
                     Q = std::max(0.0, Q_sum);
-                }
-            }
 
-            // Integrate pump deceleration speed decay if power is lost and pump has inertia
-            if (!n.has_power && n.inertia_wr2 > 0.0) {
-                double Q_gpm = Q / GPM_TO_CFS;
-                double q_ratio = (n.design_flow > 1e-6) ? Q_gpm / n.design_flow : 0.0;
-                double torque_h = ns.rated_torque_ftlb * (0.5 * s2 + 0.5 * s * q_ratio);
-                double I = n.inertia_wr2 / g;
-                double omega_0 = 2.0 * M_PI_ * std::max(1.0, n.speed_rpm) / 60.0;
-                double denom = I * omega_0;
-                double ds = 0.0;
-                if (denom > 1e-9) {
-                    ds = (-torque_h / denom) * dt_;
+                    // Integrate pump deceleration speed decay if power is lost and pump has inertia (multi-pipe only)
+                    if (!n.has_power && n.inertia_wr2 > 0.0) {
+                        double Q_gpm = Q / GPM_TO_CFS;
+                        double q_ratio = (n.design_flow > 1e-6) ? Q_gpm / n.design_flow : 0.0;
+                        double torque_h = ns.rated_torque_ftlb * (0.5 * s2 + 0.5 * s * q_ratio);
+                        double I = n.inertia_wr2 / g;
+                        double omega_0 = 2.0 * M_PI_ * std::max(1.0, n.speed_rpm) / 60.0;
+                        double denom = I * omega_0;
+                        double ds = 0.0;
+                        if (denom > 1e-9) {
+                            ds = (-torque_h / denom) * dt_;
+                        }
+                        double s_new = std::clamp(s + ds, 0.0, 1.0);
+                        ns.input.current_speed = s_new * 100.0;
+                    }
                 }
-                double s_new = std::clamp(s + ds, 0.0, 1.0);
-                ns.input.current_speed = s_new * 100.0;
-            } else if (!n.has_power) {
-                // Tripped and no inertia: instant stop
-                ns.input.current_speed = 0.0;
             }
 
             break;
@@ -2480,6 +2620,30 @@ double MOCSolver::interpolateElevationAtChainageFt(
         }
     }
     return profile.back().second;
+}
+
+void MOCSolver::getSuterCoefficients(double specific_speed, double theta, double& wh, double& wb) {
+    const SuterTable* table = &SUTER_RADIAL;
+    if (specific_speed <= 2700.0) {
+        table = &SUTER_RADIAL;
+    } else if (specific_speed <= 5500.0) {
+        table = &SUTER_MIXED;
+    } else {
+        table = &SUTER_AXIAL;
+    }
+
+    // Convert theta (radians in [-pi, pi]) to degrees in [0, 360)
+    double theta_deg = theta * 180.0 / M_PI_;
+    while (theta_deg < 0.0) theta_deg += 360.0;
+    while (theta_deg >= 360.0) theta_deg -= 360.0;
+
+    double index_d = theta_deg / 15.0;
+    int idx1 = static_cast<int>(std::floor(index_d)) % 24;
+    int idx2 = (idx1 + 1) % 24;
+    double frac = index_d - std::floor(index_d);
+
+    wh = table->wh[idx1] * (1.0 - frac) + table->wh[idx2] * frac;
+    wb = table->wb[idx1] * (1.0 - frac) + table->wb[idx2] * frac;
 }
 
 void MOCSolver::buildPipeGridElevations(PipeState& ps, const PipeInput& p) const {

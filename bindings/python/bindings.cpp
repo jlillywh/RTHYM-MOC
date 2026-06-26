@@ -390,6 +390,7 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def_readwrite("speed_rpm",        &NodeInput::speed_rpm)
         .def_readwrite("efficiency",       &NodeInput::efficiency)
         .def_readwrite("ramp_time",        &NodeInput::ramp_time)
+        .def_readwrite("specific_speed",   &NodeInput::specific_speed)
         .def_readwrite("current_setting",  &NodeInput::current_setting)
         .def_readwrite("design_head",      &NodeInput::design_head)
         .def_readwrite("design_flow",      &NodeInput::design_flow)
@@ -567,6 +568,11 @@ PYBIND11_MODULE(_rthym_moc, m) {
             "Enable interior-point DVCM on uninterrupted pipe reaches (default off).")
         .def("get_enable_interior_dvcm", &MOCSolver::get_enable_interior_dvcm,
             "Return whether interior-point DVCM is enabled for subsequent run() calls.")
+        .def("set_interpolation_mode", &MOCSolver::set_interpolation_mode,
+            py::arg("enable"),
+            "Enable spatial interpolation-based variable grid MOC solver.")
+        .def("get_interpolation_mode", &MOCSolver::get_interpolation_mode,
+            "Return whether spatial interpolation mode is enabled.")
         .def("set_max_segments_per_pipe", &MOCSolver::set_max_segments_per_pipe,
             py::arg("max_segments"),
             "Cap MOC segments per pipe (0 = uncapped). Minimum 2 segments enforced in initGrid().")
