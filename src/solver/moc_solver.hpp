@@ -40,6 +40,7 @@ enum class NodeType {
     HydropneumaticTank,  // Closed pressurized vessel — polytropic gas + orifice (R-THYM SurgeTank)
     InflowNode,          // Demand node that injects flow (demand sign is negative)
     OutflowNode,         // Standard demand node
+    SurgeReliefValve,    // Self-acting overpressure relief valve
 };
 
 enum class CavitationModel {

@@ -179,7 +179,7 @@ def _get_option(sec: dict, key: str, default: str) -> str:
 # ── [RTHYM] section parser ────────────────────────────────────────────────────
 
 # NodeType strings that map to surge-control components
-_RTHYM_SURGE_TYPES = {"Standpipe", "HydropneumaticTank", "AirValve", "CheckValve", "Pump"}
+_RTHYM_SURGE_TYPES = {"Standpipe", "HydropneumaticTank", "AirValve", "CheckValve", "Pump", "SurgeReliefValve"}
 # Pipe-level [RTHYM] row types (handled separately from node overrides)
 _RTHYM_PIPE_ROW_TYPES = frozenset({"PipeElevation"})
 
