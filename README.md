@@ -641,6 +641,7 @@ node.design_velocity  = 0.0           # ft/s (Turbine; derived from design_flow 
 node.inertia_wr2      = 45.0          # lb·ft² — pump runner & motor rotational inertia
 node.speed_rpm        = 1750.0        # RPM — rated speed of pump or turbine
 node.efficiency       = 0.80          # 0.0 to 1.0 — pump or turbine BEP efficiency
+node.specific_speed   = 1800.0        # gpm, ft — US pump specific speed (Radial/Mixed/Axial lookup)
 node.closure_time     = 0.03          # s — CheckValve exponential close time (default 0.03)
 node.closure_damping  = 0.0           # dimensionless CheckValve damping (optional)
 node.flipped          = False         # CheckValve: reverse installed direction
