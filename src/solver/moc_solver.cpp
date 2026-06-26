@@ -25,6 +25,7 @@
 #include <numeric>
 #include <stdexcept>
 #include <sstream>
+#include <iostream>
 
 namespace rthym {
 
@@ -45,6 +46,7 @@ NodeType parseNodeType(const std::string& s) {
     if (s == "HydropneumaticTank")  return NodeType::HydropneumaticTank;
     if (s == "InflowNode")          return NodeType::InflowNode;
     if (s == "OutflowNode")         return NodeType::OutflowNode;
+    if (s == "SurgeReliefValve" || s == "SRV") return NodeType::SurgeReliefValve;
     return NodeType::Junction;
 }
 
@@ -64,6 +66,7 @@ std::string nodeTypeToStr(NodeType t) {
         case NodeType::HydropneumaticTank:  return "HydropneumaticTank";
         case NodeType::InflowNode:          return "InflowNode";
         case NodeType::OutflowNode:         return "OutflowNode";
+        case NodeType::SurgeReliefValve:    return "SurgeReliefValve";
         default:                            return "Junction";
     }
 }
@@ -539,6 +542,8 @@ double MOCSolver::getInitialHead(const NodeState& ns) const {
             // During initGrid the pipeline head at the connection == n.head
             // (steady state: no orifice pressure drop).
             return n.head;
+        case NodeType::SurgeReliefValve:
+            return n.head;
         default:
             // For Junction / InflowNode / OutflowNode the user supplies the
             // initial piezometric head via NodeInput::head (ft HGL, not psi).
@@ -614,6 +619,9 @@ void MOCSolver::initGrid() {
             } else {
                 ns.gas_constant = 0.0;
             }
+        }
+        if (ns.input.type == NodeType::SurgeReliefValve) {
+            ns.valve_position = 0.0; // Starts closed
         }
         if (ns.input.type == NodeType::Pump) {
             double q_d = ns.input.design_flow;
@@ -1475,6 +1483,79 @@ void MOCSolver::stepMOC() {
             }
             ns.gas_pressure_psi = (H_abs - 33.9) * 0.433;
             ns.actual_demand = n.demand;
+            break;
+        }
+
+        case NodeType::SurgeReliefValve: {
+            double sum_AB = 0.0;
+            double sum_AB_C = 0.0;
+            for (int pi : in_pipes) {
+                const double AB = bndry[pi].area / bndry[pi].B;
+                sum_AB_C += AB * bndry[pi].C_P;
+                sum_AB   += AB;
+            }
+            for (int pi : out_pipes) {
+                const double AB = bndry[pi].area / bndry[pi].B;
+                sum_AB_C += AB * bndry[pi].C_M;
+                sum_AB   += AB;
+            }
+            if (sum_AB < 1e-12) break; // isolated node — skip
+
+            const double Q_dem = n.demand * GPM_TO_CFS;
+            const double H_junc = (sum_AB_C - Q_dem) / sum_AB;
+            const double H_trigger = n.head;
+
+            // Check trigger condition (opens when H_junc > H_trigger)
+            if (ns.valve_position < 1e-6) {
+                if (H_junc > H_trigger) {
+                    ns.valve_position = 1.0; // opens instantly
+                }
+            }
+
+            double H_P = H_junc;
+            double Q_srv = 0.0;
+
+            if (ns.valve_position > 1e-6) {
+                // Valve is open — solve orifice equation:
+                //   Q_srv = Cd * A_srv * sqrt(2g * (H_P - elevation))
+                // Let C_orifice = Cd * A_srv * sqrt(2g)
+                // Let X = sqrt(H_P - elevation) >= 0.
+                // Solve quadratic: S_AB * X^2 + C_orifice * X + (S_AB * elevation - S_AB_C + Q_dem) = 0
+                const double d_ft = n.diameter / 12.0;
+                const double A_srv = M_PI_ * (d_ft / 2.0) * (d_ft / 2.0);
+                const double Cd = (n.loss_coeff_out > 1e-6) ? n.loss_coeff_out : 0.6;
+                const double C_orifice = Cd * A_srv * std::sqrt(2.0 * G_FT_S2);
+
+                const double coeff_A = sum_AB;
+                const double coeff_B = C_orifice;
+                const double coeff_C = sum_AB * n.elevation - sum_AB_C + Q_dem;
+
+                double disc = coeff_B * coeff_B - 4.0 * coeff_A * coeff_C;
+                if (disc >= 0.0) {
+                    double X = (-coeff_B + std::sqrt(disc)) / (2.0 * coeff_A);
+                    if (X >= 0.0) {
+                        H_P = X * X + n.elevation;
+                        Q_srv = C_orifice * X;
+                    }
+                }
+
+                // Check reclosing condition
+                if (H_P <= H_trigger) {
+                    ns.valve_position = 0.0; // closes
+                    H_P = H_junc;
+                    Q_srv = 0.0;
+                }
+            }
+
+            for (int pi : in_pipes) {
+                set_downstream(pi, H_P);
+            }
+            for (int pi : out_pipes) {
+                set_upstream(pi, H_P);
+            }
+
+            ns.actual_demand = n.demand + Q_srv / GPM_TO_CFS;
+            ns.tank_flow_gpm = Q_srv / GPM_TO_CFS;
             break;
         }
 
