@@ -46,7 +46,7 @@ library for research, design studies, and automated validation.
 
 ## Overview
 
-RTHYM-MOC solves the 1-D water-hammer equations using the Method of Characteristics with a fixed Courant number of 1.
+RTHYM-MOC solves the 1-D water-hammer equations using the Method of Characteristics, supporting both standard wave-speed adjustment (fixed Courant number of 1) and spatial linear interpolation (variable Courant numbers less than or equal to 1).
 
 ### Key characteristics:
 
@@ -1802,11 +1802,17 @@ See `examples/load_from_inp.py` for a complete worked example. Import fidelity d
 
 The solver implements the **fixed-grid, elastic Method of Characteristics** (Wylie & Streeter 1993; Chaudhry 2014).
 
-**Grid setup.**  For each pipe of length $L$, the number of spatial segments is
+**Grid setup.**  By default, for each pipe of length $L$, the number of spatial segments is
 
 $$N = \text{round}\!\left(\frac{L}{a \cdot \Delta t}\right)$$
 
 and the wave speed is adjusted to $a_\text{adj} = L / (N \cdot \Delta t)$ to enforce Courant number $= 1$ exactly.
+
+Alternatively, if **spatial linear interpolation** is enabled (`set_interpolation_mode(True)`), the number of spatial segments is:
+
+$$N = \left\lfloor \frac{L}{a \cdot \Delta t} \right\rfloor$$
+
+In this mode, the wave speed is kept at the design value ($a_\text{adj} = a$), and values at the foot of the characteristic lines are interpolated using the segment Courant number $Cr = a \cdot \Delta t / \Delta x \le 1$. If $L < a \cdot \Delta t$, the pipe is discretized into exactly 1 segment and its wave speed is scaled down to $a_\text{adj} = L / \Delta t$ ($Cr = 1.0$) as a fallback.
 
 **Interior nodes.**  At each interior node $j$ the $C^+$ and $C^-$ characteristics give:
 
