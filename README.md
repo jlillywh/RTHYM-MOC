@@ -670,7 +670,7 @@ node.loss_coeff_out   = 0.7           # C_d orifice coefficient for outflow / ai
 | `"PSV"` | Pressure sustaining — holds upstream `head` setpoint (ft HGL) when regulating | `head`, `diameter` |
 | `"PBV"` | Pressure breaker — maintains differential head `head` (ft) across the valve | `head`, `diameter` |
 | `"Turbine"` | Quadratic loss (design-curve K) | `current_setting`, `design_velocity`, `diameter` |
-| `"Pump"` | Three-coefficient affinity curve | `current_speed`, `has_power`, `design_head`, `design_flow` |
+| `"Pump"` | Four-quadrant Suter curve (Radial/Mixed/Axial) or 3-coefficient affinity curve (multi-pipe fallback) | `current_speed`, `command_speed`, `has_power`, `design_head`, `design_flow`, `inertia_wr2`, `speed_rpm`, `efficiency`, `specific_speed`, `ramp_time` |
 | `"Standpipe"` | Open free-surface surge tank (level tracked each step) | `head`, `tank_area` |
 | `"HydropneumaticTank"` | Closed pressurised vessel; gas follows polytropic law | `head`, `diameter`, `gas_volume`, `tank_volume`, `polytropic_n`, `loss_coeff_in`, `loss_coeff_out` |
 
@@ -738,6 +738,11 @@ where $K_f$ is the bulk modulus of water, $E$ is `youngs_modulus`, $D$ is the pi
 
 The solver automatically adjusts the wave speed so that $a_\text{adj} = L / (N_\text{segs} \cdot dt)$ exactly (Courant = 1), where $N_\text{segs} = \text{round}(L / (a \cdot dt))$.
 
+Alternatively, **spatial linear interpolation** can be enabled using `solver.set_interpolation_mode(True)`. When enabled:
+- The design wave speed is kept unchanged ($a_\text{adj} = a$), eliminating numerical wave speed distortion.
+- The solver uses spatial linear interpolation to evaluate characteristics at the foot of characteristic lines where the segment Courant number $Cr = a \cdot dt / dx_\text{grid} \le 1$.
+- For pipes shorter than $a \cdot dt$, a hybrid fallback discretizes the pipe into exactly 1 segment and scales down the wave speed ($a_\text{adj} = L / dt$), keeping the simulation stable without requiring global timestep restrictions.
+
 ### MOCSolver
 
 ```python
@@ -768,6 +773,8 @@ solver = rthym_moc.MOCSolver()
 | `solver.get_cavitation_model()` | Return the current cavitation model. |
 | `solver.set_enable_interior_dvcm(enable)` | Persistently enable/disable interior-point DVCM (default `False`). |
 | `solver.get_enable_interior_dvcm()` | Return whether interior DVCM is enabled. |
+| `solver.set_interpolation_mode(enable)` | Enable/disable spatial linear interpolation (instead of wave-speed adjustment). |
+| `solver.get_interpolation_mode()` | Return whether interpolation mode is enabled. |
 | `solver.set_grid_policy(...)` | Configure long-pipe grid cap and wave-speed distortion limits (see below). |
 | `solver.get_grid_report(dt)` | Build the MOC grid for `dt` and return Courant metadata without time integration (see below). |
 | `solver.get_grid_distortion_warning()` | Return the distortion-policy message from the last `run()` or `get_grid_report()`. |
@@ -1523,9 +1530,33 @@ For transient cases such as pump power failure (trip) or turbine grid disconnect
   - If `inertia_wr2 > 0.0`, the speed is integrated step-by-step.
 
 ### Pump Deceleration
-When power is lost on a pump with inertia, the deceleration rate is governed by the torque-speed dynamics:
 
-$$\Delta s = \frac{-T_h}{I \cdot \omega_0} \cdot \Delta t$$
+When power is lost on a pump with inertia (`has_power = False`, `inertia_wr2 > 0.0`), the transient deceleration is modeled based on the pump configuration:
+
+#### 1. Standard Inline Pumps (1 Inlet, 1 Outlet Pipe)
+Inline pumps use a **dimensionless four-quadrant Suter curve model** representing complete pump characteristics (Radial, Mixed, or Axial types selected by `specific_speed`):
+- Dimensionless head: $h(\theta) = (\alpha^2 + v^2) W_H(\theta)$
+- Dimensionless torque: $\beta(\theta) = (\alpha^2 + v^2) W_B(\theta)$
+
+where $\theta = \text{atan2}(v, \alpha)$, $v = Q / Q_D$, and $\alpha = N / N_{\text{rated}}$ (speed ratio).
+
+The deceleration is solved simultaneously with the MOC compatibility equation at each time step using a 2D Newton-Raphson formulation for flow $Q$ and speed ratio $\alpha$:
+- Pipeline compatibility: $-C_{eq} + B_{eq} Q - H_D h(\theta) = 0$
+- Rotational dynamics: $\alpha - \alpha_t + C_I \beta(\theta) = 0$
+
+where:
+- $C_I = \frac{T_{\text{rated}} \cdot \Delta t}{I \cdot \omega_D}$
+- $I = WR^2 / g$ is the polar moment of inertia (slug·ft²), with $WR^2$ being the rotational inertia `inertia_wr2` (lb·ft²)
+- $\omega_D = 2\pi \cdot N_{\text{rated}} / 60$ is the rated angular velocity (rad/s)
+- $T_{\text{rated}}$ is the rated BEP torque (ft·lb):
+  $$T_{\text{rated}} = \frac{5252.0 \cdot \text{BHP}_d}{N_{\text{rated}}}$$
+  $$\text{BHP}_d = \frac{Q_d \cdot H_d}{\eta \cdot 3960.0}$$
+  with $Q_d$ = `design_flow` (GPM), $H_d$ = `design_head` (ft), and $\eta$ = `efficiency`.
+
+#### 2. Multi-Pipe Pumps / Fallback Setup
+For pumps connected to more than two pipes (e.g. multiple inlet/outlet branches), the solver falls back to a **three-coefficient affinity curve** model. In this setup, the deceleration rate is integrated explicitly at each step:
+
+$$\Delta s = \frac{-T_h}{I \cdot \omega_D} \cdot \Delta t$$
 $$s_{\text{new}} = \text{clamp}(s + \Delta s, 0.0, 1.0)$$
 
 where:
@@ -1533,7 +1564,7 @@ where:
 - $T_h$ is the hydraulic resistance torque (ft·lb), modeled as:
   $$T_h = T_{\text{rated}} \cdot (0.5 \cdot s^2 + 0.5 \cdot s \cdot q_{\text{ratio}})$$
 - $q_{\text{ratio}} = Q_{\text{gpm}} / Q_{\text{design}}$
-- $\omega_0 = 2\pi \cdot N_{\text{rated}} / 60$ is the rated angular velocity (rad/s)
+- $\omega_D = 2\pi \cdot N_{\text{rated}} / 60$ is the rated angular velocity (rad/s)
 - $I = WR^2 / g$ is the moment of inertia (slug·ft²), with $WR^2$ being the rotational inertia `inertia_wr2` (lb·ft²)
 
 ### Turbine Startup & Runaway Dynamics
