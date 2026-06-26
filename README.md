@@ -673,6 +673,7 @@ node.loss_coeff_out   = 0.7           # C_d orifice coefficient for outflow / ai
 | `"Pump"` | Four-quadrant Suter curve (Radial/Mixed/Axial) or 3-coefficient affinity curve (multi-pipe fallback) | `current_speed`, `command_speed`, `has_power`, `design_head`, `design_flow`, `inertia_wr2`, `speed_rpm`, `efficiency`, `specific_speed`, `ramp_time` |
 | `"Standpipe"` | Open free-surface surge tank (level tracked each step) | `head`, `tank_area` |
 | `"HydropneumaticTank"` | Closed pressurised vessel; gas follows polytropic law | `head`, `diameter`, `gas_volume`, `tank_volume`, `polytropic_n`, `loss_coeff_in`, `loss_coeff_out` |
+| `"SurgeReliefValve"` (or `"SRV"`) | Dynamic overpressure relief valve (opens above trigger HGL, recloses below it) | `elevation`, `head` (trigger HGL), `diameter` (orifice size, inches), `loss_coeff_out` (Cd, default 0.6) |
 
 For `"Tank"`, prefer setting `head` directly. The `level` field is retained for
 compatibility with older code paths and is derived from `head` and `max_level`
@@ -1516,6 +1517,31 @@ solver.add_node(hpt)
 **Vessel Limits (Option C Clamping)**: To prevent physically impossible states (such as a negative gas volume or a gas pocket exceeding the total vessel size), the solver automatically clamps the net flow to zero when the tank becomes completely flooded ($V_g \le 0$) or completely dry ($V_g \ge V_{tank}$). The connection node head is dynamically calculated based on the clamped flow.
 
 **Design guidance**: pre-charge the vessel so that `gas_volume / tank_volume` ≈ 0.33–0.50 at the steady-state operating pressure.  Separate `loss_coeff_in` and `loss_coeff_out` values allow modelling of a throttle or riser dip tube that damps re-filling surges more aggressively than the initial discharge.
+
+### SurgeReliefValve (surge relief valve / SRV)
+
+A dynamic overpressure protection branch device. When local HGL pressure exceeds a configured trigger value, the valve opens and discharges fluid to the atmosphere using standard orifice hydraulics. When the pressure wave retreats and HGL falls below the trigger value, the valve closes.
+
+```python
+srv = rthym_moc.NodeInput()
+srv.id             = "SRV1"
+srv.type           = "SurgeReliefValve" # or "SRV"
+srv.elevation      = 10.0      # ft — discharge elevation (datum)
+srv.head           = 150.0     # ft — trigger head threshold (ft HGL)
+srv.diameter       = 1.5       # inches — orifice diameter
+srv.loss_coeff_out = 0.6       # C_d — discharge orifice coefficient (default 0.6)
+solver.add_node(srv)
+```
+
+**Dynamics & Mathematical Model**:
+The valve's state is monitored via `valve_position` (which is `0.0` when closed and `1.0` when open).
+1. When closed, if the computed junction head $H_{\text{junc}} > H_{\text{trigger}}$, the valve opens.
+2. When open, the venting orifice flow rate $Q_{\text{srv}}$ is solved analytically by combining the MOC compatibility equations with the orifice flow equation:
+   $$Q_{\text{srv}} = C_d A_{\text{srv}} \sqrt{2g (H_P - Z_{\text{elev}})}$$
+   where $A_{\text{srv}} = \pi (D / 2)^2$. This yields a quadratic equation in $X = \sqrt{H_P - Z_{\text{elev}}}$:
+   $$S_{AB} X^2 + C_{\text{orifice}} X + (S_{AB} Z_{\text{elev}} - S_{AB, C} + Q_{\text{demand}}) = 0$$
+   where $C_{\text{orifice}} = C_d A_{\text{srv}} \sqrt{2g}$. The solver computes the positive root $X$ to find the dynamic boundary head $H_P$ and venting flow rate $Q_{\text{srv}}$.
+3. If $H_P \le H_{\text{trigger}}$ or no positive root exists, the valve recloses (`valve_position` goes back to `0.0`).
 
 ---
 

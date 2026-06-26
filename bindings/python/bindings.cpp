@@ -319,7 +319,7 @@ PYBIND11_MODULE(_rthym_moc, m) {
                     "Valve", "Turbine", "Pump",
                     "Standpipe" (open surge tank — R-THYM SurgeControl),
                     "HydropneumaticTank" (closed pressurized vessel — R-THYM SurgeTank),
-                    "InflowNode", "OutflowNode"
+                    "InflowNode", "OutflowNode", "SurgeReliefValve" (or "SRV")
         elevation : float, ft
         head : float, ft
             For Tank/PressureBoundary: HGL.
