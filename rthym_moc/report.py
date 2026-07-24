@@ -6,14 +6,27 @@ from __future__ import annotations
 
 import csv
 import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping, TypedDict
+from typing import Any, TypedDict
 
 import numpy as np
 
 from . import PSI_TO_FT
-from .acceptance import CheckResults, run_acceptance_checks, ViolationDetail, format_acceptance_report
-from .units import FT_TO_M, FTS_TO_MS, GPM_TO_M3S, PSI_TO_KPA, length_m_to_ft, pressure_psi_to_kpa
+from .acceptance import (
+    CheckResults,
+    ViolationDetail,
+    format_acceptance_report,
+    run_acceptance_checks,
+)
+from .units import (
+    FT_TO_M,
+    FTS_TO_MS,
+    GPM_TO_M3S,
+    PSI_TO_KPA,
+    length_m_to_ft,
+    pressure_psi_to_kpa,
+)
 
 
 class Extrema(TypedDict):

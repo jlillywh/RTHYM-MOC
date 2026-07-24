@@ -8,8 +8,9 @@ insert an ``AirValve`` junction node reusing the existing compressible air model
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any
 
 from ._rthym_moc import MOCSolver, NodeInput, PipeInput
 

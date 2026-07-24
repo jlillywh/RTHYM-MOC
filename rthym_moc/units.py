@@ -15,7 +15,15 @@ from typing import Any
 
 import numpy as np
 
-from ._rthym_moc import CavitationModel, ControlRuleInput, ControlType, MOCSolver, NodeInput, PipeInput, TransientFrictionModel
+from ._rthym_moc import (
+    CavitationModel,
+    ControlRuleInput,
+    ControlType,
+    MOCSolver,
+    NodeInput,
+    PipeInput,
+    TransientFrictionModel,
+)
 
 TimeSeriesSchedule = Sequence[tuple[float, float]]
 
