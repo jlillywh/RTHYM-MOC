@@ -23,7 +23,7 @@ classifiers = [
 [project.optional-dependencies]
 inp  = [
     # wntr still imports pkg_resources (removed in setuptools>=82)
-    "setuptools>=65,<83",
+    "setuptools>=65,<84",
     "wntr>=0.4,<1.4; python_version < '3.10'",
     "wntr>=0.4; python_version >= '3.10'",
 ]
@@ -35,7 +35,7 @@ dev  = [
     "pre-commit",
     "numpy",
     "matplotlib",
-    "setuptools>=65,<83",
+    "setuptools>=65,<84",
 ]
 docs = ["sphinx", "numpydoc"]
 benchmark = [
@@ -46,7 +46,7 @@ benchmark = [
     "tqdm",
     "numba",
     "numpy<3",
-    "setuptools<83",
+    "setuptools<84",
 ]
 
 [project.urls]
