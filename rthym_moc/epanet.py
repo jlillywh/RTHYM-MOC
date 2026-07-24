@@ -369,7 +369,7 @@ def _parse_curves(sec: dict) -> dict[str, list[tuple[float, float]]]:
         except ValueError:
             continue
         curves.setdefault(row[0], []).append((x, y))
-    for _cid, points in curves.items():
+    for points in curves.values():
         points.sort()
     return curves
 
