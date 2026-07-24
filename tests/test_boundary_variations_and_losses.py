@@ -100,10 +100,19 @@ def _run_usf_case(k_bru, usf_tau):
     return solver.run(total_time=USF_TOTAL_TIME_S, dt=DT_S, p_vapor_psi=-14.0, usf_tau=usf_tau, k_bru=k_bru)
 
 
-def _run_valve_loss_case(setting_pct):
+def _run_valve_loss_case(setting_pct, k_open=0.0):
     solver = m.MOCSolver()
     solver.add_node(_make_node("R1", "PressureBoundary", head=150.0))
-    solver.add_node(_make_node("V1", "Valve", diameter=12.0, current_setting=setting_pct, head=148.0))
+    solver.add_node(
+        _make_node(
+            "V1",
+            "Valve",
+            diameter=12.0,
+            current_setting=setting_pct,
+            head=148.0,
+            k_open=k_open,
+        )
+    )
     solver.add_node(_make_node("R2", "PressureBoundary", head=120.0))
     solver.add_pipe(_make_pipe("P1", "R1", "V1", 1000.0, 800.0))
     solver.add_pipe(_make_pipe("P2", "V1", "R2", 100.0, 800.0))
@@ -355,6 +364,23 @@ def test_stronger_valve_local_loss_reduces_flow_and_raises_upstream_head():
     )
     assert throttled_valve_head_ft - open_valve_head_ft >= 20.0, (
         f"Expected the stronger valve loss to raise upstream valve-node head by at least 20 ft, got {throttled_valve_head_ft - open_valve_head_ft:.2f} ft"
+    )
+
+def test_valve_k_open_adds_residual_fully_open_loss():
+    """k_open > 0 should leave residual loss at 100% open versus legacy k_open=0."""
+    baseline = _run_valve_loss_case(setting_pct=100.0, k_open=0.0)
+    with_k = _run_valve_loss_case(setting_pct=100.0, k_open=0.5)
+    time_s = np.asarray(baseline["time"])
+    baseline_flow_gpm = _mean_over_window(time_s, baseline["pipe_flow_gpm"]["P1"], 0.5, 1.5)
+    with_k_flow_gpm = _mean_over_window(time_s, with_k["pipe_flow_gpm"]["P1"], 0.5, 1.5)
+    baseline_valve_head_ft = _mean_over_window(time_s, baseline["node_head"]["V1"], 0.5, 1.5)
+    with_k_valve_head_ft = _mean_over_window(time_s, with_k["node_head"]["V1"], 0.5, 1.5)
+
+    assert baseline_flow_gpm > with_k_flow_gpm, (
+        f"Expected k_open=0.5 to reduce flow vs k_open=0, got {baseline_flow_gpm:.2f} vs {with_k_flow_gpm:.2f} GPM"
+    )
+    assert with_k_valve_head_ft > baseline_valve_head_ft, (
+        f"Expected k_open=0.5 to raise upstream valve head vs k_open=0, got {with_k_valve_head_ft:.2f} vs {baseline_valve_head_ft:.2f} ft"
     )
 
 

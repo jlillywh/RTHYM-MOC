@@ -61,6 +61,7 @@ class NodeInput:
     current_setting: float
     design_head: float
     design_flow: float
+    k_open: float
     diameter: float
     air_release_head: float
     air_release_diameter: float

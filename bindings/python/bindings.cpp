@@ -338,6 +338,8 @@ PYBIND11_MODULE(_rthym_moc, m) {
         current_setting : float, % open   (Valve / Turbine)
         design_head : float, ft   (Pump BEP head)
         design_flow : float, GPM  (Pump BEP flow)
+        k_open : float
+            Valve residual fully-open loss coefficient (0 = legacy).
         diameter : float, inches
             Valve/Turbine: orifice diameter.
             HydropneumaticTank: connection orifice diameter.
@@ -394,6 +396,7 @@ PYBIND11_MODULE(_rthym_moc, m) {
         .def_readwrite("current_setting",  &NodeInput::current_setting)
         .def_readwrite("design_head",      &NodeInput::design_head)
         .def_readwrite("design_flow",      &NodeInput::design_flow)
+        .def_readwrite("k_open",           &NodeInput::k_open)
         .def_readwrite("diameter",         &NodeInput::diameter)
         .def_readwrite("air_release_head", &NodeInput::air_release_head)
         .def_readwrite("air_release_diameter", &NodeInput::air_release_diameter)
