@@ -1,10 +1,8 @@
-from __future__ import annotations
 
 from typing import TypedDict
 
 import numpy as np
 from numpy.typing import NDArray
-
 
 class _SimResultsRequired(TypedDict):
     time: NDArray[np.float64]

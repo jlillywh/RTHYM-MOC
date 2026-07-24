@@ -8,8 +8,9 @@ insert an ``AirValve`` junction node reusing the existing compressible air model
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any
 
 from ._rthym_moc import MOCSolver, NodeInput, PipeInput
 
@@ -266,7 +267,7 @@ def attach_air_valve_at_chainage(
     if pipe_id not in network.pipes:
         raise ValueError(f"Unknown pipe id '{pipe_id}'")
     pipe = network.pipes[pipe_id]
-    valve_id = valve_node_id or f"{pipe_id}_av_{int(round(chainage_ft))}"
+    valve_id = valve_node_id or f"{pipe_id}_av_{round(chainage_ft)}"
     split = split_pipe_at_chainage(
         pipe,
         network.nodes,

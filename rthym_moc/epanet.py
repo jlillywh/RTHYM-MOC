@@ -59,7 +59,7 @@ from __future__ import annotations
 import math
 import os
 import warnings
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from . import MOCSolver
@@ -152,7 +152,7 @@ def _parse_inp(path: str) -> dict[str, list[list[str]]]:
     file remains fully valid EPANET .inp format.
     """
     sections: dict[str, list[list[str]]] = {}
-    current: Optional[str] = None
+    current: str | None = None
     with open(path, encoding="utf-8", errors="replace") as fh:
         for raw in fh:
             line = raw.split(";")[0].strip()
@@ -369,8 +369,8 @@ def _parse_curves(sec: dict) -> dict[str, list[tuple[float, float]]]:
         except ValueError:
             continue
         curves.setdefault(row[0], []).append((x, y))
-    for cid in curves:
-        curves[cid].sort()
+    for points in curves.values():
+        points.sort()
     return curves
 
 
@@ -616,9 +616,9 @@ def load_inp(
     path: str,
     *,
     use_wntr: bool = True,
-    initial_flows: Optional[dict[str, float]] = None,
-    initial_heads: Optional[dict[str, float]] = None,
-    stub_length_ft: Optional[float] = None,
+    initial_flows: dict[str, float] | None = None,
+    initial_heads: dict[str, float] | None = None,
+    stub_length_ft: float | None = None,
 ) -> MOCSolver:
     """Read an EPANET .inp file and return a configured :class:`MOCSolver`.
 
@@ -1134,9 +1134,8 @@ def load_inp(
                 override_node.closure_time = params["closure_time"]
             if "flipped" in params:
                 override_node.flipped = bool(params["flipped"])
-        elif ntype == "Pump":
-            if "ramp_time" in params:
-                override_node.ramp_time = params["ramp_time"]
+        elif ntype == "Pump" and "ramp_time" in params:
+            override_node.ramp_time = params["ramp_time"]
 
     # ── Assemble solver ────────────────────────────────────────────────────────
     solver = MOCSolver()
@@ -1178,9 +1177,9 @@ def load_inp_si(
     path: str,
     *,
     use_wntr: bool = True,
-    initial_flows_m3s: Optional[dict[str, float]] = None,
-    initial_heads_m: Optional[dict[str, float]] = None,
-    stub_length_m: Optional[float] = None,
+    initial_flows_m3s: dict[str, float] | None = None,
+    initial_heads_m: dict[str, float] | None = None,
+    stub_length_m: float | None = None,
 ) -> MOCSolver:
     """Read an EPANET ``.inp`` file and return a configured :class:`MOCSolver`.
 
