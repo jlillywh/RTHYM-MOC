@@ -101,6 +101,7 @@ struct NodeInput {
     // Valve / Turbine fields
     double  current_setting     = 100.0; // % open (100 = fully open)
     double  diameter            = 8.0;   // inches (valve orifice / turbine runner)
+    double  k_open              = 0.0;   // residual fully-open loss K (Valve; 0 = legacy zero loss at 100%)
     double  design_velocity     = 0.0;   // ft/s  (Turbine; computed from design_flow if 0)
     double  air_release_head    = 0.0;   // ft above elevation where AirValve vent is referenced (default = atmosphere)
     double  air_release_diameter = 0.25; // inches (AirValve small-orifice release port)

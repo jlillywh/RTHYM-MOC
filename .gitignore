@@ -43,3 +43,11 @@ tests/Valve Water Hammer Benchmark.inp
 .coverage
 coverage.xml
 examples/notebook_outputs/
+
+# local build / tooling junk
+build_manual_*/
+compiler_env/
+myenv/
+get-pip.py
+test_out.log
+0

@@ -103,6 +103,7 @@ EMSCRIPTEN_BINDINGS(rthym_moc) {
         .property("current_setting", &NodeInput::current_setting)
         .property("design_head", &NodeInput::design_head)
         .property("design_flow", &NodeInput::design_flow)
+        .property("k_open", &NodeInput::k_open)
         .property("diameter", &NodeInput::diameter)
         .property("air_release_head", &NodeInput::air_release_head)
         .property("air_release_diameter", &NodeInput::air_release_diameter)
