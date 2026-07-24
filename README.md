@@ -199,41 +199,56 @@ It validates the binding contract only, not a downstream application integration
 import numpy as np
 import rthym_moc
 
+# NodeInput / PipeInput take no constructor kwargs — create, then set fields.
+
 # ── 1. Build network topology ─────────────────────────────────────────────────
 solver = rthym_moc.MOCSolver()
 
 # Upstream constant-head reservoir
-solver.add_node(rthym_moc.NodeInput(
-    id="R1", type="PressureBoundary",
-    elevation=0.0, head=150.0          # ft HGL
-))
+r1 = rthym_moc.NodeInput()
+r1.id = "R1"
+r1.type = "PressureBoundary"
+r1.elevation = 0.0
+r1.head = 150.0          # ft HGL
+solver.add_node(r1)
 
 # Inline valve (fully open at t=0, will be slammed shut)
-solver.add_node(rthym_moc.NodeInput(
-    id="V1", type="Valve",
-    elevation=0.0, diameter=12.0,      # inches
-    current_setting=0.0                # % open (0 = slammed shut at t=0)
-))
+v1 = rthym_moc.NodeInput()
+v1.id = "V1"
+v1.type = "Valve"
+v1.elevation = 0.0
+v1.diameter = 12.0       # inches
+v1.current_setting = 0.0 # % open (0 = slammed shut at t=0)
+solver.add_node(v1)
 
 # Downstream reservoir
-solver.add_node(rthym_moc.NodeInput(
-    id="R2", type="PressureBoundary",
-    elevation=0.0, head=0.0
-))
+r2 = rthym_moc.NodeInput()
+r2.id = "R2"
+r2.type = "PressureBoundary"
+r2.elevation = 0.0
+r2.head = 0.0
+solver.add_node(r2)
 
 # Pipe: 3000 ft, 12-inch diameter, Hazen-Williams C = 130
-solver.add_pipe(rthym_moc.PipeInput(
-    id="P1",
-    from_node="R1", to_node="V1",
-    length=3000.0, diameter=12.0,
-    roughness=130.0, flow_gpm=500.0    # initial steady-state flow
-))
-solver.add_pipe(rthym_moc.PipeInput(
-    id="P2",
-    from_node="V1", to_node="R2",
-    length=100.0, diameter=12.0,
-    roughness=130.0, flow_gpm=500.0
-))
+p1 = rthym_moc.PipeInput()
+p1.id = "P1"
+p1.from_node = "R1"
+p1.to_node = "V1"
+p1.length = 3000.0
+p1.diameter = 12.0
+p1.roughness = 130.0
+p1.flow_gpm = 500.0      # initial steady-state flow
+solver.add_pipe(p1)
+
+p2 = rthym_moc.PipeInput()
+p2.id = "P2"
+p2.from_node = "V1"
+p2.to_node = "R2"
+p2.length = 100.0
+p2.diameter = 12.0
+p2.roughness = 130.0
+p2.flow_gpm = 500.0
+solver.add_pipe(p2)
 
 # ── 2. Run transient simulation ───────────────────────────────────────────────
 results = solver.run(
@@ -277,8 +292,20 @@ import rthym_moc as m
 L_FT = 5.0 * 5280.0  # 5 miles
 
 solver = m.MOCSolver()
-solver.add_node(m.NodeInput(id="R1", type="PressureBoundary", elevation=200.0, head=520.0))
-solver.add_node(m.NodeInput(id="R2", type="PressureBoundary", elevation=150.0, head=520.0))
+
+r1 = m.NodeInput()
+r1.id = "R1"
+r1.type = "PressureBoundary"
+r1.elevation = 200.0
+r1.head = 520.0
+solver.add_node(r1)
+
+r2 = m.NodeInput()
+r2.id = "R2"
+r2.type = "PressureBoundary"
+r2.elevation = 150.0
+r2.head = 520.0
+solver.add_node(r2)
 
 pipe = m.PipeInput()
 pipe.id = "Pmain"

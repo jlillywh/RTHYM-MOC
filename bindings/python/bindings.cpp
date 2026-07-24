@@ -4,18 +4,21 @@
 // Author: Jason Lillywhite <jason@lillywhitewater.com>
 // PyBind11 Python bindings for the rthym MOC solver.
 //
-// Python API example:
+// Python API example (NodeInput / PipeInput: default ctor, then set fields):
 //
 //   import rthym_moc
 //
 //   solver = rthym_moc.MOCSolver()
-//   solver.add_node(rthym_moc.NodeInput(id="R1", type="Tank",
-//                                        elevation=0.0, head=100.0))
-//   solver.add_node(rthym_moc.NodeInput(id="J1", type="Junction",
-//                                        elevation=50.0, demand=100.0))
-//   solver.add_pipe(rthym_moc.PipeInput(id="P1", from_node="R1", to_node="J1",
-//                                        length=2000.0, diameter=12.0,
-//                                        roughness=130.0, flow_gpm=200.0))
+//   r1 = rthym_moc.NodeInput()
+//   r1.id = "R1"; r1.type = "Tank"; r1.elevation = 0.0; r1.head = 100.0
+//   solver.add_node(r1)
+//   j1 = rthym_moc.NodeInput()
+//   j1.id = "J1"; j1.type = "Junction"; j1.elevation = 50.0; j1.demand = 100.0
+//   solver.add_node(j1)
+//   p1 = rthym_moc.PipeInput()
+//   p1.id = "P1"; p1.from_node = "R1"; p1.to_node = "J1"
+//   p1.length = 2000.0; p1.diameter = 12.0; p1.roughness = 130.0; p1.flow_gpm = 200.0
+//   solver.add_pipe(p1)
 //   results = solver.run(total_time=10.0, dt=0.01)
 //
 //   import numpy as np
