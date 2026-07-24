@@ -215,13 +215,14 @@ r1.elevation = 0.0
 r1.head = 150.0          # ft HGL
 solver.add_node(r1)
 
-# Inline valve (fully open at t=0, will be slammed shut)
+# Inline TCV — same idea as R-THYM: Initial Opening 100%, then a rapid closure
+# event/schedule (do not start at 0%; that is already closed, not a slam).
 v1 = rthym_moc.NodeInput()
 v1.id = "V1"
 v1.type = "Valve"
 v1.elevation = 0.0
 v1.diameter = 12.0       # inches
-v1.current_setting = 0.0 # % open (0 = slammed shut at t=0)
+v1.current_setting = 100.0  # % open at t = 0 (steady flowing)
 solver.add_node(v1)
 
 # Downstream reservoir
@@ -252,6 +253,9 @@ p2.diameter = 12.0
 p2.roughness = 130.0
 p2.flow_gpm = 500.0
 solver.add_pipe(p2)
+
+# Rapid closure schedule (R-THYM: valve closure event / stroke ≈ one MOC step)
+solver.set_valve_schedule("V1", [(0.0, 100.0), (0.01, 0.0)])
 
 # ── 2. Run transient simulation ───────────────────────────────────────────────
 results = solver.run(
