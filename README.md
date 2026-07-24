@@ -215,8 +215,7 @@ r1.elevation = 0.0
 r1.head = 150.0          # ft HGL
 solver.add_node(r1)
 
-# Inline TCV — same idea as R-THYM: Initial Opening 100%, then a rapid closure
-# event/schedule (do not start at 0%; that is already closed, not a slam).
+# Inline TCV — R-THYM: Initial Opening 100%, then Closure Type = Linear
 v1 = rthym_moc.NodeInput()
 v1.id = "V1"
 v1.type = "Valve"
@@ -233,33 +232,35 @@ r2.elevation = 0.0
 r2.head = 0.0
 solver.add_node(r2)
 
-# Pipe: 3000 ft, 12-inch diameter, Hazen-Williams C = 130
-p1 = rthym_moc.PipeInput()
-p1.id = "P1"
-p1.from_node = "R1"
-p1.to_node = "V1"
-p1.length = 3000.0
-p1.diameter = 12.0
-p1.roughness = 130.0
-p1.flow_gpm = 500.0      # initial steady-state flow
-solver.add_pipe(p1)
+# Pipes — R-THYM: Material = Steel + wall thickness (sets C, E, ν for wave speed)
+# Steel library defaults: C=120, E=2.90e7 psi, ν=0.30
+# Omitting E / ν / wall_thickness (youngs_modulus = 0) uses rigid ~4000 ft/s
+# and will NOT match app Steel runs.
+def steel_pipe(pipe_id, from_node, to_node, length_ft, flow_gpm):
+    p = rthym_moc.PipeInput()
+    p.id = pipe_id
+    p.from_node = from_node
+    p.to_node = to_node
+    p.length = length_ft
+    p.diameter = 12.0            # inches
+    p.roughness = 120.0          # Hazen-Williams C (from material)
+    p.wall_thickness = 0.25      # inches (pipe property in the app)
+    p.youngs_modulus = 2.90e7    # psi (from material)
+    p.poissons_ratio = 0.30      # (from material)
+    p.flow_gpm = flow_gpm        # initial steady-state flow
+    return p
 
-p2 = rthym_moc.PipeInput()
-p2.id = "P2"
-p2.from_node = "V1"
-p2.to_node = "R2"
-p2.length = 100.0
-p2.diameter = 12.0
-p2.roughness = 130.0
-p2.flow_gpm = 500.0
-solver.add_pipe(p2)
+solver.add_pipe(steel_pipe("P1", "R1", "V1", 3000.0, 500.0))
+solver.add_pipe(steel_pipe("P2", "V1", "R2", 100.0, 500.0))
 
-# Rapid closure schedule (R-THYM: valve closure event / stroke ≈ one MOC step)
-solver.set_valve_schedule("V1", [(0.0, 100.0), (0.01, 0.0)])
+# Linear closure over 1.0 s — R-THYM: Closure Type = Linear, Stroke Time (sec) = 1
+# Schedule times are seconds: (t, % open). Here 100% → 0% from t=0 to t=1.
+# Note: [(0.0, 100.0), (0.01, 0.0)] would be a one-dt slam (dt=0.01), NOT 1 second.
+solver.set_valve_schedule("V1", [(0.0, 100.0), (1.0, 0.0)])
 
 # ── 2. Run transient simulation ───────────────────────────────────────────────
 results = solver.run(
-    total_time=4.0,    # seconds
+    total_time=4.0,    # seconds (longer than stroke so the wave is visible)
     dt=0.01,           # time step (seconds)
     p_vapor_psi=-14.0, # vapour pressure threshold (psi; negative = below atm)
     usf_tau=0.5        # unsteady-friction relaxation time constant (s)
