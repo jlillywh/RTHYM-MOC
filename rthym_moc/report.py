@@ -565,13 +565,13 @@ def format_study_table(summary: StudySummary) -> str:
     """Return a plain-text table suitable for logs or reports."""
     lines = [
         "Transient study summary",
-        f"  steps={summary['meta']['num_steps']}  "
+        (f"  steps={summary['meta']['num_steps']}  "
         f"dt={summary['meta']['dt_s']:.4g} s  "
-        f"duration={summary['meta']['duration_s']:.4g} s",
+        f"duration={summary['meta']['duration_s']:.4g} s"),
         "",
         "Node envelopes:",
-        f"  {'ID':<20} {'H_min':>8} {'@t':>7} {'H_max':>8} {'@t':>7} "
-        f"{'P_min':>8} {'P_max':>8} {'Cav_s':>7}",
+        (f"  {'ID':<20} {'H_min':>8} {'@t':>7} {'H_max':>8} {'@t':>7} "
+        f"{'P_min':>8} {'P_max':>8} {'Cav_s':>7}"),
     ]
     for node_id, node_row in sorted(summary["nodes"].items()):
         h = node_row["head_ft"]
@@ -605,13 +605,13 @@ def format_study_table_si(summary: StudySummarySI) -> str:
     """Return a plain-text SI-unit table suitable for logs or reports."""
     lines = [
         "Transient study summary (SI)",
-        f"  steps={summary['meta']['num_steps']}  "
+        (f"  steps={summary['meta']['num_steps']}  "
         f"dt={summary['meta']['dt_s']:.4g} s  "
-        f"duration={summary['meta']['duration_s']:.4g} s",
+        f"duration={summary['meta']['duration_s']:.4g} s"),
         "",
         "Node envelopes:",
-        f"  {'ID':<20} {'H_min':>8} {'@t':>7} {'H_max':>8} {'@t':>7} "
-        f"{'P_min':>8} {'P_max':>8} {'Cav_s':>7}",
+        (f"  {'ID':<20} {'H_min':>8} {'@t':>7} {'H_max':>8} {'@t':>7} "
+        f"{'P_min':>8} {'P_max':>8} {'Cav_s':>7}"),
         "  (head m, pressure kPa)",
     ]
     for node_id, node_row in sorted(summary["nodes"].items()):

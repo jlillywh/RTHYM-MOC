@@ -267,7 +267,7 @@ def attach_air_valve_at_chainage(
     if pipe_id not in network.pipes:
         raise ValueError(f"Unknown pipe id '{pipe_id}'")
     pipe = network.pipes[pipe_id]
-    valve_id = valve_node_id or f"{pipe_id}_av_{int(round(chainage_ft))}"
+    valve_id = valve_node_id or f"{pipe_id}_av_{round(chainage_ft)}"
     split = split_pipe_at_chainage(
         pipe,
         network.nodes,
