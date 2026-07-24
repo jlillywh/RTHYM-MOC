@@ -35,12 +35,15 @@ library for research, design studies, and automated validation.
 - [Operational Controls & Event Logic](#operational-controls--event-logic)
 - [Surge control components](#surge-control-components)
 - [Pump & Turbine Rotational Inertia](#pump--turbine-rotational-inertia)
+- [Cavitation models](#cavitation-models)
 - [Scripted multi-event transients](#scripted-multi-event-transients)
 - [Loading from EPANET (.inp)](#loading-from-epanet-inp)
 - [Numerical method](#numerical-method)
 - [Benchmarking](#benchmarking)
 - [Repository layout](#repository-layout)
 - [Dependencies](#dependencies)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
@@ -254,7 +257,7 @@ solver.add_pipe(p2)
 results = solver.run(
     total_time=4.0,    # seconds
     dt=0.01,           # time step (seconds)
-    p_vapor=-14.0,     # vapour pressure threshold (psi; negative = below atm)
+    p_vapor_psi=-14.0, # vapour pressure threshold (psi; negative = below atm)
     usf_tau=0.5        # unsteady-friction relaxation time constant (s)
 )
 
@@ -658,6 +661,7 @@ node.level            = 100.0         # % full  (Tank, derived/legacy compatibil
 node.max_level        = 20.0          # ft depth at 100 % full (Tank)
 node.demand           = 0.0           # GPM withdrawal (Junction, OutflowNode)
 node.current_setting  = 100.0         # % open (Valve, Turbine; 100 = fully open)
+node.k_open           = 0.0           # dimensionless fully-open minor-loss K (Valve; 0 = legacy formula)
 node.diameter         = 8.0           # inches (Valve orifice / Turbine runner; <= 0 is sanitized to 0.01)
 node.current_speed    = 100.0         # % rated speed (Pump)
 node.ramp_time        = 0.0           # s — VFD pump speed acceleration/deceleration limit (0 = instant)
@@ -670,7 +674,6 @@ node.speed_rpm        = 1750.0        # RPM — rated speed of pump or turbine
 node.efficiency       = 0.80          # 0.0 to 1.0 — pump or turbine BEP efficiency
 node.specific_speed   = 1800.0        # gpm, ft — US pump specific speed (Radial/Mixed/Axial lookup)
 node.closure_time     = 0.03          # s — CheckValve exponential close time (default 0.03)
-node.closure_damping  = 0.0           # dimensionless CheckValve damping (optional)
 node.flipped          = False         # CheckValve: reverse installed direction
 node.air_release_head = 0.0           # ft vent reference above elevation (AirValve)
 node.air_release_diameter = 0.25      # inches (AirValve small-orifice release port; <= 0 is sanitized to 0.01)
@@ -691,14 +694,14 @@ node.loss_coeff_out   = 0.7           # C_d orifice coefficient for outflow / ai
 | `"InflowNode"` | Injects flow (demand treated as negative) | `demand` |
 | `"PressureBoundary"` | Fixed total head at all times | `head` |
 | `"Tank"` | Fixed HGL; `head` is authoritative, `level` is compatibility state | `head`, `level`, `max_level` |
-| `"CheckValve"` | Inline one-way valve with optional exponential slam dynamics | `diameter`, `closure_time`, `closure_damping`, `flipped` |
+| `"CheckValve"` | Inline one-way valve with optional exponential slam dynamics | `diameter`, `closure_time`, `flipped` |
 | `"AirValve"` | Air-pocket valve with large admission port and small release port | `elevation`, `head`, `diameter`, `air_release_diameter`, `gas_volume`, `tank_volume`, `loss_coeff_in`, `loss_coeff_out`, `air_release_head` |
-| `"Valve"` | Quadratic loss, $K = (100/s)^2 - 1$ | `current_setting`, `diameter` |
+| `"Valve"` | Quadratic minor-loss orifice (see [Valve model](#valve-model)) | `current_setting`, `diameter`, `k_open` (optional), `design_head`/`design_flow` (optional) |
 | `"PRV"` | Pressure reducing — holds downstream `head` setpoint (ft HGL) when regulating | `head`, `diameter` |
 | `"PSV"` | Pressure sustaining — holds upstream `head` setpoint (ft HGL) when regulating | `head`, `diameter` |
 | `"PBV"` | Pressure breaker — maintains differential head `head` (ft) across the valve | `head`, `diameter` |
 | `"Turbine"` | Quadratic loss (design-curve K) | `current_setting`, `design_velocity`, `diameter` |
-| `"Pump"` | Four-quadrant Suter curve (Radial/Mixed/Axial) or 3-coefficient affinity curve (multi-pipe fallback) | `current_speed`, `command_speed`, `has_power`, `design_head`, `design_flow`, `inertia_wr2`, `speed_rpm`, `efficiency`, `specific_speed`, `ramp_time` |
+| `"Pump"` | Four-quadrant Suter curve (Radial/Mixed/Axial) or 3-coefficient affinity curve (multi-pipe fallback) | `current_speed`, `has_power`, `design_head`, `design_flow`, `inertia_wr2`, `speed_rpm`, `efficiency`, `specific_speed`, `ramp_time` (command target via `set_pump_command_speed`) |
 | `"Standpipe"` | Open free-surface surge tank (level tracked each step) | `head`, `tank_area` |
 | `"HydropneumaticTank"` | Closed pressurised vessel; gas follows polytropic law | `head`, `diameter`, `gas_volume`, `tank_volume`, `polytropic_n`, `loss_coeff_in`, `loss_coeff_out` |
 | `"SurgeReliefValve"` (or `"SRV"`) | Dynamic overpressure relief valve (opens above trigger HGL, recloses below it) | `elevation`, `head` (trigger HGL), `diameter` (orifice size, inches), `loss_coeff_out` (Cd, default 0.6) |
@@ -759,11 +762,11 @@ distributed across the pipe segments. That distribution is a practical MOC
 approximation of a lumped local loss, and the test suite now includes explicit
 benchmarks against an equivalent lumped-loss case.
 
-**Wave speed** is computed intenally from the Korteweg–Joukowsky elastic formula when `youngs_modulus > 0`:
+**Wave speed** is computed internally from the Korteweg–Joukowsky elastic formula when `youngs_modulus > 0`:
 
-$$a = \sqrt{\frac{K_f/\rho}{1 + (K_f D)/(E\,e)}}$$
+$$a = \frac{a_0}{\sqrt{1 + (K_f/E)(D/e)(1-\nu^2)}}$$
 
-where $K_f$ is the bulk modulus of water, $E$ is `youngs_modulus`, $D$ is the pipe diameter, and $e$ is `wall_thickness`.  When `youngs_modulus = 0`, a rigid-pipe wave speed of 4720 ft/s is used as the starting point before Courant adjustment.
+where $a_0 = 4860$ ft/s (rigid-water acoustic speed), $K_f$ is the bulk modulus of water, $E$ is `youngs_modulus`, $D$ is the pipe diameter, $e$ is `wall_thickness`, and $\nu$ is `poissons_ratio`.  When `youngs_modulus = 0`, a rigid-pipe wave speed of **4000 ft/s** is used as the starting point before Courant adjustment.
 
 The solver automatically adjusts the wave speed so that $a_\text{adj} = L / (N_\text{segs} \cdot dt)$ exactly (Courant = 1), where $N_\text{segs} = \text{round}(L / (a \cdot dt))$.
 
@@ -789,6 +792,7 @@ solver = rthym_moc.MOCSolver()
 | `solver.get_node_pressure(id)` | Query the current gauge pressure (psi) of a node. |
 | `solver.set_valve_setting(id, pct_open)` | Change a valve's opening immediately (used between `run()` calls). |
 | `solver.set_pump_speed(id, pct_speed)` | Change a pump speed immediately. |
+| `solver.set_pump_command_speed(id, pct_speed)` | Set the VFD command target; `current_speed` ramps toward it using `ramp_time`. |
 | `solver.set_pump_power(id, has_power)` | Set pump electrical power (PCV shutdown vs outage). |
 | `solver.set_node_demand(id, demand_gpm)` | Change a junction demand immediately. |
 | `solver.set_node_head(id, head_ft)` | Change a fixed-head boundary's stored head between `run()` calls. |
@@ -849,7 +853,7 @@ Walkthrough: [`validation/notebooks/grid_scaling_verification.ipynb`](validation
 results = solver.run(
     total_time = 10.0,    # float, seconds — simulation duration
     dt         = 0.01,    # float, seconds — time step
-    p_vapor    = -14.0,   # float, psi     — vapour pressure (negative = subatmospheric)
+    p_vapor_psi = -14.0,  # float, psi     — vapour pressure (negative = subatmospheric)
     usf_tau    = 0.5,     # float, seconds — unsteady-friction IIR time constant (BrunoneIIR only)
                           #   set to dt to disable the IIR filter (USF still active unless Steady)
     k_bru      = -1.0,    # float — Brunone USF coefficient (BrunoneIIR / Vitkovsky; see below)
@@ -922,7 +926,7 @@ rule.kd                  = 0.1             # PID derivative gain
 
 ### Results dictionary
 
-`run()` retuns a Python `dict` whose values are NumPy arrays (zero-copy where possible):
+`run()` returns a Python `dict` whose values are NumPy arrays (zero-copy where possible):
 
 ```python
 t           = np.array(results["time"])                     # (N,) float64, seconds
@@ -936,16 +940,16 @@ cav_coll_fl = np.array(results["node_cavity_collapse_flag"]["NODE_ID"])  # (N,) 
 cav_coll    = np.array(results["node_cavity_collapse_count"]["NODE_ID"]) # (N,) int32, cumulative (populated when using DVCM)
 valve_pct   = np.array(results["valve_setting"]["V1"])      # (N,) float64, % open (Valve/Turbine)
 valve_pos   = np.array(results["valve_position"]["CV1"])    # (N,) float64, 0–1 (CheckValve position)
-valve_vel   = np.array(results["valve_velocity"]["CV1"])   # (N,) float64, ft/s (CheckValve disc velocity)
+valve_vel   = np.array(results["valve_velocity"]["CV1"])   # (N,) float64, 1/s (CheckValve opening-rate d(pos)/dt)
 pump_speed  = np.array(results["pump_speed"]["P1"])         # (N,) float64, % rated speed (Pump)
 turbine_speed = np.array(results["turbine_speed"]["T1"])    # (N,) float64, % rated speed (Turbine)
 ```
 
-Every node and every pipe that was added to the solver has a corresponding key in the respective sub-dictionary.  `node_head` records the hydraulic grade line (HGL) at each node.  `node_cavitation` is 1 for any time step at which the computed pressure fell below `p_vapor`.
+Every node and every pipe that was added to the solver has a corresponding key in the respective sub-dictionary.  `node_head` records the hydraulic grade line (HGL) at each node.  `node_cavitation` is 1 for any time step at which the computed pressure fell below `p_vapor_psi`.
 
 The cavity channels (`node_cavity_volume`, `node_cavity_active`, `node_cavity_collapse_flag`, `node_cavity_collapse_count`) are standard diagnostic outputs populated when simulating with the `DVCM` model.
 
-`valve_setting` is recorded for `Valve` and `Turbine` nodes.  `valve_position` and `valve_velocity` are recorded for `CheckValve` nodes during slam dynamics.  `pump_speed` is recorded for `Pump` nodes.  `turbine_speed` is recorded for `Turbine` nodes.
+`valve_setting` is recorded for `Valve` and `Turbine` nodes.  `valve_position` (0–1) and `valve_velocity` (opening rate, 1/s) are recorded for `CheckValve` nodes during slam dynamics.  `pump_speed` is recorded for `Pump` nodes.  `turbine_speed` is recorded for `Turbine` nodes.
 
 #### Optional per-pipe MOC profiles
 
@@ -1097,10 +1101,11 @@ SI helper inputs use:
 | Quantity | Helper unit |
 |----------|-------------|
 | Heads, elevations, lengths | m |
-| Pressures retuned by `results_to_si()` | kPa |
+| Pressures returned by `results_to_si()` | kPa |
 | Flows | m^3/s |
 | Pipe diameter, wall thickness | mm |
-| Wave speed / valve velocity outputs | m/s |
+| Wave speed outputs | m/s |
+| CheckValve `valve_velocity` | 1/s (opening rate; not converted as a linear speed) |
 | Optional per-pipe profiles (`record_pipe_profiles=True`) | `pipe_profile_chainage_m`, `pipe_profile_head_m`, `pipe_profile_pressure_kpa`, `pipe_profile_velocity_m_s` |
 | Young's modulus in `pipe_si()` | Pa |
 | Time and valve / pump settings | unchanged (`s`, `%`) |
@@ -1132,7 +1137,7 @@ Common conversion constants and helpers are exported for convenience:
 ```python
 rthym_moc.GPM_TO_CFS   # = 0.002228  (multiply GPM to get ft³/s)
 rthym_moc.G_FT_S2      # = 32.2      (ft/s²)
-rthym_moc.PSI_TO_FT    # = 2.307692… (multiply psi to get ft of head)
+rthym_moc.PSI_TO_FT    # = 2.31 (multiply psi to get ft of head)
 rthym_moc.M_TO_FT
 rthym_moc.GPM_TO_M3S
 rthym_moc.PSI_TO_KPA
@@ -1176,11 +1181,27 @@ solver = m.load_inp_si(
 
 ## Valve model
 
-The solver uses a quadratic loss model:
+The dimensionless minor-loss coefficient $K$ depends on opening $s$ (percent) and how the valve is parameterized:
+
+**1. Residual fully-open loss (`k_open > 0`, no design curve)**
+
+$$K(s) = \frac{k_\text{open}}{(s/100)^2}, \qquad s \in (0, 100]$$
+
+At 100% open, $K = k_\text{open}$. Use this for gate/butterfly/globe-style body loss that remains when the valve is fully open.
+
+**2. Legacy formula (`k_open = 0` and no design head/flow)**
 
 $$K(s) = \left(\frac{100}{s}\right)^2 - 1, \qquad s \in (0, 100]$$
 
-where $s$ is the valve opening in percent.  This is consistent with a generic butterfly/globe valve where the discharge coefficient scales as $C_d \propto s/100$.  The minimum clamp is $s = 10^{-6}$%, giving $K \approx 10^{16}$ (effectively zero flow).
+This reaches $K = 0$ at fully open. It is consistent with a generic throttle where the discharge coefficient scales as $C_d \propto s/100$.
+
+**3. Design-curve valves** (both `design_head > 0` and `design_flow > 0`, or turbines)
+
+$$K(s) = \frac{K_\text{base}}{(s/100)^2}$$
+
+with $K_\text{base}$ from the design point ($H_d$, $Q_d$, orifice area).
+
+In all cases the minimum clamp is $s = 10^{-6}$%, giving a very large $K$ (effectively zero flow).
 
 **Important implication for gradual-closure studies.**  Because $K$ grows as $1/s^2$, the valve does not significantly restrict flow until $s$ approaches a critical value
 
@@ -1235,7 +1256,7 @@ solver.set_valve_schedule("V1", list(zip(t_offsets, steps)))
 
 A programmed actuator changes its closure rate at a pre-set *transition opening*.  Stage 1 closes quickly from the initial opening to the transition point; Stage 2 closes slowly from the transition point to fully closed.
 
-**Key design rule**: Stage 2 time should satisfy $T_{\text{stage2}} \geq 2L/a$ so that the Joukowsky wave retuns before closure completes, reducing the peak pressure rise.
+**Key design rule**: Stage 2 time should satisfy $T_{\text{stage2}} \geq 2L/a$ so that the Joukowsky wave returns before closure completes, reducing the peak pressure rise.
 
 ```python
 s0, trans_pct = 100.0, 15.0
@@ -1812,7 +1833,7 @@ For `initial_flows`, use the original EPANET link ID for pumps and valves (e.g. 
 | `[PUMPS]` | `Pump` node + two stub pipes; design point read from `[CURVES]` |
 | `[VALVES]` | `Valve` node + two stub pipes (TCV, PRV, PSV, PBV) |
 | `[PATTERNS]` | Demand multipliers (see limitations) |
-| `[DEMANDS]` | Junction demand with patten multiplier at index 0 |
+| `[DEMANDS]` | Junction demand with pattern multiplier at index 0 |
 | `[CONTROLS]` | Simple `LINK … STATUS OPEN\|CLOSED AT TIME …` rows → pump/valve schedules |
 | `[TIMES]` | Patten timestep (hours → seconds) |
 | `[CURVES]` | Pump design points |
@@ -1829,7 +1850,7 @@ No separate flag is required.
 
 ### Pump, valve, and check-valve generated IDs
 
-Because EPANET treats pumps and valves as *links* (not nodes), `load_inp()` injects an intermediate node and two stub pipes (default 40 ft each; override with `stub_length_ft`) for each one.  The generated IDs follow a predictable patten:
+Because EPANET treats pumps and valves as *links* (not nodes), `load_inp()` injects an intermediate node and two stub pipes (default 40 ft each; override with `stub_length_ft`) for each one.  The generated IDs follow a predictable pattern:
 
 | EPANET link `V1` | Generated node | Generated pipes |
 |---|---|---|
@@ -1844,7 +1865,7 @@ Use these IDs when calling `set_valve_schedule()`, `set_pump_speed()`, or access
 - **PRV / PSV / PBV** are modeled as active pressure-control valves during transients (`NodeInput.head` stores the setpoint in ft HGL, or differential ft for PBV). Imported EPANET settings are converted from pressure units to head. This is a simplified regulating model, not a full EPANET steady-state valve solve each step.
 - **FCV / GPV** valve types are not supported and are treated as fully-open valves.
 - **Minor losses** (`[PIPES]` column 7) are imported as a dimensionless local-loss coefficient `K`, included in the initial steady headloss, and then applied as distributed resistance across the pipe during the transient. This is an approximation of a truly lumped fitting loss, but dedicated regression benchmarks are included to quantify the mismatch.
-- **Demand pattens** — `[PATTERNS]` with `[JUNCTIONS]` / `[DEMANDS]` apply multiplier at index 0 to initial demand; multi-point pattens become `set_demand_schedule()`. Patten timestep comes from `[TIMES]` (hours → seconds). See [`docs/import_fidelity.md`](docs/import_fidelity.md).
+- **Demand patterns** — `[PATTERNS]` with `[JUNCTIONS]` / `[DEMANDS]` apply multiplier at index 0 to initial demand; multi-point patterns become `set_demand_schedule()`. Pattern timestep comes from `[TIMES]` (hours → seconds). See [`docs/import_fidelity.md`](docs/import_fidelity.md).
 - **Simple controls** — `[CONTROLS]` rows of the form `LINK <id> STATUS OPEN|CLOSED AT TIME <hours>` map to pump/valve schedules on `_PUMP_<id>` / `_VALVE_<id>`. `[RULES]` and NODE-based controls are not imported.
 - **Check valves** (`CV` status on a pipe) are imported as generated inline `CheckValve` nodes with split pipes. The model supports exponential slam dynamics via `closure_time` (default 0.03 s) and optional `flipped` orientation.
 
@@ -1881,7 +1902,7 @@ where $B = a/g$ (ft·s²/ft = s²) is the pipe impedance and $R = f \Delta x / (
 - *PressureBoundary / Tank*: $H$ fixed; $V$ solved from the appropriate $C^\pm$.
 - *Junction*: Kirchhoff continuity; $H$ solved from the combined $C^\pm$ of all incident pipes.
 - *Dead-end (Junction, demand = 0, no outflow pipe)*: $H = C^+$ (zero-flow reflection).
-- *Valve / Turbine*: $K = (100/s)^2 - 1$ loss; combined with $C^\pm$ to solve $H$ and $V$. For turbines, when `has_power = False`, speed is integrated dynamically using its rotational inertia.
+- *Valve / Turbine*: quadratic minor-loss orifice (see [Valve model](#valve-model)); combined with $C^\pm$ to solve $H$ and $V$. For turbines, when `has_power = False`, speed is integrated dynamically using its rotational inertia.
 - *CheckValve*: one-way flow with optional exponential disc closure; position and velocity are recorded in results.
 - *PRV / PSV / PBV*: simplified regulating pressure-control valves using the setpoint stored in `NodeInput.head`.
 - *Pump*: affinity-curve head-flow relationship combined with $C^\pm$; `has_power` and `inertia_wr2` determine the speed decay behavior following power failure.
@@ -2050,7 +2071,7 @@ RTHYM-MOC/
 │   ├── test_joukowsky_rthym.py                 # R-THYM web-app vs solver benchmark
 │   ├── test_long_pipe_valve.py                 # Cross-engine valve-closure benchmark
 │   ├── test_complex_topology_from_inp.py       # EPANET/wntr import benchmark
-│   ├── test_inp_import_fidelity.py             # Pattens, demands, simple controls
+│   ├── test_inp_import_fidelity.py             # Patterns, demands, simple controls
 │   ├── test_report.py                          # Study summary and export helpers
 │   ├── test_gradual_closure_benchmark.py       # Parameterized closure-time benchmark
 │   ├── test_tank_size_benchmark.py             # Parameterized standpipe-size benchmark
