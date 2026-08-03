@@ -75,7 +75,7 @@ def _make_pipe(id_, from_node, to_node, length, **kwargs):
     p = rthym_moc.PipeInput()
     p.id, p.from_node, p.to_node, p.length = id_, from_node, to_node, length
     for k, v in kwargs.items():
-        setattr(p, v)
+        setattr(p, k, v)
     return p
 
 
