@@ -369,7 +369,10 @@ write(
             "[![Launch Binder](https://mybinder.org/badge_logo.svg)]"
             "(https://mybinder.org/v2/gh/jlillywh/RTHYM-MOC/main?labpath=examples%2Fdvcm_canonical_verification.ipynb)"
         ),
-        md("## 1. Setup and reference assets"),
+        md(
+            "## 1. Setup and reference assets\n\n"
+            "Run this cell first (imports `CASES` / helpers). Later cells assume it has been executed in this kernel."
+        ),
         code(
             SETUP
             + "\nfrom dvcm_canonical_verification_utils import (\n"
@@ -427,6 +430,7 @@ write(
         ),
         md("### 3a. Pointwise head error (sim − reference)"),
         code(
+            "from dvcm_canonical_verification_utils import CASES, CASE_LABELS\n\n"
             "for case_id in CASES:\n"
             "    res, ref, m = case_results[case_id]\n"
             "    t_ref = np.asarray(ref[\"time_s\"], dtype=float)\n"
