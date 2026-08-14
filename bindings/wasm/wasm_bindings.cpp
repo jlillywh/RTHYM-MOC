@@ -194,6 +194,10 @@ EMSCRIPTEN_BINDINGS(rthym_moc) {
         .function("get_friction_model", &MOCSolver::get_friction_model)
         .function("set_cavitation_model", &MOCSolver::set_cavitation_model)
         .function("get_cavitation_model", &MOCSolver::get_cavitation_model)
+        .function("set_max_segments_per_pipe", &MOCSolver::set_max_segments_per_pipe)
+        .function("get_max_segments_per_pipe", &MOCSolver::get_max_segments_per_pipe)
+        .function("set_interpolation_mode", &MOCSolver::set_interpolation_mode)
+        .function("get_interpolation_mode", &MOCSolver::get_interpolation_mode)
         .function("get_step_results", +[](const MOCSolver& solver) {
             return convert_snapshot_to_val(solver.capture_step_snapshot());
         });
