@@ -29,9 +29,13 @@ updates:
           - h5py
           - tqdm
           - numba
-          - setuptools
           - pybind11
           - scikit-build-core
+    ignore:
+      # wntr still imports pkg_resources (removed in setuptools>=82) and Python 3.9 requires <84
+      - dependency-name: setuptools
+        versions:
+          - ">= 82.0.0"
 
   - package-ecosystem: github-actions
     directory: /
@@ -39,3 +43,7 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
