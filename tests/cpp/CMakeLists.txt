@@ -1,5 +1,8 @@
 include(FetchContent)
 
+# doctest v2.4.11 declares cmake_minimum_required(VERSION 3.0); allow CMake 4.x to configure it
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Minimum CMake policy version for FetchContent deps")
+
 FetchContent_Declare(
     doctest
     GIT_REPOSITORY https://github.com/doctest/doctest.git
