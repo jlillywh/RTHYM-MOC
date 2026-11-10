@@ -23,7 +23,7 @@ jobs:
         run: cd build && ctest --output-on-failure
 
   pytest:
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ (matrix.os == 'ubuntu-latest' && matrix.python-version == '3.9') && 'ubuntu-24.04' || matrix.os }}
     env:
       PYTHONUTF8: "1"
       PYTHONIOENCODING: utf-8
