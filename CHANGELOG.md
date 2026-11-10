@@ -6,7 +6,22 @@ records release-level changes here.
 The format is based on Keep a Changelog, and this project uses semantic
 versioning for package releases.
 
-## [Unreleased]
+## [0.4.2] - 2026-08-14
+
+### Added
+- **High-Fidelity MOC Solver Performance Optimization**: Optimizes transient simulation speeds when running at fine time-steps (e.g., 0.0005 s or 0.0001 s). By capping the maximum number of grid segments per pipe and using timeline wave-speed interpolation, the solver avoids massive grid-point computation overhead. High-fidelity surge simulations that previously took over a minute now complete in **under 3 seconds** (up to a 30x speedup).
+- **Grid Discretization Mode Controls**: Exposes new options to modelers in the Simulation Settings dialog to control numerical accuracy and damping:
+  * **Courant Interpolation (Variable Cr ≤ 1)**: Preserves exact physical wave travel times across all pipes using spatial interpolation (ideal for fast screening and large models, though it introduces minor numerical damping).
+  * **Wave-Speed Adjustment (Fixed Cr = 1)**: Adjusts pipe wave speeds slightly to align waves exactly with grid nodes. This eliminates all artificial numerical damping, preserving exact transient peak magnitudes (ideal for safety-critical surge protection sizing).
+- **Maximum Segment Capping Limit**: Allows modelers to adjust the spatial discretization detail (segment cap per pipe, default is 100 segments) to fine-tune the balance between detail and calculation speed.
+- **Four-Quadrant Centrifugal Pump Dynamics (Power Failure)**: Adds transient pump dynamics supporting reverse flow and reverse impeller rotation under power-failure trip events, using standard Suter curves.
+- **Surge Relief Valve (SRV) Node Type**: Implements a dedicated Surge Relief Valve boundary element to model fast-acting pressure relief systems and size over-pressure protection devices.
+- **Valve Residual Headloss ($k_{open}$)**: Adds a residual fully-open loss coefficient property to model valve-specific restriction and design pressure drop.
+- **Live Telemetry Solver Reminders**: Displays the active discretization mode, segment cap, and cavitation model directly in the System Overview sidebar panel during simulation playback.
+
+### Fixed
+- Fixed Binder `CASES` NameError in canonical notebook.
+- Fixed `setattr` typo breaking `long_pipe` valve notebook CI.
 
 ### Added
 - **Long-pipeline Phase 6 — transient friction selector**: `TransientFrictionModel` enum with `BrunoneIIR` (default), `Steady`, `Vitkovsky` (local/convective acceleration USF), and `QuasiSteady` (Hazen–Williams Darcy `f` updated from local velocity each step, no USF). Long-pipe damping comparison test (`test_long_pipe_peak_envelope_decay_differs_quasi_steady_vs_vitkovsky`, `@pytest.mark.slow`) on a 5-mile line with capped grid. Literature cross-checks in `tests/test_transient_friction_literature.py` and [docs/transient_friction_verification.md](docs/transient_friction_verification.md).
