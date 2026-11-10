@@ -22,8 +22,9 @@ classifiers = [
 
 [project.optional-dependencies]
 inp  = [
-    # wntr still imports pkg_resources (removed in setuptools>=82)
+    # wntr still imports pkg_resources (removed in setuptools>=82) and six
     "setuptools>=65,<84",
+    "six",
     "wntr>=0.4,<1.4; python_version < '3.10'",
     "wntr>=0.4; python_version >= '3.10'",
 ]
